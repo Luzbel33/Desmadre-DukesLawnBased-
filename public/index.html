@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Duke's Lawn: DESMADRE</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Rubik:wght@400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three/three.module.js",
+      "three/addons/": "./vendor/three/addons/",
+      "rapier": "./vendor/rapier/rapier.mjs"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="css3d"></div>
+  <canvas id="game" tabindex="0"></canvas>
+  <div id="overlay"></div>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div id="hud-tl">
+      <div id="zone">El Gran Pasto</div>
+      <div id="lawn" title="Cuánto del Gran Pasto está cortado"><div class="bar"><i id="lawn-bar"></i></div><span><b id="lawn-pct">0%</b> del Gran Pasto cortado</span></div>
+      <div class="tags"><span id="pvp" class="tag pvp hidden">⚔ Zona PvP</span><span id="desmadre-tag" class="tag desmadre hidden">☠ Modo desmadre</span></div>
+      <div id="fb-score" class="hidden"><span class="rojo">ROJO <b id="fb-a">0</b></span><span id="fb-clock">amistoso</span><span class="azul"><b id="fb-b">0</b> AZUL</span></div>
+    </div>
+    <div id="hud-tr">
+      <div id="net-info"><span id="pcount">1</span> en la sala · <span id="ping">0</span> ms<span id="mic-state" class="mic-off"></span></div>
+      <button id="audio-toggle" type="button" class="hidden">Activar sonido</button>
+      <div id="toasts"></div>
+    </div>
+    <div id="killfeed"></div>
+    <div id="bigmsg" class="hidden"></div>
+    <div id="crosshair"></div>
+    <div id="hud-br">
+      <div id="hints"></div>
+      <div id="vehicle-hud" class="hidden">
+        <div class="veh-row">
+          <div id="blades"><i></i><span>Cuchillas</span> <b id="blades-state">apagadas</b></div>
+          <div id="speedo"><b id="speed">0</b><small>km/h</small></div>
+        </div>
+      </div>
+      <div id="stats">
+        <div class="stat" id="st-hp"><span>❤</span><div class="bar"><i></i></div></div>
+        <div class="stat" id="st-blood"><span>🩸</span><div class="bar"><i></i></div></div>
+        <div class="stat" id="st-drunk"><span>🍺</span><div class="bar"><i></i></div><small id="drunk-lbl"></small></div>
+        <div class="stat" id="st-high"><span>🌿</span><div class="bar"><i></i></div><small id="high-lbl"></small></div>
+      </div>
+    </div>
+    <div id="hotbar"></div>
+    <div id="spray-info" class="hidden"><i id="spray-swatch"></i><span id="spray-size"></span> <small>B colores · rueda tamaño</small></div>
+  </div>
+
+  <!-- Chat -->
+  <div id="chat" class="hidden">
+    <div id="chat-log"></div>
+    <input id="chat-input" maxlength="240" autocomplete="off" placeholder="Escribí y apretá Enter (Esc para cancelar)">
+  </div>
+
+  <!-- Lista de jugadores (Tab) -->
+  <div id="players" class="hidden panel">
+    <h3>En la sala</h3>
+    <div id="players-list"></div>
+    <p class="hint">En la pausa (Esc) podés silenciar a alguien.</p>
+  </div>
+
+  <!-- Menú de inicio -->
+  <div id="menu" class="hidden">
+    <div class="menu-card lobby-card">
+      <h1><span>DUKE'S LAWN</span><em>DESMADRE ONLINE</em></h1>
+      <p class="tag">Tu personaje. Tu sala. Una tarde de desmadre. <small class="build-version">FÍSICA · GORE · PÓKER · 1.5.0</small></p>
+      <div class="lobby-layout">
+        <section class="avatar-stage"><span class="eyebrow">TU PERSONAJE</span><div id="avatar-preview"></div><p class="preview-hint">Arrastrá para girar · Rueda para acercar · Doble clic para centrar</p></section>
+        <section class="lobby-settings"><span class="eyebrow">PREPARATE PARA ENTRAR</span>
+      <div class="row">
+        <label>Tu nombre<input id="m-name" maxlength="20" placeholder="Ej: El Tano"></label>
+        <label>Sala<input id="m-room" maxlength="24" placeholder="principal"></label>
+      </div>
+      <div class="custom">
+        <div class="model-pick" id="m-models">
+          <span>Personaje</span>
+          <button type="button" data-model="eric"><b>Eric</b><small>de traje</small></button>
+          <button type="button" data-model="carla"><b>Carla</b><small>de negro</small></button>
+          <button type="button" data-model="claudia"><b>Claudia</b><small>casual</small></button>
+        </div>
+      </div>
+      <button id="m-play" class="big">¡A JUGAR!</button>
+      <p id="m-err" class="err"></p>
+      <p class="camera-hint">Primera persona al entrar · <b>C</b> cambia la cámara</p>
+        </section>
+      </div>
+      <details class="controls">
+        <summary>Controles</summary>
+        <div class="cols">
+          <div><b>WASD</b> moverse · <b>Shift</b> correr · <b>Espacio</b> saltar</div>
+          <div><b>Click izq / der corto</b> piña con esa mano (o tomar, fumar, comer)</div>
+          <div><b>Click sostenido + mouse</b> mover ese brazo (pegar, empujar, revolear) · <b>rueda</b> estirar/acercar</div>
+          <div><b>Los dos clicks</b> guardia: manos arriba, los golpes de frente casi no pasan</div>
+          <div><b>E / Q</b> agarrar o soltar con la mano derecha / izquierda (solo eso)</div>
+          <div><b>X</b> usar: sentarse/levantarse, subir/bajar, heladerita, parrilla, botiquín, pantallas</div>
+          <div><b>G</b> revolear lo que tenés en la mano · <b>F</b> patada · <b>R</b> cabezazo</div>
+          <div><b>1-4</b> birra · faso · aerosol · mano libre · <b>B</b> colores del aerosol</div>
+          <div><b>C</b> cámara · <b>Z</b> gestos · <b>J</b> ¿qué hacemos? · <b>P</b> pantallas</div>
+          <div><b>T / Enter</b> chat · <b>V</b> hablar · <b>Tab</b> jugadores · <b>Esc</b> pausa</div>
+          <div>En vehículo: <b>WASD</b> manejar · <b>S</b> frena · <b>Shift</b> turbo · <b>Espacio</b> cuchillas · <b>H</b> bocina · <b>X</b> bajar · <b>click</b> tomar/fumar</div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- Póker -->
+  <div id="poker" class="hidden">
+    <div id="pk-top"><span id="pk-info">Mesa de póker</span><span id="pk-status"></span></div>
+    <div id="pk-result" class="hidden"></div>
+    <div id="pk-row">
+      <div class="pk-block"><small>Tus cartas</small><div id="pk-cards"></div></div>
+      <div class="pk-block"><small>Mesa</small><div id="pk-board"></div></div>
+      <div id="pk-actions">
+        <button id="pk-fold" class="pk-btn fold">Tirar</button>
+        <button id="pk-call" class="pk-btn call">Pasar</button>
+        <div class="pk-raise">
+          <input type="range" id="pk-amount" min="20" max="2000" step="1" aria-label="Apuesta total de esta ronda">
+          <div class="pk-quick"><button id="pk-half">½ pozo</button><button id="pk-pot">Pozo</button><button id="pk-allin">All-in</button></div>
+          <button id="pk-raise" class="pk-btn raise">Subir</button>
+        </div>
+      </div>
+      <div class="pk-side">
+        <button id="pk-rebuy" class="hidden">Recomprar (2000)</button>
+        <button id="pk-sitin" class="hidden">Volver a jugar</button>
+        <button id="pk-leave">Levantarse (X)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pausa / ajustes -->
+  <div id="pause" class="hidden">
+    <div class="menu-card small">
+      <h2>PAUSA</h2>
+      <button id="p-resume" class="big">Volver al desmadre</button>
+      <div id="pause-players"></div>
+      <div class="settings">
+        <label>Ayudas de controles
+          <select id="o-hints"><option value="siempre">Siempre</option><option value="primeras">Las primeras veces</option><option value="nunca">Nunca</option></select>
+        </label>
+        <label>Sensibilidad <input type="range" id="o-sens" min="0.2" max="3" step="0.05"></label>
+        <label>Campo de visión <input type="range" id="o-fov" min="55" max="100" step="1"></label>
+        <label>Volumen general <input type="range" id="o-vol" min="0" max="1" step="0.01"></label>
+        <label>Música / videos <input type="range" id="o-music" min="0" max="1" step="0.01"></label>
+        <label>Voces <input type="range" id="o-voice" min="0" max="2" step="0.01"></label>
+        <label>Ambiente <input type="range" id="o-ambient" min="0" max="1" step="0.01"></label>
+        <label class="chk"><input type="checkbox" id="o-mute"> Silenciar todo</label>
+        <label>Efectos <input type="range" id="o-sfx" min="0" max="1" step="0.01"></label>
+        <label>Calidad del pasto
+          <select id="o-grass"><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option><option value="ultra">Ultra</option></select>
+        </label>
+        <label>Sombras
+          <select id="o-shadows"><option value="baja">Bajas</option><option value="media">Medias</option><option value="alta">Altas</option><option value="ultra">Ultra</option></select>
+        </label>
+        <label>Micrófono
+          <select id="o-voicemode"><option value="ptt">Mantener V para hablar</option><option value="open">Abierto siempre</option></select>
+        </label>
+        <label class="chk"><input type="checkbox" id="o-spatial"> Voz por proximidad (3D)</label>
+        <label class="chk"><input type="checkbox" id="o-invert"> Invertir mouse Y</label>
+      </div>
+      <div class="row">
+        <button id="audio-test">Probar sonido</button>
+        <button id="p-media">Pantallas YouTube [P]</button>
+        <button id="p-desmadre">☠ Modo desmadre</button>
+        <button id="p-char">Cambiar personaje</button>
+        <button id="p-respawn">Reaparecer</button>
+      </div>
+      <p id="audio-state" role="status">Sonido: requiere clic</p>
+      <p class="hint">Compartí el link con amigos para que entren a tu sala.</p>
+    </div>
+  </div>
+
+  <!-- Pantallas: el mismo iframe permanece activo al volver al mundo -->
+  <section id="media" class="hidden panel" role="dialog" aria-label="Pantallas YouTube">
+    <div class="media-heading"><h3 id="media-title">Pantallas</h3><button id="media-close" type="button">Volver al juego · Esc</button></div>
+    <label class="media-select">Pantalla <select id="media-screen"></select></label>
+    <div id="media-view" aria-label="Reproductor de YouTube"></div>
+    <p id="media-status" role="status">Agregá un video para empezar.</p>
+    <div class="row media-unlock-row">
+      <button id="media-unlock" type="button">Activar YouTube</button>
+      <button id="media-retry" type="button" class="hidden">Reintentar YouTube</button>
+    </div>
+    <div id="media-now">Nada sonando</div>
+    <div class="row media-url-row">
+      <input id="media-url" aria-label="Enlace de video" placeholder="https://www.youtube.com/watch?v=…" autocomplete="off">
+      <button id="media-add" type="button">Agregar</button>
+    </div>
+    <p id="media-input-error" class="err" role="alert"></p>
+    <div class="row">
+      <button id="media-play" type="button">Pausar sala</button>
+      <button id="media-skip" type="button">Saltar</button>
+      <button id="media-back" type="button">−10 s</button>
+      <button id="media-fwd" type="button">+10 s</button>
+    </div>
+    <ol id="media-queue"></ol>
+    <p class="hint">Los botones controlan la sala. Activar YouTube y el volumen afectan solo a tu navegador. P abre este panel desde cualquier lugar. Al cerrarlo, el video vuelve a la pantalla del mundo.</p>
+  </section>
+
+  <!-- Paleta del aerosol -->
+  <div id="palette" class="hidden panel">
+    <h3>Aerosol</h3>
+    <div id="pal-swatches"></div>
+    <div class="row">
+      <label>Color propio <input type="color" id="pal-color" value="#ff2d55"></label>
+      <label>Tamaño <input type="range" id="pal-size" min="0.03" max="0.7" step="0.01"></label>
+      <label>Opacidad <input type="range" id="pal-alpha" min="0.1" max="1" step="0.05"></label>
+    </div>
+    <div class="row">
+      <label class="chk"><input type="checkbox" id="pal-erase"> Removedor (borrar)</label>
+      <label class="chk"><input type="checkbox" id="pal-drip" checked> Chorreado</label>
+    </div>
+    <p class="hint">R o Esc para cerrar.</p>
+  </div>
+
+  <!-- Emotes -->
+  <div id="activities" class="hidden">
+    <h2>¿Qué hacemos?</h2>
+    <p class="act-sub">Tocá una actividad para marcarla (aparece una columna de luz). <b>J</b> o <b>Esc</b> para volver.</p>
+    <div id="act-list"></div>
+  </div>
+  <div id="emotes" class="hidden">
+    <button data-e="wave">👋 Saludar</button>
+    <button data-e="dance1">💃 Cumbia</button>
+    <button data-e="dance2">🙌 Descontrol</button>
+    <button data-e="dance3">🤖 Robot</button>
+    <button data-e="clap">👏 Aplaudir</button>
+    <button data-e="point">👉 Señalar</button>
+    <button data-e="facepalm">🤦 Facepalm</button>
+    <button data-e="flex">💪 Sacar músculo</button>
+    <button data-e="sitfloor">🧘 Sentarse</button>
+    <button data-e="cheers">🍻 ¡Salud!</button>
+  </div>
+
+  <div id="loading">
+    <div class="menu-card small">
+      <h1><span>DUKE'S LAWN</span><em>DESMADRE ONLINE</em></h1>
+      <p id="loading-text">Cargando...</p>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

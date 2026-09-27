@@ -1,0 +1,780 @@
+// Personaje humano realista (Renderpeople, GLB riggeado) manejado por el mismo animador procedural del juego.
+// Idea: un "esqueleto virtual" de 11 articulaciones (el mismo que usa Character) recibe las poses
+// (animación procedural o ragdoll) y se re-mapea sobre los huesos reales del modelo.
+// Así la física (ragdoll) y las animaciones comparten una sola representación.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { G, clamp, rng } from '../core/G.js';
+import { Character, JOINT_NAMES, PARENT, P } from './character.js';
+
+export const MODELS = {
+  eric: { file: 'assets/chars/eric.glb', label: 'Eric', gender: 'm' },
+  carla: { file: 'assets/chars/carla.glb', label: 'Carla', gender: 'f' },
+  claudia: { file: 'assets/chars/claudia.glb', label: 'Claudia', gender: 'f' },
+};
+export const DEFAULT_MODEL = 'eric';
+const CACHE = new Map(); // modelo -> { scene, meta }
+const DMG_SIZE = 512;
+
+const V1 = new THREE.Vector3();
+const V2 = new THREE.Vector3();
+const V3 = new THREE.Vector3();
+const Q1 = new THREE.Quaternion();
+const Q2 = new THREE.Quaternion();
+const QI = new THREE.Quaternion();
+const M1 = new THREE.Matrix4();
+const M2 = new THREE.Matrix4();
+
+// Hueso real <- articulación virtual (fracción para repartir columna/cuello)
+const MAP = [
+  ['hip', 0, 1],
+  ['spine_01', 1, 1 / 3], ['spine_02', 1, 1 / 3], ['spine_03', 1, 1 / 3],
+  ['neck', 2, 0.4], ['head', 2, 'rest0.4'],
+  ['upperarm_l', 3, 1], ['lowerarm_l', 4, 1],
+  ['upperarm_r', 5, 1], ['lowerarm_r', 6, 1],
+  ['upperleg_l', 7, 1], ['lowerleg_l', 8, 1],
+  ['upperleg_r', 9, 1], ['lowerleg_r', 10, 1],
+];
+// Hueso principal de cada parte (para hits y daño)
+const PART_BONE = ['hip', 'spine_02', 'head', 'upperarm_l', 'lowerarm_l', 'upperarm_r', 'lowerarm_r', 'upperleg_l', 'lowerleg_l', 'upperleg_r', 'lowerleg_r'];
+const PART_OF_BONE = {
+  root: 0, hip: 0, spine_01: 1, spine_02: 1, spine_03: 1, neck: 2, head: 2, jaw: 2, shoulder_l: 1, shoulder_r: 1,
+  upperarm_l: 3, upperarm_twist_l: 3, lowerarm_l: 4, lowerarm_twist_l: 4, hand_l: 4,
+  upperarm_r: 5, upperarm_twist_r: 5, lowerarm_r: 6, lowerarm_twist_r: 6, hand_r: 6,
+  upperleg_l: 7, upperleg_twist_l: 7, lowerleg_l: 8, lowerleg_twist_l: 8, foot_l: 8, ball_l: 8,
+  upperleg_r: 9, upperleg_twist_r: 9, lowerleg_r: 10, lowerleg_twist_r: 10, foot_r: 10, ball_r: 10,
+};
+const FINGERS = ['thumb', 'index', 'middle', 'ring', 'pinky'];
+
+// ---------------------------------------------------------------- carga + metadatos por modelo
+export async function preloadHumans(onProgress) {
+  const loader = new GLTFLoader();
+  const keys = Object.keys(MODELS);
+  let done = 0;
+  await Promise.all(keys.map(async (key) => {
+    if (CACHE.has(key)) return;
+    const gltf = await loader.loadAsync(MODELS[key].file);
+    CACHE.set(key, { scene: gltf.scene, meta: buildMeta(gltf.scene) });
+    done++;
+    onProgress && onProgress(done, keys.length);
+  }));
+}
+export function humansReady() { return CACHE.size > 0; }
+
+function findSkinned(root) {
+  let sk = null;
+  root.traverse((o) => { if (o.isSkinnedMesh && !sk) sk = o; });
+  return sk;
+}
+function bonesByName(root) {
+  const b = {};
+  root.traverse((o) => { if (o.isBone) b[o.name] = o; });
+  return b;
+}
+function worldPos(o, out = new THREE.Vector3()) { return o.getWorldPosition(out); }
+function worldQuat(o, out = new THREE.Quaternion()) { return o.getWorldQuaternion(out); }
+
+// Rota un hueso (en espacio mundo del modelo) para que su dirección hacia `child` sea `target`
+function aimBone(bone, child, target) {
+  bone.updateWorldMatrix(true, true);
+  const from = worldPos(child, new THREE.Vector3()).sub(worldPos(bone, new THREE.Vector3())).normalize();
+  const to = target.clone().normalize();
+  const c = new THREE.Quaternion().setFromUnitVectors(from, to);
+  const wq = worldQuat(bone).premultiply(c);
+  const pq = bone.parent ? worldQuat(bone.parent) : new THREE.Quaternion();
+  bone.quaternion.copy(pq.invert().multiply(wq));
+  bone.updateWorldMatrix(false, true);
+}
+
+function buildMeta(scene) {
+  scene.updateWorldMatrix(true, true);
+  const B = bonesByName(scene);
+  const sk = findSkinned(scene);
+  // --- pose neutra: brazos colgando, piernas rectas (el modelo viene en pose A)
+  aimBone(B.upperarm_l, B.lowerarm_l, new THREE.Vector3(0.1, -1, 0.0));
+  aimBone(B.lowerarm_l, B.hand_l, new THREE.Vector3(0.04, -1, 0.07));
+  aimBone(B.upperarm_r, B.lowerarm_r, new THREE.Vector3(-0.1, -1, 0.0));
+  aimBone(B.lowerarm_r, B.hand_r, new THREE.Vector3(-0.04, -1, 0.07));
+  aimBone(B.hand_l, B.middle_01_l, new THREE.Vector3(0.02, -1, 0.04));
+  aimBone(B.hand_r, B.middle_01_r, new THREE.Vector3(-0.02, -1, 0.04));
+  aimBone(B.upperleg_l, B.lowerleg_l, new THREE.Vector3(0.015, -1, 0));
+  aimBone(B.upperleg_r, B.lowerleg_r, new THREE.Vector3(-0.015, -1, 0));
+  aimBone(B.lowerleg_l, B.foot_l, new THREE.Vector3(0, -1, -0.03));
+  aimBone(B.lowerleg_r, B.foot_r, new THREE.Vector3(0, -1, -0.03));
+  scene.updateWorldMatrix(true, true);
+
+  const nWorld = {};
+  for (const [name, bone] of Object.entries(B)) nWorld[name] = worldQuat(bone);
+  const map = MAP.map(([name, j, frac]) => {
+    const bone = B[name];
+    const parentName = bone.parent && bone.parent.isBone ? bone.parent.name : null;
+    const pW = parentName ? nWorld[parentName].clone() : new THREE.Quaternion();
+    return {
+      name, j, frac,
+      pre: pW.invert(),
+      post: nWorld[name].clone(),
+    };
+  });
+
+  // --- articulaciones virtuales en posiciones reales
+  const p = (n) => worldPos(B[n]);
+  const hips = p('hip'), spine = p('spine_01'), neck = p('neck');
+  const shL = p('upperarm_l'), elL = p('lowerarm_l'), haL = p('hand_l');
+  const shR = p('upperarm_r'), elR = p('lowerarm_r'), haR = p('hand_r');
+  const hiL = p('upperleg_l'), knL = p('lowerleg_l'), anL = p('foot_l');
+  const hiR = p('upperleg_r'), knR = p('lowerleg_r'), anR = p('foot_r');
+  const headTop = p('head_end');
+  const height = headTop.y;
+  const k = height / 1.8;
+  const jointRest = [
+    hips.clone(), spine.clone().sub(hips), neck.clone().sub(spine),
+    shL.clone().sub(spine), elL.clone().sub(shL), shR.clone().sub(spine), elR.clone().sub(shR),
+    hiL.clone().sub(hips), knL.clone().sub(hiL), hiR.clone().sub(hips), knR.clone().sub(hiR),
+  ];
+  // cápsulas en el marco de cada articulación virtual (a, b, radio)
+  const seg = (to) => to.clone();
+  const handExt = (el, ha) => ha.clone().sub(el).multiplyScalar(1.28);
+  const footExt = (kn, an) => an.clone().sub(kn).add(new THREE.Vector3(0, -0.06, 0.04));
+  const caps = [
+    { a: new THREE.Vector3(0, -0.08 * k, 0), b: spine.clone().sub(hips), r: 0.15 * k },
+    { a: new THREE.Vector3(0, 0.02, 0), b: neck.clone().sub(spine).multiplyScalar(0.92), r: 0.165 * k },
+    { a: new THREE.Vector3(0, 0.05 * k, 0.01), b: headTop.clone().sub(neck).add(new THREE.Vector3(0, -0.07 * k, 0.015)), r: 0.105 * k, head: true },
+    { a: new THREE.Vector3(), b: seg(elL.clone().sub(shL)), r: 0.055 * k },
+    { a: new THREE.Vector3(), b: handExt(elL, haL), r: 0.047 * k },
+    { a: new THREE.Vector3(), b: seg(elR.clone().sub(shR)), r: 0.055 * k },
+    { a: new THREE.Vector3(), b: handExt(elR, haR), r: 0.047 * k },
+    { a: new THREE.Vector3(), b: seg(knL.clone().sub(hiL)), r: 0.08 * k },
+    { a: new THREE.Vector3(), b: footExt(knL, anL), r: 0.06 * k },
+    { a: new THREE.Vector3(), b: seg(knR.clone().sub(hiR)), r: 0.08 * k },
+    { a: new THREE.Vector3(), b: footExt(knR, anR), r: 0.06 * k },
+  ];
+  // masas (kg) aproximadas
+  const mass = [11, 24, 5, 2.2, 1.7, 2.2, 1.7, 8.5, 4.5, 8.5, 4.5];
+
+  // --- dedos: eje de flexión en espacio local de cada falange
+  const fingers = { l: [], r: [] };
+  for (const side of ['l', 'r']) {
+    const hand = B['hand_' + side];
+    const hp = p('hand_' + side);
+    const ip = p('index_01_' + side), pp = p('pinky_01_' + side);
+    let palm = new THREE.Vector3().subVectors(ip, hp).cross(new THREE.Vector3().subVectors(pp, hp)).normalize();
+    // la palma mira hacia el cuerpo (x = 0) con los brazos colgando
+    const toMid = new THREE.Vector3(-Math.sign(hp.x) || 1, 0, 0);
+    if (palm.dot(toMid) < 0) palm.negate();
+    for (const f of FINGERS) {
+      for (let n = 1; n <= 3; n++) {
+        const bone = B[`${f}_0${n}_${side}`];
+        const child = n < 3 ? B[`${f}_0${n + 1}_${side}`] : B[`${f}_end_${side}`];
+        if (!bone || !child) continue;
+        const d = p(child.name).sub(p(bone.name)).normalize();
+        const axisW = new THREE.Vector3().crossVectors(d, f === 'thumb' ? palm.clone().lerp(new THREE.Vector3(0, 0, 1), 0.5).normalize() : palm).normalize();
+        const inv = nWorld[bone.name].clone().invert();
+        const axisL = axisW.applyQuaternion(inv).normalize();
+        fingers[side].push({ name: bone.name, axis: axisL, rest: bone.quaternion.clone(), thumb: f === 'thumb', n });
+      }
+    }
+    void hand;
+  }
+  // mandíbula y párpados: girar sobre el eje X del personaje
+  const localAxis = (name, w) => (B[name] ? w.clone().applyQuaternion(nWorld[name].clone().invert()).normalize() : null);
+  const face = {
+    jaw: { axis: localAxis('jaw', new THREE.Vector3(1, 0, 0)), rest: B.jaw?.quaternion.clone() },
+    lidL: { axis: localAxis('eyelid_l', new THREE.Vector3(1, 0, 0)), rest: B.eyelid_l?.quaternion.clone() },
+    lidR: { axis: localAxis('eyelid_r', new THREE.Vector3(1, 0, 0)), rest: B.eyelid_r?.quaternion.clone() },
+  };
+  // pies: compensación para que queden planos al caminar
+  const feet = {
+    l: { rest: B.foot_l.quaternion.clone(), axis: localAxis('foot_l', new THREE.Vector3(1, 0, 0)) },
+    r: { rest: B.foot_r.quaternion.clone(), axis: localAxis('foot_r', new THREE.Vector3(1, 0, 0)) },
+  };
+  // palma (punto de agarre) en espacio local de la mano
+  const grip = {};
+  for (const side of ['l', 'r']) {
+    const hp = p('hand_' + side);
+    const mid = p('middle_01_' + side);
+    const th = p('thumb_02_' + side);
+    const c = hp.clone().lerp(mid, 0.72).lerp(th, 0.25);
+    grip[side] = B['hand_' + side].worldToLocal(c.clone());
+  }
+  // centro de la cabeza, boca y ojos en espacio local del hueso head
+  const headB = B.head;
+  const eyeMid = p('eye_l').lerp(p('eye_r'), 0.5);
+  const mouth = p('mouth_l').lerp(p('mouth_r'), 0.5);
+  const headCenter = eyeMid.clone().lerp(headTop, 0.25);
+  headCenter.z -= 0.03 * k;
+  const headInfo = {
+    center: headB.worldToLocal(headCenter.clone()),
+    mouth: headB.worldToLocal(mouth.clone().add(new THREE.Vector3(0, 0, 0.01))),
+    eyes: headB.worldToLocal(eyeMid.clone()),
+    top: headB.worldToLocal(headTop.clone()),
+    worldCenter: headCenter.clone(),
+    worldTop: headTop.clone(),
+    worldEyes: eyeMid.clone(),
+    headQ: nWorld.head.clone(),
+    radius: 0.105 * k,
+  };
+  // --- datos de piel para el daño: posiciones en pose bind + UV + parte dominante
+  const geo = sk.geometry;
+  const pos = geo.attributes.position, uv = geo.attributes.uv;
+  const si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight;
+  const boneNames = sk.skeleton.bones.map((b) => b.name);
+  const vparts = [];
+  for (let i = 0; i < 11; i++) vparts.push([]);
+  for (let v = 0; v < pos.count; v++) {
+    let best = 0, bw = -1;
+    for (let c = 0; c < 4; c++) {
+      const w = sw.getComponent(v, c);
+      if (w > bw) { bw = w; best = si.getComponent(v, c); }
+    }
+    const part = PART_OF_BONE[boneNames[best]] ?? (boneNames[best].includes('_l') ? 4 : boneNames[best].includes('_r') ? 6 : 1);
+    vparts[part].push(v);
+  }
+  // UV de puntos especiales de la cara (sangre de nariz/boca/orejas/ojos)
+  const bindMatrix = sk.bindMatrix;
+  const nearestUV = (worldPt, part) => {
+    // el modelo está en pose neutra: pasar a espacio bind con el hueso principal de la parte
+    const bi = boneNames.indexOf(PART_BONE[part]);
+    const bone = sk.skeleton.bones[bi];
+    M1.multiplyMatrices(bone.matrixWorld, sk.skeleton.boneInverses[bi]);
+    M2.copy(M1).invert();
+    const bp = worldPt.clone().applyMatrix4(M2);
+    let bv = -1, bd = 1e9;
+    for (const v of vparts[part]) {
+      V1.fromBufferAttribute(pos, v).applyMatrix4(bindMatrix);
+      const d = V1.distanceToSquared(bp);
+      if (d < bd) { bd = d; bv = v; }
+    }
+    return bv >= 0 ? [uv.getX(bv), uv.getY(bv)] : [0.5, 0.5];
+  };
+  const eyeL = p('eye_l'), eyeR = p('eye_r');
+  const faceUV = {
+    nose: nearestUV(eyeMid.clone().lerp(mouth, 0.55).add(new THREE.Vector3(0, 0, 0.05 * k)), 2),
+    mouth: nearestUV(mouth.clone().add(new THREE.Vector3(0, -0.005, 0.03 * k)), 2),
+    eyeL: nearestUV(eyeL.clone().add(new THREE.Vector3(0.012, -0.012, 0.02 * k)), 2),
+    eyeR: nearestUV(eyeR.clone().add(new THREE.Vector3(-0.012, -0.012, 0.02 * k)), 2),
+    earL: nearestUV(new THREE.Vector3(headCenter.x + 0.085 * k, eyeMid.y - 0.02 * k, headCenter.z - 0.01), 2),
+    earR: nearestUV(new THREE.Vector3(headCenter.x - 0.085 * k, eyeMid.y - 0.02 * k, headCenter.z - 0.01), 2),
+    chin: nearestUV(mouth.clone().add(new THREE.Vector3(0, -0.06 * k, 0.015 * k)), 2),
+  };
+  // punto de agarre (palma) en el marco del antebrazo virtual (codo): se usa para las manos físicas
+  const gripLocal = {
+    l: haL.clone().sub(elL).multiplyScalar(1.13),
+    r: haR.clone().sub(elR).multiplyScalar(1.13),
+  };
+  return {
+    map, jointRest, caps, mass, fingers, face, feet, grip, gripLocal, headInfo, vparts, faceUV, boneNames, height,
+    hipLocal: B.hip.position.clone(),
+  };
+}
+
+// ---------------------------------------------------------------- material con daño (moretones, sangre, heridas)
+function damageMaterial(base, dmgTex) {
+  const mat = base.clone();
+  mat.roughness = 1;
+  const u = {
+    uDmg: { value: dmgTex },
+    uFlush: { value: 0 },
+    uPale: { value: 0 },
+  };
+  mat.userData.u = u;
+  mat.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, u);
+    sh.fragmentShader = 'uniform sampler2D uDmg;\nuniform float uFlush;\nuniform float uPale;\n' + sh.fragmentShader.replace(
+      '#include <map_fragment>',
+      /* glsl */ `#include <map_fragment>
+      {
+        vec4 dm = texture2D(uDmg, vMapUv);
+        float bruise = clamp(dm.b, 0.0, 1.0);
+        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.55, 0.28, 0.42), bruise * 0.85);
+        float wound = smoothstep(0.25, 0.7, dm.r);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.32, 0.015, 0.02), wound);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.1, 0.0, 0.005), smoothstep(0.75, 1.0, dm.r));
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.26, 0.0, 0.01), clamp(dm.g * 1.15, 0.0, 0.93));
+        float lum = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lum) * vec3(0.9, 0.95, 1.0), uPale * 0.6);
+      }`,
+    ).replace(
+      '#include <roughnessmap_fragment>',
+      /* glsl */ `#include <roughnessmap_fragment>
+      {
+        vec4 dm2 = texture2D(uDmg, vMapUv);
+        roughnessFactor = mix(roughnessFactor, 0.18, clamp(dm2.g + dm2.r, 0.0, 1.0));
+      }`,
+    );
+  };
+  mat.customProgramCacheKey = () => 'human-dmg';
+  return mat;
+}
+
+// ---------------------------------------------------------------- accesorios (sombreros, anteojos)
+function buildHat(type, color, R) {
+  const hc = new THREE.MeshStandardMaterial({ color: color || '#c8312b', roughness: 0.7 });
+  let hat = null;
+  switch (type) {
+    case 'cap': {
+      hat = new THREE.Group();
+      const d = new THREE.Mesh(new THREE.SphereGeometry(R * 1.12, 22, 10, 0, Math.PI * 2, 0, Math.PI / 2), hc);
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.95, R * 0.95, 0.012, 22, 1, false, -Math.PI / 2, Math.PI), hc);
+      brim.position.set(0, 0.0, R * 0.6);
+      brim.scale.set(1, 1, 1.15);
+      hat.add(d, brim);
+      hat.position.set(0, R * 0.25, 0);
+      break;
+    }
+    case 'cowboy': {
+      hat = new THREE.Group();
+      const crown = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.82, R * 0.98, R * 1.15, 18), hc);
+      crown.position.y = R * 0.55;
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(R * 2.2, R * 2.2, 0.015, 26), hc);
+      hat.add(crown, brim);
+      hat.position.set(0, R * 0.6, 0);
+      break;
+    }
+    case 'beanie': {
+      hat = new THREE.Mesh(new THREE.SphereGeometry(R * 1.16, 22, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), hc);
+      hat.position.set(0, R * 0.05, 0);
+      const pom = new THREE.Mesh(new THREE.SphereGeometry(R * 0.28, 10, 8), hc);
+      pom.position.y = R * 1.12;
+      hat.add(pom);
+      break;
+    }
+    case 'tophat': {
+      hat = new THREE.Group();
+      const blk = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.5 });
+      const c = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.88, R * 0.88, R * 2.2, 20), blk);
+      c.position.y = R * 1.1;
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.5, R * 1.5, 0.015, 22), blk);
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.9, R * 0.9, R * 0.3, 20), hc);
+      band.position.y = R * 0.2;
+      hat.add(c, brim, band);
+      hat.position.set(0, R * 0.62, 0);
+      break;
+    }
+    case 'crown': {
+      hat = new THREE.Group();
+      const gold = new THREE.MeshStandardMaterial({ color: 0xe0b33a, metalness: 0.9, roughness: 0.25, side: THREE.DoubleSide });
+      hat.add(new THREE.Mesh(new THREE.CylinderGeometry(R * 0.88, R * 0.88, R * 0.45, 18, 1, true), gold));
+      for (let k = 0; k < 6; k++) {
+        const s = new THREE.Mesh(new THREE.ConeGeometry(R * 0.16, R * 0.45, 6), gold);
+        const a = (k / 6) * Math.PI * 2;
+        s.position.set(Math.sin(a) * R * 0.88, R * 0.42, Math.cos(a) * R * 0.88);
+        hat.add(s);
+      }
+      hat.position.set(0, R * 0.78, 0);
+      break;
+    }
+    case 'chef': {
+      hat = new THREE.Group();
+      const w = new THREE.MeshStandardMaterial({ color: 0xf8f8f8, roughness: 0.9 });
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.98, R * 0.98, R * 0.8, 18), w);
+      const puff = new THREE.Mesh(new THREE.SphereGeometry(R * 1.3, 16, 12), w);
+      puff.position.y = R * 1.0;
+      puff.scale.y = 0.75;
+      hat.add(band, puff);
+      hat.position.set(0, R * 0.68, 0);
+      break;
+    }
+    case 'boina': {
+      hat = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.22, R * 1.08, R * 0.3, 22), hc);
+      hat.position.set(0, R * 0.78, -0.012);
+      hat.rotation.x = -0.15;
+      hat.rotation.z = 0.12;
+      const nub = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.03, 4), hc);
+      nub.position.y = R * 0.2;
+      hat.add(nub);
+      break;
+    }
+    default:
+      return null;
+  }
+  hat.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  return hat;
+}
+
+function buildGlasses(type, R) {
+  if (type !== 'sun' && type !== 'nerd') return null;
+  const g = new THREE.Group();
+  const m = new THREE.MeshStandardMaterial({ color: type === 'sun' ? 0x0a0a0a : 0x222222, roughness: 0.2, metalness: 0.4 });
+  for (const s of [-1, 1]) {
+    const lens = type === 'sun'
+      ? new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.005, 16), m)
+      : new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.0035, 6, 18), m);
+    if (type === 'sun') lens.rotation.x = Math.PI / 2;
+    lens.position.set(s * 0.033, 0, 0);
+    g.add(lens);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.003, 0.003, 0.1), m);
+    arm.position.set(s * 0.058, 0.004, -0.05);
+    g.add(arm);
+  }
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.004, 0.004), m));
+  void R;
+  return g;
+}
+
+// ---------------------------------------------------------------- personaje
+export class HumanCharacter {
+  constructor(look = {}, opts = {}) {
+    this.look = { ...look };
+    this.local = !!opts.local;
+    this.root = new THREE.Group();
+    this.root.name = 'human';
+    this.mode = 'anim';
+    this.anim = { phase: 0, speed: 0, bob: 0, lean: 0, idleT: Math.random() * 10, cur: JOINT_NAMES.map(() => new THREE.Euler()) };
+    this.expr = { drunk: 0, high: 0, dead: false };
+    this.talk = 0;
+    this.detached = new Array(11).fill(false);
+    this.drips = [];
+    this.grip = { l: 0.25, r: 0.25 };
+    this.headVisible = true;
+    this.build();
+  }
+
+  get modelKey() { return MODELS[this.look.model] ? this.look.model : DEFAULT_MODEL; }
+  get gender() { return MODELS[this.modelKey].gender; }
+
+  build() {
+    this._disposeModel();
+    this.root.clear();
+    const src = CACHE.get(this.modelKey) || CACHE.values().next().value;
+    if (!src) throw new Error('Modelos humanos no cargados');
+    this.meta = src.meta;
+    this.model = SkeletonUtils.clone(src.scene);
+    this.root.add(this.model);
+    this.skinned = findSkinned(this.model);
+    this.skinned.frustumCulled = false;
+    this.skinned.castShadow = true;
+    this.skinned.receiveShadow = true;
+    this.bones = bonesByName(this.model);
+    // textura de daño (por instancia)
+    this.dmgData = new Uint8Array(DMG_SIZE * DMG_SIZE * 4);
+    this.dmgTex = new THREE.DataTexture(this.dmgData, DMG_SIZE, DMG_SIZE, THREE.RGBAFormat);
+    this.dmgTex.flipY = false;
+    this.dmgTex.magFilter = THREE.LinearFilter;
+    this.dmgTex.minFilter = THREE.LinearFilter;
+    this.dmgTex.needsUpdate = true;
+    this.material = damageMaterial(this.skinned.material, this.dmgTex);
+    this.skinned.material = this.material;
+    // esqueleto virtual (no se dibuja): recibe animación o ragdoll
+    this.jointRest = this.meta.jointRest.map((v) => v.clone());
+    this.joints = [];
+    for (let i = 0; i < 11; i++) {
+      const j = new THREE.Object3D();
+      j.name = 'v_' + JOINT_NAMES[i];
+      j.position.copy(this.jointRest[i]);
+      this.joints.push(j);
+      if (PARENT[i] < 0) this.root.add(j);
+      else this.joints[PARENT[i]].add(j);
+    }
+    // puntos de agarre en las palmas
+    this.handL = new THREE.Object3D();
+    this.handL.position.copy(this.meta.grip.l);
+    this.bones.hand_l.add(this.handL);
+    this.handR = new THREE.Object3D();
+    this.handR.position.copy(this.meta.grip.r);
+    this.bones.hand_r.add(this.handR);
+    // ancla de accesorios alineada con el personaje
+    const hi = this.meta.headInfo;
+    this.headAnchor = new THREE.Object3D();
+    this.headAnchor.position.copy(hi.center);
+    this.headAnchor.quaternion.copy(hi.headQ).invert();
+    this.bones.head.add(this.headAnchor);
+    const R = hi.radius;
+    this.hat = buildHat(this.look.hat, this.look.hatColor, R);
+    if (this.hat) {
+      this.hat.position.y += (hi.worldTop.y - hi.worldCenter.y) - R * 1.0;
+      this.headAnchor.add(this.hat);
+    }
+    this.glasses = buildGlasses(this.look.glasses, R);
+    if (this.glasses) {
+      // el ancla está alineada con el personaje: la posición relativa es la de la pose neutra
+      this.glasses.position.copy(hi.worldEyes).sub(hi.worldCenter).add(new THREE.Vector3(0, -0.004, 0.03));
+      this.headAnchor.add(this.glasses);
+    }
+    this.root.traverse((o) => { o.frustumCulled = false; });
+    this._jaw = 0;
+    this._lid = 0;
+    this.setVisibleHead(this.headVisible);
+  }
+
+  setLook(look) {
+    this.look = { ...look };
+    const hv = this.headVisible;
+    this.build();
+    this.setVisibleHead(hv);
+  }
+
+  // ---------------------------------------------------------------- API compatible con Character
+  animate(st, dt) {
+    if (this.mode !== 'anim') return;
+    Character.prototype.animate.call(this, st, dt);
+    // agarre de manos según lo que hace
+    const act = st.action || '';
+    let gr = 0.28, gl = 0.28;
+    if (st.held) gr = 0.95;
+    if (st.held === 'two') gl = 0.95;
+    if (act === 'punchR' || act === 'guard' || act === 'swing' || act === 'swing2') gr = 1;
+    if (act === 'punchL' || act === 'guard') gl = 1;
+    if (st.drive) { gr = 0.85; gl = 0.85; }
+    this.grip.r += (gr - this.grip.r) * Math.min(1, dt * 14);
+    this.grip.l += (gl - this.grip.l) * Math.min(1, dt * 14);
+    this._walkLegs = true;
+  }
+  _emote(...args) { return Character.prototype._emote.apply(this, args); }
+  applyWorldTransforms(tr) {
+    this._walkLegs = false;
+    return Character.prototype.applyWorldTransforms.call(this, tr);
+  }
+  readWorldTransforms() { return Character.prototype.readWorldTransforms.call(this); }
+
+  setIntox(drunk, high) {
+    this.expr.drunk = drunk;
+    this.expr.high = high;
+    this.material.userData.u.uFlush.value = clamp(drunk, 0, 1);
+  }
+
+  setVisibleHead(v) {
+    this.headVisible = v;
+    const h = this.bones?.head;
+    if (h) h.scale.setScalar(v && !this.detached[2] ? 1 : 0.0001);
+    if (this.hat) this.hat.visible = v;
+    if (this.glasses) this.glasses.visible = v;
+  }
+
+  headWorld(out = new THREE.Vector3()) {
+    this.root.updateWorldMatrix(true, true);
+    return this.bones.head.localToWorld(out.copy(this.meta.headInfo.center));
+  }
+  mouthWorld(out = new THREE.Vector3()) {
+    this.root.updateWorldMatrix(true, true);
+    return this.bones.head.localToWorld(out.copy(this.meta.headInfo.mouth));
+  }
+
+  // cápsulas en mundo para detectar golpes [{a, b, r, i}]
+  capsules(out = []) {
+    this.root.updateWorldMatrix(true, true);
+    out.length = 0;
+    for (let i = 0; i < 11; i++) {
+      if (this.detached[i]) continue;
+      const c = this.meta.caps[i];
+      const m = this.joints[i].matrixWorld;
+      out.push({ a: c.a.clone().applyMatrix4(m), b: c.b.clone().applyMatrix4(m), r: c.r, i });
+    }
+    return out;
+  }
+  worldToPart(i, world, out = new THREE.Vector3()) {
+    M1.copy(this.joints[i].matrixWorld).invert();
+    return out.copy(world).applyMatrix4(M1);
+  }
+  partToWorld(i, local, out = new THREE.Vector3()) {
+    return out.copy(local).applyMatrix4(this.joints[i].matrixWorld);
+  }
+
+  // ---------------------------------------------------------------- re-mapeo a los huesos reales
+  _retarget(dt) {
+    const B = this.bones;
+    const J = this.joints;
+    for (const m of this.meta.map) {
+      const bone = B[m.name];
+      const Qj = J[m.j].quaternion;
+      let q;
+      if (m.frac === 1) q = Q1.copy(Qj);
+      else if (typeof m.frac === 'number') q = Q1.copy(QI).slerp(Qj, m.frac);
+      else {
+        // resto después de la fracción del hueso anterior (cuello -> cabeza)
+        const f = parseFloat(m.frac.slice(4));
+        Q2.copy(QI).slerp(Qj, f).invert();
+        q = Q1.copy(Q2).multiply(Qj);
+      }
+      bone.quaternion.copy(m.pre).multiply(q).multiply(m.post);
+    }
+    // cadera: posición (rebote al caminar, sentado, ragdoll)
+    B.hip.position.copy(J[0].position);
+    // pies planos al caminar
+    if (this._walkLegs) {
+      for (const [side, hi, kn] of [['l', 7, 8], ['r', 9, 10]]) {
+        const f = this.meta.feet[side];
+        const pitch = -(this.anim.cur[hi].x + this.anim.cur[kn].x) * 0.85;
+        Q2.setFromAxisAngle(f.axis, pitch);
+        B['foot_' + side].quaternion.copy(f.rest).multiply(Q2);
+      }
+    }
+    // dedos
+    for (const side of ['l', 'r']) {
+      const g = this.grip[side];
+      for (const f of this.meta.fingers[side]) {
+        const amt = f.thumb ? g * (f.n === 1 ? 0.25 : 0.55) : g * (f.n === 1 ? 1.15 : f.n === 2 ? 1.35 : 0.95);
+        Q2.setFromAxisAngle(f.axis, amt);
+        B[f.name].quaternion.copy(f.rest).multiply(Q2);
+      }
+    }
+    // cara: mandíbula al hablar, párpados caídos
+    const face = this.meta.face;
+    const jawT = clamp(this.talk * 0.32 + (this.expr.dead ? 0.18 : 0), 0, 0.4);
+    this._jaw += (jawT - this._jaw) * Math.min(1, dt * 20);
+    if (face.jaw.axis && B.jaw) {
+      Q2.setFromAxisAngle(face.jaw.axis, this._jaw);
+      B.jaw.quaternion.copy(face.jaw.rest).multiply(Q2);
+    }
+    const lidT = this.expr.dead ? 0.55 : clamp(Math.max(this.expr.drunk * 0.28, this.expr.high * 0.36), 0, 0.42);
+    this._lid += (lidT - this._lid) * Math.min(1, dt * 6);
+    for (const [k, name] of [['lidL', 'eyelid_l'], ['lidR', 'eyelid_r']]) {
+      const lf = face[k];
+      if (lf.axis && B[name]) {
+        Q2.setFromAxisAngle(lf.axis, this._lid);
+        B[name].quaternion.copy(lf.rest).multiply(Q2);
+      }
+    }
+  }
+
+  update(dt) {
+    this._dripStep(dt);
+    this._retarget(dt);
+  }
+
+  // ---------------------------------------------------------------- daño visual
+  // Estampa en la textura de daño (u, v en [0,1] del UV del modelo)
+  stampUV(u, v, kind, strength = 1, seed = 1) {
+    const r = rng(seed);
+    const s = clamp(strength, 0, 2.5);
+    let rad, depth, blood, bruise;
+    switch (kind) {
+      case 'blunt': rad = 0.012 + s * 0.01; depth = 0.05 + s * 0.12; blood = 0.12 * s; bruise = 0.55 + s * 0.4; break;
+      case 'cut': rad = 0.007 + s * 0.006; depth = 0.45 + s * 0.35; blood = 0.9; bruise = 0.1; break;
+      case 'stab': rad = 0.005 + s * 0.004; depth = 0.8; blood = 0.9; bruise = 0.05; break;
+      case 'mulch': rad = 0.02 + s * 0.015; depth = 0.9; blood = 1.2; bruise = 0.2; break;
+      case 'blood': rad = 0.006 + s * 0.006; depth = 0; blood = 0.8 + s * 0.3; bruise = 0; break;
+      default: rad = 0.01; depth = 0.2; blood = 0.3; bruise = 0.3;
+    }
+    const N = DMG_SIZE, D = this.dmgData;
+    const cx = u * N, cy = v * N, R = rad * N * 2.2;
+    for (let y = Math.max(0, Math.floor(cy - R)); y <= Math.min(N - 1, Math.ceil(cy + R)); y++) {
+      for (let x = Math.max(0, Math.floor(cx - R)); x <= Math.min(N - 1, Math.ceil(cx + R)); x++) {
+        const dx = (x + 0.5 - cx) / (rad * N), dy = (y + 0.5 - cy) / (rad * N);
+        const d2 = dx * dx + dy * dy;
+        const k = (y * N + x) * 4;
+        if (d2 < 1) {
+          const f = (1 - d2) * (0.75 + r() * 0.5);
+          D[k] = Math.min(255, D[k] + depth * f * 255);
+          D[k + 2] = Math.min(255, D[k + 2] + bruise * f * 255);
+        }
+        if (d2 < 4.8 && blood > 0) D[k + 1] = Math.min(255, D[k + 1] + blood * Math.max(0, 1 - d2 / 4.8) * 190);
+      }
+    }
+    this.dmgTex.needsUpdate = true;
+  }
+
+  // UV del punto más cercano de una parte (punto en mundo)
+  _uvAt(part, world) {
+    const sk = this.skinned;
+    const bi = this.meta.boneNames.indexOf(PART_BONE[part]);
+    const bone = sk.skeleton.bones[bi];
+    M1.multiplyMatrices(bone.matrixWorld, sk.skeleton.boneInverses[bi]);
+    M2.copy(M1).invert();
+    const bp = V2.copy(world).applyMatrix4(M2);
+    const pos = sk.geometry.attributes.position, uv = sk.geometry.attributes.uv;
+    let bv = -1, bd = 1e9;
+    for (const v of this.meta.vparts[part]) {
+      V1.fromBufferAttribute(pos, v).applyMatrix4(sk.bindMatrix);
+      const d = V1.distanceToSquared(bp);
+      if (d < bd) { bd = d; bv = v; }
+    }
+    return bv >= 0 ? [uv.getX(bv), uv.getY(bv)] : null;
+  }
+
+  // Herida en la parte i, punto local (espacio de la articulación virtual). Compatible con Character.wound
+  wound(i, local, kind, strength, dirLocal = null, seed = 1) {
+    this.root.updateWorldMatrix(true, true);
+    const w = this.partToWorld(i, local, V3);
+    const uv = this._uvAt(i, w);
+    if (!uv) return 0;
+    this.stampUV(uv[0], uv[1], kind, strength, seed);
+    if (kind !== 'blunt' && this.drips.length < 30) this.drips.push({ u: uv[0], v: uv[1], t: 0, life: 3 + strength * 4, dv: -0.012 });
+    // golpes fuertes en la cabeza: sangre de nariz/boca/orejas/ojos según gravedad
+    if (i === P.HEAD && kind === 'blunt') this.bleedFace(strength);
+    return 1;
+  }
+
+  bleedFace(strength) {
+    const f = this.meta.faceUV;
+    const r = Math.random;
+    const drip = (uv, amt, life) => {
+      this.stampUV(uv[0], uv[1], 'blood', amt, (r() * 1e6) | 0);
+      if (this.drips.length < 30) this.drips.push({ u: uv[0], v: uv[1], t: 0, life, dv: this._faceDown() });
+    };
+    if (strength > 0.35) drip(f.nose, 0.6 * strength, 5);
+    if (strength > 0.7) drip(f.mouth, 0.5 * strength, 4);
+    if (strength > 1.1) { drip(f.eyeL, 0.4, 3); drip(f.eyeR, 0.4, 3); this.stampUV(f.eyeL[0], f.eyeL[1], 'blunt', 1.2, 7); }
+    if (strength > 1.5) { drip(f.earL, 0.5, 4); drip(f.earR, 0.5, 4); }
+  }
+
+  _faceDown() {
+    const f = this.meta.faceUV;
+    return Math.sign(f.chin[1] - f.eyeL[1]) * 0.03 || -0.03;
+  }
+
+  _dripStep(dt) {
+    if (!this.drips.length) return;
+    for (let n = this.drips.length - 1; n >= 0; n--) {
+      const d = this.drips[n];
+      d.t += dt;
+      if (d.t > d.life) { this.drips.splice(n, 1); continue; }
+      d.v += d.dv * dt;
+      const N = DMG_SIZE;
+      const x = Math.floor(d.u * N), y = Math.floor(d.v * N);
+      if (x < 0 || y < 0 || x >= N || y >= N) { this.drips.splice(n, 1); continue; }
+      for (const ox of [0, 1]) {
+        const k = (y * N + Math.min(N - 1, x + ox)) * 4;
+        this.dmgData[k + 1] = Math.min(255, this.dmgData[k + 1] + 60);
+      }
+      this.dmgTex.needsUpdate = true;
+    }
+  }
+
+  clearDamage() {
+    this.dmgData.fill(0);
+    this.dmgTex.needsUpdate = true;
+    this.drips.length = 0;
+  }
+
+  // Curarse: moretones y sangre se aclaran (k = cuánto, 0..1); las heridas profundas quedan
+  healDamage(k = 0.3) {
+    const D = this.dmgData, f = 1 - k;
+    for (let i = 0; i < D.length; i += 4) {
+      D[i + 1] *= f; // sangre
+      D[i + 2] *= f; // moretón
+      if (D[i] < 110) D[i] *= f; // raspones (los cortes profundos no se borran)
+    }
+    this.dmgTex.needsUpdate = true;
+    if (k > 0.4) this.drips.length = 0;
+  }
+
+  // Suelta el sombrero (sale volando). Devuelve el objeto en coordenadas de mundo o null.
+  popHat() {
+    if (!this.hat || !this.hat.parent) return null;
+    const h = this.hat;
+    h.updateWorldMatrix(true, false);
+    const pos = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
+    h.matrixWorld.decompose(pos, q, s);
+    h.removeFromParent();
+    h.position.copy(pos);
+    h.quaternion.copy(q);
+    this.hat = null;
+    return h;
+  }
+
+  _disposeModel() {
+    if (!this.model) return;
+    this.dmgTex?.dispose();
+    this.material?.dispose();
+    this.hat?.traverse?.((o) => { o.geometry?.dispose(); o.material?.dispose(); });
+    this.glasses?.traverse?.((o) => { o.geometry?.dispose(); o.material?.dispose(); });
+    this.model.removeFromParent();
+    this.model = null;
+  }
+
+  dispose() {
+    this._disposeModel();
+    if (this.root.parent) this.root.parent.remove(this.root);
+  }
+}

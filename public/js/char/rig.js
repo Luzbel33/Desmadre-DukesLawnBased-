@@ -1,0 +1,113 @@
+// Esqueleto "objetivo": corre la animación procedural (caminar, tomar, piñas, bailes...) y
+// entrega la pose en mundo que los músculos del ragdoll intentan seguir. No se dibuja.
+// También resuelve el control directo de los brazos con el mouse (IK de 2 huesos).
+import * as THREE from 'three';
+import { Character, JOINT_NAMES, PARENT } from './character.js';
+
+const tS = new THREE.Vector3();
+const tA = new THREE.Vector3();
+const tB = new THREE.Vector3();
+const tC = new THREE.Vector3();
+const tQ = new THREE.Quaternion();
+const tQ2 = new THREE.Quaternion();
+
+export class PoseRig {
+  constructor(jointRest) {
+    this.root = new THREE.Object3D();
+    this.jointRest = jointRest.map((v) => v.clone());
+    this.joints = [];
+    for (let i = 0; i < 11; i++) {
+      const j = new THREE.Object3D();
+      j.position.copy(this.jointRest[i]);
+      this.joints.push(j);
+      (PARENT[i] < 0 ? this.root : this.joints[PARENT[i]]).add(j);
+    }
+    this.anim = { phase: 0, speed: 0, bob: 0, lean: 0, idleT: Math.random() * 10, cur: JOINT_NAMES.map(() => new THREE.Euler()) };
+    this.mode = 'anim';
+    this.detached = new Array(11).fill(false);
+    this.targets = [];
+    for (let i = 0; i < 11; i++) this.targets.push({ p: new THREE.Vector3(), q: new THREE.Quaternion() });
+    // longitudes de brazo desde el reposo
+    this.upperLen = [this.jointRest[4].length(), this.jointRest[6].length()];
+    this.foreLen = [this.upperLen[0] * 0.95, this.upperLen[1] * 0.95];
+  }
+
+  animate(st, dt) { Character.prototype.animate.call(this, st, dt); }
+  _emote(...a) { return Character.prototype._emote.apply(this, a); }
+
+  place(pos, yaw) {
+    this.root.position.copy(pos);
+    this.root.rotation.set(0, yaw, 0);
+    this.root.updateMatrixWorld(true);
+  }
+
+  // Lleva la mano (side 'l'|'r') a un punto en mundo con IK de dos huesos, sobre la pose animada.
+  // bend: hacia dónde se dobla el codo (vector en mundo, por defecto abajo/atrás/afuera)
+  reach(side, target, bend = null) {
+    const si = side === 'l' ? 3 : 5, ei = side === 'l' ? 4 : 6;
+    const L1 = this.upperLen[side === 'l' ? 0 : 1], L2 = this.foreLen[side === 'l' ? 0 : 1];
+    const sh = this.joints[si], el = this.joints[ei];
+    this.root.updateMatrixWorld(true);
+    const S = sh.getWorldPosition(tS);
+    const toT = tA.copy(target).sub(S);
+    let d = toT.length();
+    const maxR = (L1 + L2) * 0.995;
+    if (d > maxR) { toT.multiplyScalar(maxR / d); d = maxR; }
+    if (d < 0.08) { toT.set(0, -0.08, 0); d = 0.08; }
+    const dir = toT.clone().normalize();
+    // plano del codo
+    const yaw = this.root.rotation.y;
+    const out = side === 'l' ? 1 : -1;
+    const pole = bend ? bend.clone() : new THREE.Vector3(out * 0.6 * Math.cos(yaw) - 0 * Math.sin(yaw), -0.9, -0.4);
+    if (!bend) {
+      // afuera del cuerpo en coordenadas del personaje -> mundo
+      pole.set(out * 0.55, -0.85, -0.35).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+    }
+    const perp = pole.sub(dir.clone().multiplyScalar(pole.dot(dir))).normalize();
+    const cosA = Math.min(1, Math.max(-1, (L1 * L1 + d * d - L2 * L2) / (2 * L1 * d)));
+    const sinA = Math.sqrt(1 - cosA * cosA);
+    const E = tB.copy(S).addScaledVector(dir, L1 * cosA).addScaledVector(perp, L1 * sinA);
+    // hombro: rotación mínima desde la dirección de reposo actual hacia S->E
+    this._aim(si, E.clone().sub(S).normalize());
+    // codo: desde la dirección de reposo hacia E->target
+    const T = tC.copy(S).add(toT);
+    this._aim(ei, T.clone().sub(E).normalize());
+  }
+
+  // Apunta la articulación i para que su segmento de reposo (hacia el hijo) mire a `dirW` (mundo)
+  _aim(i, dirW) {
+    const j = this.joints[i];
+    const parent = j.parent;
+    parent.updateMatrixWorld(true);
+    const pq = parent.getWorldQuaternion(tQ);
+    // dirección de reposo del segmento en el marco local de la articulación
+    const child = i === 3 ? 4 : i === 5 ? 6 : i === 4 || i === 6 ? null : null;
+    const restLocal = child ? this.jointRest[child].clone().normalize() : new THREE.Vector3(0, -1, 0.06).normalize();
+    // con rotación local identidad, el segmento en mundo es pq * restLocal
+    const cur = restLocal.clone().applyQuaternion(pq);
+    const rot = tQ2.setFromUnitVectors(cur, dirW);
+    // Wj = rot * pq  =>  Lj = pq^-1 * rot * pq
+    const lq = pq.clone().invert().multiply(rot).multiply(pq);
+    j.quaternion.copy(lq);
+    j.updateMatrixWorld(true);
+  }
+
+  // Calcula targets[i] = pose en mundo de cada articulación
+  compute() {
+    this.root.updateMatrixWorld(true);
+    for (let i = 0; i < 11; i++) {
+      this.joints[i].matrixWorld.decompose(this.targets[i].p, this.targets[i].q, tS);
+    }
+    return this.targets;
+  }
+
+  // Pose como array de transformaciones (para crear/teletransportar el ragdoll)
+  transforms() {
+    this.compute();
+    return this.targets.map((t) => [t.p.x, t.p.y, t.p.z, t.q.x, t.q.y, t.q.z, t.q.w]);
+  }
+
+  shoulderWorld(side, out = new THREE.Vector3()) {
+    return this.joints[side === 'l' ? 3 : 5].getWorldPosition(out);
+  }
+}

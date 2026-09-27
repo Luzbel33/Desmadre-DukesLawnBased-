@@ -1,0 +1,23 @@
+{
+  "name": "dukes-lawn-desmadre",
+  "version": "1.5.0",
+  "description": "Lobby online 3D con cuerpos fisicos, gore, poker, futbol, graffiti libre, YouTube y voz por proximidad.",
+  "type": "module",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "vendor": "node scripts/vendor.mjs",
+    "check": "node scripts/check.mjs",
+    "test": "node --no-warnings --loader ./tests/loader.mjs --test ./tests/core.test.mjs ./tests/audio-media.test.mjs ./tests/gameplay.test.mjs",
+    "test:network": "node scripts/test-network.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "private": true,
+  "devDependencies": {
+    "@dimforge/rapier3d-compat": "0.21.0",
+    "three": "0.186.1"
+  }
+}
