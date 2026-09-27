@@ -1,4 +1,4 @@
-// Duke's Lawn: DESMADRE — servidor (archivos estáticos + WebSocket + salas). Sin dependencias.
+// DESMADRE — servidor (archivos estáticos + WebSocket + salas). Sin dependencias.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -155,7 +155,7 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 server.listen(PORT, HOST, () => {
-  console.log('\n  Duke\'s Lawn: DESMADRE — servidor andando');
+  console.log('\n  DESMADRE — servidor andando');
   console.log('  Local:  http://localhost:' + PORT);
   for (const list of Object.values(os.networkInterfaces())) {
     for (const a of list || []) {

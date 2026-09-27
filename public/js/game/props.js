@@ -75,6 +75,15 @@ export const HOLD = {
 };
 const HOLD_DEFAULT = { style: 'carry' };
 export const holdOf = (type) => HOLD[type] || HOLD_DEFAULT;
+// cuánto se cierra la mano: un mango fino, puño cerrado; una lata, menos; lo que se carga de un borde, a medias
+const CURL = { can: 0.8, spraycan: 0.8, popcorn: 0.62, bottle: 0.95 };
+export const curlOf = (type) => CURL[type] ?? (holdOf(type).style === 'stick' ? 1 : 0.55);
+// dirección del mango en mundo (del lado del pulgar) de algo firme en la mano, o null si no tiene mango
+export function handleAxis(type, quat, out) {
+  const h = holdOf(type);
+  if (h.style !== 'stick' || !h.tip) return null;
+  return out.fromArray(h.tip).applyQuaternion(quat).normalize();
+}
 // se puede agarrar con las dos manos
 export const twoHanded = (type) => !!holdOf(type).two;
 
@@ -252,7 +261,7 @@ function fallbackMesh(type) {
           c.fillStyle = gr; c.fillRect(0, 0, w, h);
           c.fillStyle = '#f3d27a'; c.fillRect(0, 22, w, 6); c.fillRect(0, h - 28, w, 6);
           c.fillStyle = '#fff4dc'; c.font = 'bold 34px Georgia'; c.textAlign = 'center';
-          for (const x of [64, 192]) { c.fillText('DUQUE', x, 74); c.font = '14px Arial'; c.fillText('CERVEZA RUBIA', x, 96); c.font = 'bold 34px Georgia'; }
+          for (const x of [64, 192]) { c.fillText('DESMADRE', x, 74); c.font = '14px Arial'; c.fillText('CERVEZA RUBIA', x, 96); c.font = 'bold 34px Georgia'; }
         }),
         roughness: 0.3, metalness: 0.65,
       }));
@@ -601,6 +610,7 @@ export class PropManager {
     if (!p) return;
     p.thrownAt = performance.now();
     p.thrownBy = G.myId;
+    p._hitIds = null; // tiro nuevo: puede volver a pegarle a cualquiera
     this._noSelf(p, 0.35);
   }
   _noSelf(p, secs) {
@@ -617,6 +627,7 @@ export class PropManager {
     p.heldBy = 0;
     p.thrownAt = performance.now();
     p.thrownBy = G.myId;
+    p._hitIds = null;
     this._unhold(p);
     this._noSelf(p, 0.35);
     this._applyAuthority(p);
@@ -691,6 +702,25 @@ export class PropManager {
     p.noBreakSteps = Math.ceil(grace * 60); // pasos de física (no reloj: igual en la prueba y en el juego)
   }
 
+  // Un objeto que revoleé tocó el cuerpo de otro jugador: aviso el golpe (él lo valida y decide el daño).
+  // Uno por víctima y por tiro; la velocidad es la de llegada (la del paso anterior al choque).
+  _thrownHits(p) {
+    const W = G.phys.world;
+    W.contactPairsWith(p.collider, (other) => {
+      const info = G.phys.info(other);
+      if (info?.kind !== 'remote') return;
+      if ((p._hitIds || (p._hitIds = new Set())).has(info.id)) return;
+      let touching = false;
+      W.contactPair(p.collider, other, (m) => { if (m.numContacts() > 0) touching = true; });
+      if (!touching) return;
+      const sp = p.lastV.length();
+      if (sp < 4) return;
+      p._hitIds.add(info.id);
+      const t = other.translation();
+      G.me?._claimHit(info.id, info.part ?? 1, Math.min(16, sp), V1.set(t.x, t.y, t.z), p.type, 't');
+    });
+  }
+
   // Cambio de velocidad (m/s) que le dieron los contactos en el último paso: un choque de verdad
   _contactDv(p) {
     const W = G.phys.world;
@@ -733,6 +763,8 @@ export class PropManager {
       }
       const v = p.body.linvel();
       p.vel.set(v.x, v.y, v.z);
+      // lo que revoleé yo: si le pega a otro jugador, aviso el golpe con la velocidad que traía
+      if (p.thrownBy === G.myId && p.thrownAt && now - p.thrownAt < 3000) this._thrownHits(p);
       // rotura por impacto: cambio brusco de velocidad que venga de un contacto real (no de revolearlo,
       // de soltarlo con envión ni de pasar a simularlo yo)
       if (p.noBreakSteps > 0) p.noBreakSteps--;
@@ -781,6 +813,12 @@ export class PropManager {
     rh.R.set(-Math.cos(yaw), 0, Math.sin(yaw));
     gripPoints(p.type, two, side === 'r', rh.R, rh.quat, rh.g1, rh.g2);
     heldPos(rh.hand, rh.quat, rh.g1, rh.pos);
+    // la mano (o las dos) acomoda la muñeca al mango (lo usa su personaje en el cuadro siguiente)
+    const ch = rp.char;
+    if (ch?.gripAxis?.[side] && handleAxis(p.type, rh.quat, ch.gripAxis[side])) {
+      ch.gripOn[side] = true;
+      if (two) { const o = side === 'l' ? 'r' : 'l'; ch.gripAxis[o].copy(ch.gripAxis[side]); ch.gripOn[o] = true; }
+    }
     // al agarrarlo "viene a la mano" en un instante
     rh.t = Math.min(1, rh.t + dt / 0.12);
     const k = rh.t * rh.t * (3 - 2 * rh.t);

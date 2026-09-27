@@ -12,6 +12,7 @@ export const GR = {
   VEHICLE: 16,
   RAGDOLL: 32,
   DEBRIS: 64,
+  PAWN: 128, // cápsula de movimiento de otros jugadores: frena a la mía (no se atraviesan)
 };
 export const groups = (member, filter) => ((member & 0xffff) << 16) | (filter & 0xffff);
 
@@ -108,5 +109,12 @@ export class Physics {
       collider: hit.collider,
       info: this.info(hit.collider),
     };
+  }
+
+  // Punto más cercano de la superficie de un collider (aunque el punto esté adentro): { x, y, z, inside, info }
+  nearest(x, y, z, filterGroups, predicate = null) {
+    const pr = this.world.projectPoint({ x, y, z }, false, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, filterGroups, null, null, predicate);
+    if (!pr) return null;
+    return { x: pr.point.x, y: pr.point.y, z: pr.point.z, inside: pr.isInside, collider: pr.collider, info: this.info(pr.collider) };
   }
 }

@@ -4,14 +4,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import * as THREE from 'three';
-import { Physics } from '../public/js/core/physics.js';
+import { Physics, RAPIER, GR, groups } from '../public/js/core/physics.js';
 import { G } from '../public/js/core/G.js';
-import { LocalPlayer, ARMED_PART } from '../public/js/game/player.js';
+import { LocalPlayer, RemotePlayer, ARMED_PART } from '../public/js/game/player.js';
 import { Arm, ARM, stepArm, startScript, startControl, moveControl, chamberLocal } from '../public/js/game/arms.js';
 import { PropManager } from '../public/js/game/props.js';
 import { World } from '../public/js/world/world.js';
 import { TEX } from '../public/js/world/textures.js';
-import { PART } from '../public/js/game/ragdoll.js';
+import { PART, Ragdoll } from '../public/js/game/ragdoll.js';
+import { PoseRig } from '../public/js/char/rig.js';
+import { HitReact } from '../public/js/game/react.js';
 import { PokerView } from '../public/js/game/poker.js';
 import { fakeMeta } from './ragdoll-bench.mjs';
 
@@ -19,7 +21,7 @@ TEX.grass = () => new THREE.Texture();
 
 test('póker conserva el reparto privado que llega antes del estado público', () => {
   const view = Object.assign(Object.create(PokerView.prototype), {
-    st: { handNo: 1 }, mySeat: -1, myCards: [], _syncBots() {}, _render() {},
+    st: { handNo: 1 }, mySeat: -1, myCards: [], _syncBots() {}, _layout() {}, _hud() {}, _chipFlow() {}, look: {},
   });
   view.setCards({ hand: 2, cards: ['As', 'Kh'] });
   view.applyState({ handNo: 2, seats: [], phase: 'preflop' });
@@ -115,15 +117,39 @@ test('la guardia deja los puños adelante de la cara, sin tapar el centro', () =
 });
 
 // ------------------------------------------------------------------ golpes justos
-test('chocarse con alguien que no está pegando no lastima (solo pegan las partes que atacan)', async () => {
+test('chocarse con alguien no lastima: los golpes de otros llegan solo por su aviso (una sola fuente)', async () => {
   const { p, ph } = await fixture();
   const idle = { proxy: {}, isArmedPart: () => false };
   const armed = { proxy: {}, isArmedPart: (part) => ARMED_PART[part] === 2 };
   assert.equal(p._threat({ kind: 'remote', id: 7, part: PART.TORSO, ref: idle }), null);
-  assert.equal(p._threat({ kind: 'remote', id: 7, part: PART.FARM_R, ref: idle }), null);
-  const t = p._threat({ kind: 'remote', id: 7, part: PART.FARM_R, ref: armed });
-  assert.ok(t && t.src === 'remote' && t.by === 7);
+  assert.equal(p._threat({ kind: 'remote', id: 7, part: PART.FARM_R, ref: armed }), null, 'el contacto local no debe sumar otro golpe');
   ph.world.free();
+});
+
+test('balance de golpes: la patada pega más que la piña, la piña sola no noquea y lo revoleado lastima', async () => {
+  const hitWith = async (claim) => {
+    const { p, ph } = await fixture();
+    G.settings.desmadre = true;
+    G.players = new Map([[5, { pos: new THREE.Vector3(0, 0.02, 1.2) }]]);
+    p.hitClaim({ id: 5, p: PART.TORSO, x: 0, y: 1.2, z: 0.1, ...claim });
+    const out = { lost: 100 - p.hp, state: p.state, push: Math.hypot(p.push.x, p.push.y) };
+    G.players = new Map();
+    ph.world.free();
+    return out;
+  };
+  const punch = await hitWith({ s: 9, a: 'p' });
+  const kick = await hitWith({ s: 7, a: 'k' });
+  const head = await hitWith({ s: 3, a: 'h', p: PART.HEAD });
+  const bottle = await hitWith({ s: 14, a: 't', w: 'bottle' });
+  const chair = await hitWith({ s: 10, a: 't', w: 'chair' });
+  const punchHead = await hitWith({ s: 10, a: 'p', p: PART.HEAD });
+  assert.ok(kick.lost > punch.lost * 1.3, `patada ${kick.lost.toFixed(1)} vs piña ${punch.lost.toFixed(1)}`);
+  assert.ok(kick.push > punch.push, 'la patada empuja más que la piña');
+  assert.ok(head.lost > 5, `cabezazo ${head.lost.toFixed(1)}`);
+  assert.notEqual(punchHead.state, 'ko', 'una sola piña a la cabeza no debería noquear');
+  assert.ok(bottle.lost > 20, `botella revoleada ${bottle.lost.toFixed(1)}`);
+  assert.ok(chair.lost > 30 || chair.state === 'ko', `silla revoleada ${chair.lost.toFixed(1)}`);
+  G.settings.desmadre = false;
 });
 
 test('lo que revoleo yo no me lastima al salir de la mano; lo de otro sí', async () => {
@@ -198,6 +224,51 @@ test('las armas quedan firmes en la mano: a la vista en guardia, con dos manos y
   const v = s.body.linvel();
   assert.ok(!s.kin && Math.hypot(v.x, v.y, v.z) > 2, `salió a ${Math.hypot(v.x, v.y, v.z).toFixed(2)} m/s`);
   G.props = null;
+  ph.world.free();
+});
+
+test('los jugadores no se atraviesan y un empujón entre cuerpos es suave (nadie sale volando)', async () => {
+  const keys = new Set(['KeyW']);
+  const { p, ph } = await fixture(keys);
+  // otro jugador parado 2 m adelante (su cápsula, como la crea RemotePlayer)
+  const other = { standing: true, pos: new THREE.Vector3(0, 0.02, 2), vel: new THREE.Vector3() };
+  const body = ph.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, 0.82, 2));
+  ph.world.createCollider(RAPIER.ColliderDesc.capsule(0.5, 0.26).setCollisionGroups(groups(GR.PAWN, GR.ME)), body);
+  G.players = new Map([[7, other]]);
+  for (let n = 0; n < 150; n++) frame(p, ph);
+  assert.ok(p.pos.z < 2 - 0.45, `lo atravesó: z=${p.pos.z.toFixed(2)}`);
+  // ahora el otro viene hacia mí a 3 m/s: me corre, pero suave
+  keys.clear();
+  let maxV = 0;
+  for (let n = 0; n < 60; n++) {
+    other.pos.z -= 3 / 60; other.vel.set(0, 0, -3);
+    body.setNextKinematicTranslation({ x: 0, y: 0.82, z: other.pos.z });
+    const z0 = p.pos.z;
+    frame(p, ph);
+    maxV = Math.max(maxV, Math.abs(p.pos.z - z0) * 60);
+  }
+  assert.ok(p.pos.z < other.pos.z - 0.4, 'me pasó por encima');
+  assert.ok(maxV < 6, `salí volando a ${maxV.toFixed(1)} m/s`);
+  G.players = new Map();
+  ph.world.free();
+});
+
+test('si otro aparece encimado (la red llegó tarde), nos separamos enseguida', async () => {
+  const { p, ph } = await fixture();
+  // el otro "cae" casi encima de mí (0.12 m): su cápsula está donde se dibuja su cuerpo
+  const other = { standing: true, pos: new THREE.Vector3(0.12, 0.02, 0), bodyPos: new THREE.Vector3(0.12, 0.02, 0), vel: new THREE.Vector3() };
+  const body = ph.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0.12, 0.82, 0));
+  ph.world.createCollider(RAPIER.ColliderDesc.capsule(0.5, 0.26).setCollisionGroups(groups(GR.PAWN, GR.ME)), body);
+  G.players = new Map([[7, other]]);
+  let t = 0;
+  while (t < 1 && Math.hypot(p.pos.x - 0.12, p.pos.z) < 0.5) { frame(p, ph); t += 1 / 60; }
+  assert.ok(t < 0.3, `tardó ${t.toFixed(2)} s en separarse`);
+  const d0 = Math.hypot(p.pos.x - 0.12, p.pos.z);
+  for (let n = 0; n < 30; n++) frame(p, ph);
+  const d1 = Math.hypot(p.pos.x - 0.12, p.pos.z);
+  assert.ok(d1 < 1.2, `salió disparado a ${d1.toFixed(2)} m`);
+  assert.ok(d1 >= d0 - 0.02, 'se volvió a meter');
+  G.players = new Map();
   ph.world.free();
 });
 
@@ -316,5 +387,235 @@ test('los vehículos tienen volante que gira, ruedas que doblan y pocas mallas',
     assert.ok(meshes <= 32, `${type}: ${meshes} mallas`);
     assert.ok(g.userData.steer?.userData.R > 0.1, `${type} sin volante`);
     assert.equal(g.userData.pivots.length, 2, `${type} sin ruedas que doblan`);
+  }
+});
+
+// ------------------------------------------------------------------ reacciones a los golpes
+// Pose de pie armada con el esqueleto de prueba, mirando a +z (yaw 0)
+function standingPose() {
+  const rig = new PoseRig(fakeMeta().jointRest);
+  rig.place(new THREE.Vector3(0, 0, 0), 0);
+  rig.animate({ speed: 0, grounded: true }, 1 / 60);
+  return rig.transforms();
+}
+// punta de la cabeza / del pecho (un punto arriba de la articulación, en mundo)
+const tip = (pose, i, up = 0.25) => new THREE.Vector3(0, up, 0).applyQuaternion(new THREE.Quaternion(pose[i][3], pose[i][4], pose[i][5], pose[i][6])).add(new THREE.Vector3(pose[i][0], pose[i][1], pose[i][2]));
+function reactAfter(fn, secs) {
+  const r = new HitReact();
+  fn(r);
+  for (let t = 0; t < secs; t += 1 / 60) r.update(1 / 60);
+  const pose = standingPose();
+  r.apply(pose);
+  return { r, pose };
+}
+
+test('reacción: una piña de frente a la cara tira la cabeza para atrás y después se acomoda sola', () => {
+  const base = standingPose();
+  // lo empujan hacia -z (le pegaron de frente)
+  const { pose } = reactAfter((r) => r.hit(PART.HEAD, 0, -1, 1, 0, 0.1, 0), 0.08);
+  const back = tip(base, PART.HEAD).z - tip(pose, PART.HEAD).z;
+  assert.ok(back > 0.04, `la cabeza se fue ${back.toFixed(3)} m para atrás`);
+  const { r } = reactAfter((q) => q.hit(PART.HEAD, 0, -1, 1, 0, 0.1, 0), 2.5);
+  assert.equal(r.active, false, 'la reacción no se apagó');
+});
+
+test('reacción: empujado hacia su izquierda, el torso se va a la izquierda; un golpe en el hombro derecho lo gira', () => {
+  const base = standingPose();
+  // empujado hacia +x (su izquierda mirando a +z)
+  const { pose } = reactAfter((r) => r.hit(PART.TORSO, 1, 0, 1, 0, 0, 0), 0.1);
+  assert.ok(tip(pose, PART.TORSO, 0.4).x - tip(base, PART.TORSO, 0.4).x > 0.03, 'el torso no se inclinó hacia donde lo empujaron');
+  // piña de frente en el hombro derecho (x < 0): ese hombro va para atrás => el pecho mira a la derecha (-x)
+  const { pose: tw } = reactAfter((r) => r.hit(PART.TORSO, 0, -1, 1, -0.2, 0.1, 0), 0.12);
+  const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(new THREE.Quaternion(tw[1][3], tw[1][4], tw[1][5], tw[1][6]));
+  assert.ok(fwd.x < -0.05, `el torso no giró a la derecha (fwd.x ${fwd.x.toFixed(3)})`);
+});
+
+test('reacción: una patada baja dobla la rodilla de ese lado', () => {
+  const base = standingPose();
+  const { pose } = reactAfter((r) => r.hit(PART.SHIN_L, 0, -1, 1, 0.09, 0.1, 0), 0.1);
+  const q0 = new THREE.Quaternion(base[8][3], base[8][4], base[8][5], base[8][6]);
+  const q1 = new THREE.Quaternion(pose[8][3], pose[8][4], pose[8][5], pose[8][6]);
+  assert.ok(q0.angleTo(q1) > 0.15, `la rodilla izquierda casi no se movió (${q0.angleTo(q1).toFixed(3)} rad)`);
+  const q2 = new THREE.Quaternion(base[10][3], base[10][4], base[10][5], base[10][6]);
+  const q3 = new THREE.Quaternion(pose[10][3], pose[10][4], pose[10][5], pose[10][6]);
+  assert.ok(q2.angleTo(q3) < q0.angleTo(q1) * 0.5, 'la otra pierna se dobló igual');
+});
+
+// ------------------------------------------------------------------ agarrar a otro jugador
+async function grabFixture(keys) {
+  const { p, ph } = await fixture(keys);
+  const meta = fakeMeta();
+  const rig = new PoseRig(meta.jointRest);
+  // el que agarra, parado adelante mirándome (yaw π)
+  const place = (z) => { rig.place(new THREE.Vector3(0, 0.02, z), Math.PI); rig.animate({ speed: 0, grounded: true }, 1 / 60); return rig.transforms(); };
+  const proxy = new Ragdoll(ph, meta, { kinematic: true, member: GR.REMOTE, filter: GR.RAGDOLL });
+  proxy.build(place(0.75));
+  const rp = { id: 5, pos: new THREE.Vector3(0, 0.02, 0.75), yaw: Math.PI, proxy, char: { meta }, standing: true, vel: new THREE.Vector3() };
+  G.players = new Map([[5, rp]]);
+  const move = (z) => { proxy.teleport(place(z)); rp.pos.z = z; };
+  // moverlo como se mueve de verdad (cinemático: tiene velocidad, así se miden los tirones)
+  const slide = (z, arm = 0) => {
+    const tr = place(z);
+    if (arm) { tr[6][2] += arm; tr[5][2] += arm * 0.6; } // su brazo derecho (el que agarra) se va para atrás
+    proxy.follow(tr, 1 / 60); rp.pos.z = z;
+  };
+  // su mano derecha en mi pecho: el ancla es ese punto en el marco de mi torso
+  const t = p.rag.bodies[PART.TORSO].translation(), r = p.rag.bodies[PART.TORSO].rotation();
+  const inv = new THREE.Matrix4().compose(new THREE.Vector3(t.x, t.y, t.z), new THREE.Quaternion(r.x, r.y, r.z, r.w), new THREE.Vector3(1, 1, 1)).invert();
+  const a = new THREE.Vector3(0, t.y + 0.15, 0.2).applyMatrix4(inv);
+  const events = [];
+  p.onEvent = (type, d) => events.push({ type, d });
+  p.grabbedByRemote(5, 'r', PART.TORSO, [a.x, a.y, a.z], true);
+  return { p, ph, rp, move, slide, events };
+}
+
+test('agarrar a otro no lo apaga: sigue de pie y en control, y el tirón lo lleva', async () => {
+  const keys = new Set();
+  const { p, ph, move } = await grabFixture(keys);
+  for (let n = 0; n < 20; n++) frame(p, ph);
+  assert.equal(p.state, 'active', 'agarrado no debe quedar KO');
+  assert.equal(p.physMode, 'anim', 'agarrado no debe pasar a ragdoll');
+  // el que me tiene retrocede: me lleva
+  const z0 = p.pos.z;
+  for (let n = 0; n < 45; n++) { move(0.75 + n * 0.02); frame(p, ph); }
+  assert.ok(p.pos.z > z0 + 0.35, `el tirón no me movió (${(p.pos.z - z0).toFixed(2)} m)`);
+  assert.equal(p.state, 'active', 'afuera de la pelea el tirón no derriba');
+  G.players = new Map();
+  ph.world.free();
+});
+
+test('agarrado se puede zafar corriendo para el otro lado', async () => {
+  const keys = new Set();
+  const { p, ph, events } = await grabFixture(keys);
+  for (let n = 0; n < 10; n++) frame(p, ph);
+  keys.add('KeyS'); keys.add('ShiftLeft');
+  for (let n = 0; n < 90 && p.grabbedBy.size; n++) frame(p, ph);
+  assert.equal(p.grabbedBy.size, 0, 'no se zafó');
+  assert.ok(events.some((e) => e.type === 'gripbreak' && e.d.to === 5), 'no le avisó al que lo tenía');
+  G.players = new Map();
+  ph.world.free();
+});
+
+test('agarrado: que te arrastren no te tira; unos tirones secos sí (y tirado te sigue arrastrando)', async () => {
+  const keys = new Set();
+  const { p, ph, slide } = await grabFixture(keys);
+  G.settings.desmadre = true;
+  for (let n = 0; n < 10; n++) frame(p, ph);
+  // lo arrastra caminando para atrás a 2 m/s durante 3 s: sigue de pie (y lo sigue)
+  let z = 0.75;
+  for (let n = 0; n < 180; n++) { z += 2 / 60; slide(z); frame(p, ph); }
+  assert.equal(p.state, 'active', `arrastrarlo lo tiró (equilibrio ${p.balance.toFixed(0)})`);
+  assert.ok(p.pos.z > 4, `no lo arrastró (${p.pos.z.toFixed(2)} m)`);
+  // tirones secos: SU BRAZO sale disparado para atrás (el cuerpo quieto) y vuelve
+  for (let k = 0; k < 8 && p.state === 'active'; k++) {
+    for (let n = 0; n < 16; n++) {
+      const off = n < 6 ? n * 0.15 : Math.max(0, 0.9 - (n - 6) * 0.09); // un tirón de brazo a ~9 m/s
+      slide(z, off); frame(p, ph);
+    }
+  }
+  assert.equal(p.state, 'ko', `los tirones no lo tiraron (equilibrio ${p.balance.toFixed(0)})`);
+  // tirado: el agarre sigue (resorte a su mano) y se lo lleva
+  assert.equal(p.grabbedBy.size, 1, 'tirado lo soltó');
+  const px = () => p.rag.pelvis().translation().z;
+  const z1 = px();
+  for (let n = 0; n < 60; n++) { z += 2 / 60; slide(z); frame(p, ph); }
+  assert.ok(px() > z1 + 0.5, `no lo arrastra tirado (${(px() - z1).toFixed(2)} m)`);
+  G.settings.desmadre = false;
+  G.players = new Map();
+  ph.world.free();
+});
+
+test('la mano no se mete en el cuerpo de otro aunque la muevas despacio', async () => {
+  const { p, ph } = await fixture();
+  const meta = fakeMeta();
+  const rig = new PoseRig(meta.jointRest);
+  rig.place(new THREE.Vector3(0, 0.02, 0.62), Math.PI);
+  rig.animate({ speed: 0, grounded: true }, 1 / 60);
+  const proxy = new Ragdoll(ph, meta, { kinematic: true, member: GR.REMOTE, filter: GR.RAGDOLL, tag: { kind: 'remote', id: 5 } });
+  proxy.build(rig.transforms());
+  for (let n = 0; n < 5; n++) frame(p, ph);
+  // brazo derecho controlado, a la altura del pecho, estirándose de a poco hacia el otro
+  p.armControl('r', true);
+  const a = p.arm.r;
+  a.pitch = -0.1; a.yaw = 0.25; a.reachWant = 0.45; a.reach = 0.45;
+  let deepest = 0, closest = 9;
+  for (let n = 0; n < 150; n++) {
+    a.reachWant = Math.min(0.97, a.reachWant + 0.004); a.reach = a.reachWant;
+    frame(p, ph);
+    const h = p._armWorld('r', new THREE.Vector3());
+    if (!h) continue;
+    const pr = ph.nearest(h.x, h.y, h.z, groups(0xffff, GR.REMOTE));
+    const dd = pr ? Math.hypot(h.x - pr.x, h.y - pr.y, h.z - pr.z) : 9;
+    if (pr?.inside) deepest = Math.max(deepest, dd); else closest = Math.min(closest, dd);
+  }
+  assert.ok(closest < 0.09 || deepest > 0, `la mano ni llegó al otro (${closest.toFixed(2)} m)`);
+  assert.ok(deepest < 0.01, `la mano entró ${deepest.toFixed(3)} m en el otro cuerpo`);
+  ph.world.free();
+});
+
+test('agarrar (mi pantalla): la parte agarrada queda pegada a mi mano al instante y el cuerpo la acompaña', () => {
+  const pose = standingPose(); // el otro, mirando a +z en el origen
+  const anchor = new THREE.Vector3(0, 0.1, 0.06); // cabeza, adelante
+  // mi mano tiró 0.5 m para adelante y un poco abajo
+  const t = pose[PART.HEAD];
+  const A0 = anchor.clone().applyQuaternion(new THREE.Quaternion(t[3], t[4], t[5], t[6])).add(new THREE.Vector3(t[0], t[1], t[2]));
+  const hand = A0.clone().add(new THREE.Vector3(0, -0.25, 0.5));
+  const rp = { standing: true, gripViews: [{ part: PART.HEAD, anchor, hand }] };
+  RemotePlayer.prototype._gripView.call(rp, pose);
+  const t2 = pose[PART.HEAD];
+  const A1 = anchor.clone().applyQuaternion(new THREE.Quaternion(t2[3], t2[4], t2[5], t2[6])).add(new THREE.Vector3(t2[0], t2[1], t2[2]));
+  assert.ok(A1.distanceTo(hand) < 0.12, `la cabeza quedó a ${A1.distanceTo(hand).toFixed(2)} m de mi mano`);
+  assert.ok(pose[PART.PELVIS][2] > 0.1, 'el cuerpo no acompañó el tirón');
+});
+
+test('agarrado de una pierna y levantada: la pierna sube hacia la mano y en la pelea lo tira al piso rápido', async () => {
+  const keys = new Set();
+  const { p, ph, rp, events } = await grabFixture(keys);
+  void events;
+  G.settings.desmadre = true;
+  // lo agarran de la pantorrilla izquierda: ancla en la pantorrilla, mano del otro que sube
+  p._clearGrips(false);
+  const t = p.rag.bodies[PART.SHIN_L].translation(), r = p.rag.bodies[PART.SHIN_L].rotation();
+  const inv = new THREE.Matrix4().compose(new THREE.Vector3(t.x, t.y, t.z), new THREE.Quaternion(r.x, r.y, r.z, r.w), new THREE.Vector3(1, 1, 1)).invert();
+  const a = new THREE.Vector3(t.x, t.y - 0.1, t.z + 0.07).applyMatrix4(inv);
+  p.grabbedByRemote(5, 'r', PART.SHIN_L, [a.x, a.y, a.z], true);
+  // la mano del otro (su antebrazo derecho) sube: muevo su proxy hacia arriba de a poco
+  const shin0 = p.rag.bodies[PART.SHIN_L].translation().y;
+  let lifted = 0, t0 = -1;
+  for (let n = 0; n < 120 && p.state === 'active'; n++) {
+    const tr = rp.proxy.read();
+    for (const o of tr) o[1] += 0.005;
+    rp.proxy.teleport(tr);
+    frame(p, ph);
+    lifted = Math.max(lifted, p.rag.bodies[PART.SHIN_L].translation().y - shin0);
+    if (p.state === 'ko' && t0 < 0) t0 = n / 60;
+  }
+  assert.ok(lifted > 0.04, `la pierna no subió (${lifted.toFixed(3)} m)`);
+  assert.equal(p.state, 'ko', `levantarle la pierna no lo tiró (equilibrio ${p.balance.toFixed(0)})`);
+  G.settings.desmadre = false;
+  G.players = new Map();
+  ph.world.free();
+});
+
+test('soltar a alguien tironeando lo revolea (en la pelea, al piso)', async () => {
+  const keys = new Set();
+  const { p, ph } = await grabFixture(keys);
+  G.settings.desmadre = true;
+  for (let n = 0; n < 5; n++) frame(p, ph);
+  p.grabbedByRemote(5, 'r', PART.TORSO, [0, 0, 0], false, [0, 1, 7]);
+  assert.equal(p.state, 'ko');
+  G.settings.desmadre = false;
+  G.players = new Map();
+  ph.world.free();
+});
+
+test('cortar un miembro no mata en el acto, y el cadáver con miembros cortados cae al piso (no vuela ni queda parado)', async () => {
+  const { goreRun } = await import('./gore-bench.mjs');
+  const alive = await goreRun(PART.UARM_L, 'none');
+  assert.ok(alive.alive, 'sin un brazo se murió en el acto');
+  for (const part of [PART.UARM_L, PART.FARM_R, PART.THIGH_L, PART.SHIN_R, PART.HEAD]) {
+    const r = await goreRun(part, part === PART.HEAD ? 'none' : 'die');
+    assert.ok(r.pelvis[1] < 0.5, `parte ${part}: el cadáver quedó parado (pelvis a ${r.pelvis[1]} m)`);
+    assert.ok(Math.hypot(r.pelvis[0], r.pelvis[2]) < 3, `parte ${part}: el cadáver se fue a ${JSON.stringify(r.pelvis)}`);
   }
 });

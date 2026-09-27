@@ -131,7 +131,7 @@ export class FootballView {
       mk(F.goalDepth, F.goalHalfW * 2, gx + s * F.goalDepth / 2, F.goalH, cz, 0, -Math.PI / 2);
     }
     // carteles perimetrales
-    const texts = [['EL DUQUE F.C.', '#0f3d8a', '#ffd23b'], ['BIRRA DEL DUQUE', '#8a1010', '#fff4d6'], ['CORTÁ EL PASTO', '#1e5a28', '#ffffff'], ['FERNET & DESMADRE', '#151515', '#ff4f6d']];
+    const texts = [['DESMADRE F.C.', '#0f3d8a', '#ffd23b'], ['BIRRA DESMADRE', '#8a1010', '#fff4d6'], ['CORTÁ EL PASTO', '#1e5a28', '#ffffff'], ['FERNET & DESMADRE', '#151515', '#ff4f6d']];
     let ti = 0;
     const board = (x0, z0, x1, z1) => {
       const len = Math.hypot(x1 - x0, z1 - z0);

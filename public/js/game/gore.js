@@ -129,10 +129,14 @@ export class Gore {
       .setLinvel(vel.x, vel.y, vel.z).setAngvel({ x: ang.x, y: ang.y, z: ang.z })
       .setLinearDamping(0.15).setAngularDamping(0.6).setCcdEnabled(true));
     const per = mass / Math.max(1, colliders.length);
+    b.gibCols = [];
     for (const cd of colliders) {
-      cd.setMass(per).setFriction(0.9).setRestitution(0.12).setCollisionGroups(groups(GR.DEBRIS, GIB_FILTER));
+      // al nacer está encimado al cuerpo del que salió: con los cuerpos choca recién cuando se separó
+      // (antes el ragdoll se lo "sacaba de encima" de golpe y el cadáver salía volando)
+      cd.setMass(per).setFriction(0.9).setRestitution(0.12).setCollisionGroups(groups(GR.DEBRIS, GIB_FILTER & ~(GR.RAGDOLL | GR.REMOTE)));
       const c = W.createCollider(cd, b);
       this.phys.tag(c, { kind: 'gib', mat: 'flesh' });
+      b.gibCols.push(c);
     }
     return b;
   }
@@ -403,6 +407,10 @@ export class Gore {
     for (let i = this.items.length - 1; i >= 0; i--) {
       const it = this.items[i];
       it.t += dt;
+      if (!it.solid && it.t > 0.6) {
+        it.solid = true;
+        for (const b of it.bodies) for (const c of b.gibCols || []) { try { c.setCollisionGroups(groups(GR.DEBRIS, GIB_FILTER)); } catch { /* ya borrado */ } }
+      }
       const p = it.update();
       if (it.bleed > 0 && G.fx && Math.random() < it.bleed * dt * 8) {
         G.fx.bloodStream(V1.set(p.x, p.y, p.z), V2.set(0, -1, 0), 1, 0.4);
@@ -441,10 +449,10 @@ export function goreFor(part, sev, kind, src) {
     else if ((part === PART.TORSO || part === PART.PELVIS) && sev > 0.8) out.guts = true;
   } else if (kind === 'cut') {
     // filo: hace falta un buen hachazo/sablazo (no cualquier roce)
-    if (part === PART.HEAD && sev > 1.85) out.sever = PART.HEAD;
-    else if ((part === 4 || part === 6 || part === 8 || part === 10) && sev > 1.2) out.sever = part;
-    else if ((part === 3 || part === 5 || part === 7 || part === 9) && sev > 1.6) out.sever = part;
-    else if ((part === PART.TORSO || part === PART.PELVIS) && sev > 1.4) out.guts = true;
+    if (part === PART.HEAD && sev > 1.7) out.sever = PART.HEAD;
+    else if ((part === 4 || part === 6 || part === 8 || part === 10) && sev > 0.75) out.sever = part;
+    else if ((part === 3 || part === 5 || part === 7 || part === 9) && sev > 1.05) out.sever = part;
+    else if ((part === PART.TORSO || part === PART.PELVIS) && sev > 1.3) out.guts = true;
   } else {
     // contundente: la cabeza revienta con golpes brutales (maza, choque a toda velocidad)
     if (part === PART.HEAD && sev > (src === 'vehicle' ? 2.4 : 2.2)) out.headPop = true;

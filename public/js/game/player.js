@@ -16,9 +16,10 @@ import { RAPIER, GR, groups } from '../core/physics.js';
 import { HumanCharacter } from '../char/human.js';
 import { PoseRig } from '../char/rig.js';
 import { Ragdoll, PART } from './ragdoll.js';
+import { HitReact, ROLL } from './react.js';
 import { EquipmentView } from './equipment.js';
 import { goreFor, branchOf, GORE_HEAD_POP, GORE_GUTS } from './gore.js';
-import { defOf, holdOf, heldQuat, heldPos, gripPoints, bladePoints } from './props.js';
+import { defOf, holdOf, heldQuat, heldPos, gripPoints, bladePoints, handleAxis, curlOf } from './props.js';
 import {
   Arm, stepArm, startControl, moveControl, reachControl, startScript, torsoTwist, torsoLean,
 } from './arms.js';
@@ -39,6 +40,27 @@ const CUT_PROPS = new Set(['sword', 'machete', 'knife', 'axe', 'broken_bottle', 
 export const ARMED_PART = [0, 0, 8, 1, 1, 2, 2, 0, 0, 4, 4];
 // velocidad (m/s) a partir de la cual un golpe cuenta, por tipo de cosa que pega
 const THR = { fist: 2.8, prop: 3.4, thrown: 4, vehicle: 3 };
+// Golpes con el cuerpo, según con qué pegan: desde qué velocidad lastiman (thr), en cuánto llega al máximo
+// (span, cap), daño base, cuánto tumba (bal) y cuánto empuja (push). La patada tiene la masa de la pierna:
+// pega más, tumba y empuja; la piña es rápida pero sola no noquea; el cabezazo aturde.
+export const BODY_HITS = {
+  p: { thr: 2.8, span: 4.5, cap: 1.3, base: 10, bal: 1, push: 1 },
+  k: { thr: 2.2, span: 3.4, cap: 1.8, base: 14, bal: 1.7, push: 1.45 },
+  h: { thr: 1.4, span: 2.4, cap: 1.5, base: 13, bal: 1.5, push: 1.3 },
+};
+
+// Fuerza que va a calcular el golpeado para un aviso de golpe (a: tipo, speed: m/s, w: arma u objeto revoleado).
+// El que pega la usa para ver la reacción al instante, sin esperar la ida y vuelta de la red.
+export function predictHit(a, speed, w = null) {
+  const weapon = w ? defOf(w) : null;
+  if (weapon) {
+    const thr = a === 't' ? THR.thrown : THR.prop;
+    if (speed < thr) return 0;
+    return clamp(((speed - thr) / thr) * clamp(Math.sqrt(weapon.mass || 1) / 1.1, 0.4, 2.4), 0, 3);
+  }
+  const b = BODY_HITS[a] || BODY_HITS.p;
+  return speed < b.thr ? 0 : clamp((speed - b.thr) / b.span, 0, b.cap);
+}
 
 const V1 = new THREE.Vector3();
 const V2 = new THREE.Vector3();
@@ -72,7 +94,10 @@ function handWorld(rag, meta, side, out) {
   return out.copy(g).applyQuaternion(Q1.set(r.x, r.y, r.z, r.w)).add(V3.set(t.x, t.y, t.z));
 }
 
-const KCC_GROUPS = groups(GR.ME, GR.WORLD | GR.VEHICLE);
+const KCC_GROUPS = groups(GR.ME, GR.WORLD | GR.VEHICLE | GR.PAWN);
+// encimado con otro jugador: el controlador de Rapier no deja salir de una cápsula en la que ya está metido
+// (se traba para todos lados), así que mientras estamos encimados ese paso ignora a los jugadores
+const KCC_NO_PAWN = groups(GR.ME, GR.WORLD | GR.VEHICLE);
 // contra qué se frena la mano (no contra los objetos livianos: esos los empuja)
 const HAND_BLOCK = groups(0xffff, GR.WORLD | GR.REMOTE | GR.VEHICLE | GR.PROP);
 // Piernas: mientras está de pie no rozan el piso (como en Gang Beasts el cuerpo lo sostiene el equilibrio);
@@ -88,6 +113,77 @@ const VSEAT = {
 const ITEM_MASS = { beer: 0.45, smoke: 0.02, spray: 0.4 };
 // "articulación" de un objeto tomado firme (no hay resorte: la mano lleva el objeto, ver props.heldQuat)
 const HOLD_JOINT = { hold: true };
+// Agarrar a otro jugador (estilo Half Sword): nadie queda "apagado". El agarrado sigue de pie y en control;
+// la mano que lo tiene tira de él (lo arrastra, lo empuja, lo desequilibra: si pierde el equilibrio, cae).
+// Se zafa si el agarre se estira demasiado (corriendo para el otro lado). Tirado, lo arrastra la física.
+const PLAYER_GRIP = { player: true };
+const GRIP = {
+  slack: 0.1, // m de juego antes de tirar
+  k: 7, cap: 4.5, // tirón (1/s y m/s) donde se pelea
+  kSafe: 3.5, capSafe: 2.4, // afuera de las zonas de pelea: se puede tironear, no derribar
+  brk: 1.35, brkSafe: 0.95, // m: más estirado que esto, se zafa
+  tug: 3, // lo que el agarrado tira del que agarra cuando se aleja más que el brazo
+};
+// Agarrado de: qué articulaciones se giran para llevar esa parte hacia la mano que tira [art., fracción, tope rad]
+// (los brazos van aparte: la mano agarrada sigue a la del otro con el IK)
+const GRIP_CHAIN = {
+  0: [],
+  1: [[1, 0.55, 0.45]],
+  2: [[1, 0.35, 0.3], [2, 0.8, 0.7]],
+  7: [[7, 0.8, 1.2]], 8: [[7, 0.7, 1.1], [8, 0.6, 1.0]],
+  9: [[9, 0.8, 1.2]], 10: [[9, 0.7, 1.1], [10, 0.6, 1.0]],
+};
+// Lo mismo en MI pantalla cuando el agarrado es otro (la parte pegada a mi mano ya, sin esperar la red)
+const VIEW_CHAIN = {
+  0: [],
+  1: [[1, 0.8, 0.6]],
+  2: [[1, 0.45, 0.35], [2, 1, 0.8]],
+  3: [[3, 1, 1.8]], 4: [[3, 0.8, 1.6], [4, 1, 1.4]],
+  5: [[5, 1, 1.8]], 6: [[5, 0.8, 1.6], [6, 1, 1.4]],
+  7: [[7, 1, 1.3]], 8: [[7, 0.8, 1.2], [8, 1, 1.1]],
+  9: [[9, 1, 1.3]], 10: [[9, 0.8, 1.2], [10, 1, 1.1]],
+};
+// hasta dónde la parte se estira hacia la mano antes de que se corra el cuerpo entero (m, horizontal)
+const VIEW_REACH = [0.08, 0.12, 0.22, 0.35, 0.45, 0.35, 0.45, 0.3, 0.4, 0.3, 0.4];
+// subárbol de cada articulación (ella y lo que cuelga)
+const SUBTREE = Array.from({ length: 11 }, (_, j) => {
+  const out = [];
+  for (let k = 0; k < 11; k++) { let q = k; while (q >= 0 && q !== j) q = [-1, 0, 1, 1, 3, 1, 5, 0, 7, 0, 9][q]; if (q === j) out.push(k); }
+  return out;
+});
+const PV1 = new THREE.Vector3();
+const PV2 = new THREE.Vector3();
+const PV3 = new THREE.Vector3();
+const PQ1 = new THREE.Quaternion();
+const PQ2 = new THREE.Quaternion();
+const PQ3 = new THREE.Quaternion();
+// Sobre una pose de 11 partes (mundo): gira la articulación j (y lo que cuelga) para acercar el punto `local`
+// de la parte `part` a `target`, una fracción del giro necesario y con tope
+function posePull(pose, j, part, local, target, frac, maxAng) {
+  const t = pose[part], pj = pose[j];
+  const A = PV1.copy(local).applyQuaternion(PQ1.set(t[3], t[4], t[5], t[6])).add(PV2.set(t[0], t[1], t[2]));
+  const P = PV2.set(pj[0], pj[1], pj[2]);
+  const v1 = A.sub(P), v2 = PV3.copy(target).sub(P);
+  if (v1.lengthSq() < 1e-6 || v2.lengthSq() < 1e-6) return;
+  const q = PQ2.setFromUnitVectors(v1.normalize(), v2.normalize());
+  const ang = 2 * Math.acos(Math.min(1, Math.abs(q.w)));
+  if (ang < 1e-4) return;
+  const d = PQ3.identity().slerp(q, Math.min(ang * frac, maxAng) / ang);
+  for (const k of SUBTREE[j]) {
+    const o = pose[k];
+    if (k !== j) { PV1.set(o[0], o[1], o[2]).sub(P).applyQuaternion(d).add(P); o[0] = PV1.x; o[1] = PV1.y; o[2] = PV1.z; }
+    PQ1.set(o[3], o[4], o[5], o[6]).premultiply(d);
+    o[3] = PQ1.x; o[4] = PQ1.y; o[5] = PQ1.z; o[6] = PQ1.w;
+  }
+}
+
+const GH = new THREE.Vector3();
+const GA = new THREE.Vector3();
+const GD = new THREE.Vector3();
+const GT = new THREE.Vector3();
+const GS = new THREE.Vector3();
+const GT2 = new THREE.Vector3();
+const GQ = new THREE.Quaternion();
 // armas de metal (chispas y "clang" contra paredes); el resto suena a madera
 const METAL = new Set(['sword', 'machete', 'knife', 'axe', 'sledge', 'crowbar', 'pan', 'trashcan', 'barrel']);
 const BLADES = new Map(); // tipo -> puntos del filo (cache de bladePoints)
@@ -103,6 +199,9 @@ const SW2 = new THREE.Vector3();
 const SW3 = new THREE.Vector3();
 // contra qué barre el filo: cuerpos de otros, mundo, bolsa/vehículos y objetos sueltos
 const SWEEP_GROUPS = groups(0xffff, GR.WORLD | GR.REMOTE | GR.VEHICLE | GR.PROP);
+// cuerpos de otros jugadores (para que la mano no quede adentro)
+const BODY_Q = groups(0xffff, GR.REMOTE);
+const HAND_R = 0.05;
 
 // ====================================================================== LOCAL
 export class LocalPlayer {
@@ -113,7 +212,7 @@ export class LocalPlayer {
     this.char.root.name = 'local-player';
     G.scene.add(this.char.root);
     this.meta = this.char.meta;
-    this.rig = new PoseRig(this.meta.jointRest);
+    this.rig = new PoseRig(this.meta.jointRest, this.meta.clavPivot);
     this.equipment = new EquipmentView(G.scene);
 
     this.pos = spawnPoint();
@@ -164,7 +263,12 @@ export class LocalPlayer {
     };
     this.arm = { l: new Arm('l'), r: new Arm('r') };
     this.guard = false; // las dos manos arriba (click izq + der)
-    this.grabbedBy = new Map(); // "id:hand" -> joint (otro jugador me agarra)
+    this.grabbedBy = new Map(); // "id:mano" -> { id, side, part, anchor, hand, joint } (otro jugador me agarra)
+    this._gripV = new THREE.Vector2(); // tirón de los que me agarran (m/s)
+    this._gripBend = new THREE.Vector3(); // hacia dónde me llevan (inclina el cuerpo)
+    this._gripHead = false;
+    this._footVel = new THREE.Vector3(); // velocidad del pie derecho (la patada pega con el pie)
+    this._footPrev = null;
     this.gore = 0; // máscara de gore (partes cortadas, cabeza reventada, tripas)
     this.bleedRate = 0; // hp por segundo que se pierden desangrándose
     this.onEvent = null; // callback para FX/red: (type, data)
@@ -188,7 +292,11 @@ export class LocalPlayer {
     this.rag.build(this.rig.transforms());
     this.rag.setKinematic(true);
     this.physMode = 'anim'; // 'anim' de pie (animación + cajas de golpe) | 'rag' tirado (física)
-    this.flinch = new THREE.Vector3(); // respingo que decae (x: cabeceo, z: rolido)
+    this.react = new HitReact(); // reacción visible a los golpes (resortes; solo se dibuja, no viaja por la red)
+    this._rpose = []; // pose dibujada = pose de red + reacción
+    this.hitStop = 0; // s de "frenada" del brazo/pierna que acaba de pegar (el golpe se siente)
+    this._vocalT = -9;
+    this._vocalKind = null;
     this.lean = new THREE.Vector2(); // inclinación por aceleración (x) y giro (y): da peso
     this.push = new THREE.Vector2(); // empujón horizontal que decae (trastabillar)
     this.held = 0; // manos ajenas que me tienen agarrado
@@ -247,6 +355,7 @@ export class LocalPlayer {
 
   respawn() {
     this.releaseAll();
+    this._clearGrips(true);
     this.dead = false;
     this.deadT = 0;
     this.hp = 100;
@@ -258,18 +367,23 @@ export class LocalPlayer {
     this.emote = null;
     this.state = 'active';
     this.strength = 1;
-    this.char.clearDamage();
-    this.char.expr.dead = false;
+    // cuerpo limpio: sin heridas, sangre, partes cortadas ni tripas (y los demás también lo ven limpio)
+    G.gore?.detachFrom(this.rag.bodies[PART.TORSO]);
+    G.gore?.restore(this.char);
+    // cuerpo físico entero otra vez (lo cortado se había desenganchado)
     if (this.gore) {
-      G.gore?.detachFrom(this.rag.bodies[PART.TORSO]);
-      G.gore?.restore(this.char);
-      for (let k = 0; k < 11; k++) this.rag.setPartCollide(k, true);
+      this.rag.build(this.rig.transforms());
+      this.rag.setKinematic(true);
+      this._legsGround = undefined;
     }
+    this.char.resetBody();
+    this.char.expr.dead = false;
     this.gore = 0;
     this.bleedRate = 0;
     this.held = 0;
     this.push.set(0, 0);
-    this.flinch.set(0, 0, 0);
+    this.react.reset();
+    this.hitStop = 0;
     this.seat = null;
     this._toAnim(false);
     try { this.collider.setEnabled(true); } catch { /* */ }
@@ -283,6 +397,7 @@ export class LocalPlayer {
     try { this.collider.setEnabled(!this.vehicle && !this.seat); } catch { /* */ }
     if (this.vehicle) {
       this.releaseAll(true); // los objetos se sueltan; la birra y el faso siguen en la mano
+      this._clearGrips(true);
       this.state = 'driving';
       this.rag.setKinematic(true);
       this.rag.setGroups(GR.RAGDOLL, GR.PROP | GR.DEBRIS);
@@ -365,8 +480,23 @@ export class LocalPlayer {
     this.char.healDamage?.(opts.stopBleed ? 0.5 : 0.15);
   }
 
+  // Quejido / grito / estertor (lo oyen todos: el evento lleva la toma elegida). Cada golpe tiene su voz:
+  // la nueva corta a la anterior (en el audio van por el mismo "canal" de ese jugador)
+  _vocal(kind) {
+    const rank = (k) => ({ hurt: 0, scream: 1, death: 2 }[k] ?? -1);
+    // solo se evita el tartamudeo (dos en el mismo instante) y que un quejido corte un grito que recién empieza.
+    // Reloj real: los golpes llegan por la red aunque mi pestaña esté en segundo plano (ahí G.time no avanza)
+    const now = performance.now() / 1000;
+    if (now - this._vocalT < (rank(kind) < rank(this._vocalKind) ? 0.35 : 0.12) && rank(kind) <= rank(this._vocalKind)) return;
+    this._vocalT = now;
+    this._vocalKind = kind;
+    this.onEvent?.('vocal', { kind, vi: (Math.random() * 16) | 0 });
+  }
+
   die() {
     if (this.dead) return;
+    // sin cabeza no hay grito
+    if (!(this.gore & (GORE_HEAD_POP | (1 << PART.HEAD)))) this._vocal('death');
     if (this.seat) this.standUp();
     this.dead = true;
     this.deadT = 0;
@@ -399,14 +529,9 @@ export class LocalPlayer {
     if (vel) { this.push.x += vel.x; this.push.y += vel.z; }
   }
 
-  // respingo: la cabeza y el torso acusan el golpe sin perder el control
+  // respingo: el torso acusa un empujón sin perder el control
   _flinch(dir, s) {
-    const f = Math.min(0.5, 0.12 + s * 0.5);
-    const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
-    const along = dir.x * fx + dir.z * fz; // + = me empujan hacia adelante
-    const side = dir.x * fz - dir.z * fx;
-    this.flinch.x += along * f;
-    this.flinch.z += side * f;
+    this.react.hit(PART.TORSO, dir.x, dir.z, s, 0, 0, this.yaw);
   }
 
   // a ragdoll (física): conserva la velocidad de la animación y suma el empujón
@@ -417,6 +542,16 @@ export class LocalPlayer {
     }
     this.physMode = 'rag';
     this.rag.setKinematic(false, vel);
+    // sin empujón (desmayo, desangrado, parado quieto) el cuerpo quedaba en equilibrio como una estatua:
+    // las rodillas ceden y el torso se va para algún lado
+    const sp = vel ? Math.hypot(vel.x, vel.z) : 0;
+    if (sp < 0.8) {
+      const a = Math.random() * Math.PI * 2, fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
+      const dx = Math.cos(a) * 0.5 + fx * 0.6, dz = Math.sin(a) * 0.5 + fz * 0.6;
+      const t = this.rag.bodies[PART.TORSO], h = this.rag.bodies[PART.HEAD];
+      for (const b of [t, h]) { const v = b.linvel(); b.setLinvel({ x: v.x + dx * 1.4, y: v.y, z: v.z + dz * 1.4 }, true); }
+      for (const k of [PART.SHIN_L, PART.SHIN_R]) { const b = this.rag.bodies[k], v = b.linvel(); b.setLinvel({ x: v.x - fx * 0.9, y: v.y, z: v.z - fz * 0.9 }, true); }
+    }
   }
 
   // a animación: el cuerpo vuelve a ser cinemático; lo visible pasa de la pose tirada a la animada
@@ -449,16 +584,14 @@ export class LocalPlayer {
 
   // ¿Esta cosa que me toca viene a pegarme? Devuelve { src, by, kind, thr, massK } o null
   _threat(info, i) {
-    if (info.kind === 'remote') {
-      const rp = info.ref;
-      if (!rp?.proxy || !rp.isArmedPart?.(info.part ?? 0)) return null;
-      return { src: 'remote', by: info.id, kind: 'blunt', thr: THR.fist, massK: 1 };
-    }
+    // piñas, patadas, armas y cosas revoleadas por OTRO jugador: las avisa él (mide su golpe sin el retraso
+    // de la red) y acá se validan en hitClaim. Detectarlas también acá duplicaba o debilitaba el golpe.
+    if (info.kind === 'remote') return null;
     if (info.kind === 'prop' && info.ref) {
       const p = info.ref;
       if (p.heldBy === G.myId) return null; // mis objetos en mano
       const d = G.props?.dangerOf?.(p);
-      if (!d) return null;
+      if (!d || d.by) return null;
       return {
         src: 'prop', by: d.by, kind: CUT_PROPS.has(p.type) ? 'cut' : 'blunt', weapon: p.type,
         thr: d.thrown ? THR.thrown : THR.prop, massK: clamp(Math.sqrt(p.mass || 1) / 1.1, 0.4, 2.4),
@@ -542,10 +675,14 @@ export class LocalPlayer {
         n.normalize();
         // mis puños/pies/cabeza pegándole a otro: aviso al otro (él decide el daño) y suena
         if (info.kind === 'remote' && this._attacking(i)) {
-          const mv = this.rag.partVel(i, V2);
+          const leg = i >= PART.THIGH_L, head = i === PART.HEAD;
+          // la patada pega con el pie (la pantorrilla se mueve desde la rodilla: medía la mitad)
+          const mv = leg ? this._footVel : this.rag.partVel(i, V2);
           const sp = -mv.dot(n); // mi parte yendo hacia él
-          if (sp > 2.2) this._claimHit(info.id, info.part ?? 0, sp, c.translation(), i === PART.HEAD ? null : this._weaponOf(i));
-          if (!(i === PART.HEAD && this.action === 'headbutt')) return;
+          const a = leg ? 'k' : head ? 'h' : null;
+          const w = a ? null : this._weaponOf(i);
+          if (sp > (a === 'h' ? 1.2 : 2)) this._claimHit(info.id, info.part ?? 0, sp, c.translation(), w, a || (w ? 'w' : 'p'));
+          if (!head) return;
         }
         if (info.kind === 'prop' && info.ref && !info.ref.dynamic && !info.ref.heldBy) { G.props?.touch(info.ref); return; }
         const hit = this._threat(info, i);
@@ -576,7 +713,10 @@ export class LocalPlayer {
 
   // gravedad de un golpe según qué pega y a qué velocidad
   _severity(hit, speed) {
-    if (hit.src === 'remote') return clamp((speed - hit.thr) / 4.5, 0, 1.4); // puño / patada / cabezazo
+    if (hit.src === 'remote') {
+      const b = BODY_HITS[hit.body] || BODY_HITS.p; // piña / patada / cabezazo
+      return clamp((speed - hit.thr) / b.span, 0, b.cap);
+    }
     return clamp(((speed - hit.thr) / hit.thr) * hit.massK, 0, 3);
   }
 
@@ -584,34 +724,73 @@ export class LocalPlayer {
   _bump(ov, n) {
     const sp = ov.dot(n);
     if (sp < 3.2 || this.state !== 'active') return;
-    this.push.x += n.x * Math.min(1.6, sp * 0.25);
-    this.push.y += n.z * Math.min(1.6, sp * 0.25);
-    this._flinch(n, 0.15);
+    // presupuesto de empujón: se recarga de a poco, así varios contactos a la vez no se suman
+    const amt = Math.min(this._bumpBudget ?? 1.2, Math.min(1.2, sp * 0.2));
+    if (amt <= 0.05) return;
+    this._bumpBudget = (this._bumpBudget ?? 1.2) - amt;
+    this.push.x += n.x * amt;
+    this.push.y += n.z * amt;
+    this._flinch(n, 0.12);
+  }
+
+  // Otros cuerpos de pie: nadie atraviesa a nadie (las cápsulas chocan) y si alguien te lleva por delante
+  // te corre un poco, suave (antes la repulsión era exagerada y salían volando los dos)
+  _crowd(dt) {
+    this._bumpBudget = Math.min(1.2, (this._bumpBudget ?? 1.2) + dt * 1.5);
+    const sep = this._sepV || (this._sepV = new THREE.Vector2());
+    sep.set(0, 0);
+    const ns = this._sepN || (this._sepN = []);
+    ns.length = 0;
+    for (const rp of G.players.values()) {
+      if (!rp.standing) continue;
+      // donde está SU CUERPO dibujado (ahí está su cápsula), no la última posición que llegó por la red
+      const bp = rp.bodyPos || rp.pos;
+      let dx = this.pos.x - bp.x, dz = this.pos.z - bp.z;
+      let d = Math.hypot(dx, dz);
+      const R = CAPSULE_RADIUS * 2 + 0.04;
+      if (d > R + 0.08 || Math.abs(this.pos.y - rp.pos.y) > 1.2) continue;
+      if (d < 1e-3) { dx = -Math.sin(this.yaw); dz = -Math.cos(this.yaw); d = 1; } // justo encima: para atrás
+      const nx = dx / d, nz = dz / d;
+      // se acerca hacia mí: me empuja con lo que trae (en equilibrio, más o menos a su velocidad; con tope)
+      const vIn = Math.min(4, -(rp.vel.x * nx + rp.vel.z * nz));
+      const along = this.push.x * nx + this.push.y * nz;
+      if (vIn > 0.3 && along < 3) { this.push.x += nx * vIn * 4 * dt; this.push.y += nz * vIn * 4 * dt; }
+      // encimados (la red llegó tarde, alguien apareció encima): separar YA, no de a poco
+      if (d < R) {
+        const v = Math.min(3.5, (R - d) * 12);
+        sep.x += nx * v; sep.y += nz * v;
+        ns.push(nx, nz);
+      }
+    }
   }
 
   // Aviso al otro jugador de que mi mano/pie/arma le pegó (él valida y decide el daño)
-  _claimHit(id, part, speed, pt, weapon = null) {
+  // a: 'p' piña, 'k' patada, 'h' cabezazo, 't' revoleado (con weapon = tipo de objeto), 'w' arma en la mano
+  _claimHit(id, part, speed, pt, weapon = null, a = weapon ? 'w' : 'p') {
     const now = performance.now();
     const key = id * 16 + part;
     if (now - (this.claimCd.get(key) || 0) < 280) return;
     this.claimCd.set(key, now);
     if (this.claimCd.size > 64) this.claimCd.clear();
-    this.onEvent?.('hitdealt', { id, part, dv: speed, x: pt.x, y: pt.y, z: pt.z, w: weapon || 0 });
+    this.onEvent?.('hitdealt', { id, part, dv: speed, x: pt.x, y: pt.y, z: pt.z, w: weapon || 0, a });
   }
 
   // Aviso de otro jugador: "te pegué". Se valida acá (distancia, que esté atacando, zona PvP en _impact)
   hitClaim(m) {
     const rp = G.players.get(m.id);
     if (!rp || this.dead || this.state === 'driving') return;
-    if (rp.pos.distanceTo(this.pos) > 3.4) return;
+    if (rp.pos.distanceTo(this.pos) > 22) return;
     const now = performance.now();
     if (now - (this.hitBy.get(m.id) || 0) < 250) return; // ya lo conté por contacto
     const part = clamp(m.p | 0, 0, 10);
     const speed = clamp(+m.s || 0, 0, 16);
     const weapon = m.w ? defOf(m.w) : null;
+    const a = BODY_HITS[m.a] ? m.a : 'p';
+    // revoleado de lejos: el que lo tiró puede estar más lejos (hasta ~20 m)
+    if (m.a !== 't' && rp.pos.distanceTo(this.pos) > 3.4) return;
     const hit = weapon
-      ? { src: 'prop', by: m.id, kind: weapon.kind === 'cut' ? 'cut' : 'blunt', weapon: m.w, thr: THR.prop, massK: clamp(Math.sqrt(weapon.mass || 1) / 1.1, 0.4, 2.4) }
-      : { src: 'remote', by: m.id, kind: 'blunt', thr: THR.fist, massK: 1 };
+      ? { src: 'prop', by: m.id, kind: weapon.kind === 'cut' && m.a !== 't' ? 'cut' : 'blunt', weapon: m.w, thr: m.a === 't' ? THR.thrown : THR.prop, massK: clamp(Math.sqrt(weapon.mass || 1) / 1.1, 0.4, 2.4), thrown: m.a === 't' }
+      : { src: 'remote', by: m.id, kind: 'blunt', thr: BODY_HITS[a].thr, massK: 1, body: a };
     if (speed < hit.thr) return;
     this.hitBy.set(m.id, now);
     const center = this._partCenter(part, new THREE.Vector3());
@@ -661,8 +840,9 @@ export class LocalPlayer {
       if (-(normal.x * fx + normal.z * fz) > 0.2) { blocked = true; s *= part >= PART.UARM_L ? 0.15 : 0.35; }
     }
     const kind = hit.kind || 'blunt';
-    const base = hit.src === 'remote' ? 11 : hit.src === 'vehicle' ? 36 : 22;
-    const dmg = harmless ? 0 : s * base * PART_DMG[part] * (kind === 'cut' ? 1.4 : kind === 'mulch' ? 3.5 : 1);
+    const prof = hit.src === 'remote' ? BODY_HITS[hit.body] || BODY_HITS.p : null;
+    const base = prof ? prof.base : hit.src === 'vehicle' ? 36 : 22;
+    const dmg = harmless ? 0 : s * base * PART_DMG[part] * (kind === 'cut' ? 1.25 : kind === 'mulch' ? 3.5 : 1);
     if (dmg > 0) {
       this.damage(dmg, by);
       if (kind === 'cut') this.blood = Math.max(0, this.blood - s * 6);
@@ -686,27 +866,35 @@ export class LocalPlayer {
     // ya en el piso: un golpe fuerte lo deja un poco más, pero no se encadena para siempre
     if (this.physMode === 'rag') {
       if (this.state === 'ko' && s > 1 && hit.src !== 'world') this.koT = Math.max(this.koT, 1.2);
+      if (dmg > 0 && s > 0.5 && hit.src !== 'world') this._vocal('hurt');
       return;
     }
-    // sentado: un buen golpe te saca de la silla
-    if (this.state === 'seated') {
-      if (harmless || s < 0.6) { this._flinch(V1.set(normal.x, 0, normal.z).normalize(), s); return; }
-      this.standUp();
-    }
-    // reacción (estilo GTA): respingo, trastabillar o caer como ragdoll
+    // reacción visible (resortes): la parte golpeada se va con el golpe; los demás la ven por el evento
     const dir = V1.set(normal.x, 0, normal.z);
     if (dir.lengthSq() < 1e-4) dir.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     dir.normalize();
-    if (!harmless) this.balance -= dmg * (part === PART.HEAD ? 2.6 : 1.4) + s * 12;
+    if (hit.src !== 'world') this.react.hit(part, dir.x, dir.z, s, point.x - this.pos.x, point.z - this.pos.z, this.yaw);
+    // sentado: un buen golpe te saca de la silla
+    if (this.state === 'seated') {
+      if (harmless || s < 0.6) { if (dmg > 0 && s > 0.3) this._vocal('hurt'); return; }
+      this.standUp();
+    }
+    const bal = prof?.bal ?? 1.2, push = prof?.push ?? 1.2;
+    if (!harmless) this.balance -= (dmg * (part === PART.HEAD ? 2.2 : 1.2) + s * 12) * bal;
     const fall = (!blocked && !harmless && part === PART.HEAD && s > 1.35) || s > 2.1 || (hit.src === 'vehicle' && s > 0.5) || this.balance <= 0;
     if (fall) {
       this.balance = 55;
-      this.knockout(1.8 + s * 1.2, by, V2.copy(dir).multiplyScalar(2 + s * 3).setY(1 + s * 0.8));
-    } else if (s > 0.5 && !blocked) this.stun(0.25 + s * 0.3, V2.copy(dir).multiplyScalar(1.8 + s * 2.6));
-    else {
-      this._flinch(dir, s * (blocked ? 0.4 : 1));
-      if (blocked) { this.push.x += dir.x * 0.8; this.push.y += dir.z * 0.8; }
+      if (!harmless) this._vocal('scream');
+      // cae con el golpe, sin salir volando (antes una piña que noqueaba lo mandaba a 4 m)
+      this.knockout(1.8 + s * 1.2, by, V2.copy(dir).multiplyScalar((1.2 + s * 1.8) * push).setY(0.6 + s * 0.5));
+      return;
     }
+    if (s > 0.5 && !blocked) this.stun(0.25 + s * 0.3, V2.copy(dir).multiplyScalar((1.8 + s * 2.6) * push));
+    else if (blocked) { this.push.x += dir.x * 0.8; this.push.y += dir.z * 0.8; }
+    // un golpe de verdad te hace soltar a quien tenías agarrado
+    if (s > 0.7 && !blocked && !harmless) for (const sd of ['l', 'r']) if (this.hands[sd].joint === PLAYER_GRIP) this.release(sd, false);
+    // cada golpe que entra tiene su quejido (fuerte: grito); un empujón fuera de la pelea, un quejido igual
+    if (!blocked && (dmg > 0 || s > 0.15)) this._vocal(s > 1.25 && dmg > 0 ? 'scream' : 'hurt');
   }
 
   // Aplica un evento de gore al jugador local (visual + consecuencias). bit: máscara de gore
@@ -716,7 +904,7 @@ export class LocalPlayer {
     const gore = G.gore;
     if (bit === GORE_HEAD_POP) {
       gore?.explodeHead(this.char, { vel });
-      for (const k of branchOf(PART.HEAD)) this.rag.setPartCollide(k, false);
+      this.rag.detachBranch(PART.HEAD, branchOf(PART.HEAD));
       if (by) this.lastHitBy = by;
       this.die();
       return;
@@ -730,14 +918,17 @@ export class LocalPlayer {
     }
     const part = Math.log2(bit) | 0;
     gore?.sever(this.char, part, { vel });
-    for (const k of branchOf(part)) this.rag.setPartCollide(k, false);
+    this.rag.detachBranch(part, branchOf(part));
     if (part === PART.HEAD) { if (by) this.lastHitBy = by; this.die(); return; }
     // sin mano no se agarra nada
     if (part === PART.UARM_L || part === PART.FARM_L) this.release('l', false);
     if (part === PART.UARM_R || part === PART.FARM_R) this.release('r', false);
-    this.bleedRate += part >= PART.THIGH_L ? 6 : 3.5;
-    // sin pierna no hay equilibrio: al piso hasta desangrarse (o reaparecer)
-    if (part >= PART.THIGH_L) this.knockout(60, by);
+    // se desangra, pero el chorro se va cortando solo (bleedRate baja con el tiempo): se puede seguir jugando
+    // sin un brazo o rengueando sin una pierna. Otra herida grave o poca vida sí te pueden terminar
+    this.bleedRate += part >= PART.THIGH_L ? 2.4 : 1.7;
+    this._vocal('scream');
+    // sin pierna: al piso un rato; después se levanta y rengea
+    if (part >= PART.THIGH_L) this.knockout(3.5, by);
     else this.stun(0.8);
   }
 
@@ -809,8 +1000,6 @@ export class LocalPlayer {
     if (pr && (!best || pr.score < best.score)) best = { kind: 'prop', prop: pr.prop, score: pr.score };
     if (!best) return false;
     const h = this.hands[side];
-    const fore = this.rag.bodies[side === 'l' ? PART.FARM_L : PART.FARM_R];
-    const g = this.meta.gripLocal[side];
     if (best.kind === 'prop') {
       // firme en la mano (sin resorte: el arma no cuelga ni se bambolea). Si ya está en la otra mano,
       // ahora va con las dos (la que lo agarró primero manda y esta se pone en el mango).
@@ -828,18 +1017,41 @@ export class LocalPlayer {
       this.onEvent?.('grab', { side, prop: p.id });
       return true;
     }
-    // agarrar a otro jugador: me cuelgo de su cuerpo (proxy) y le aviso para que él sienta el tirón
+    // agarrar a otro jugador: mi mano se queda en ese punto de su cuerpo y le aviso; él siente el tirón
+    // (su cliente lo mueve hacia mi mano). Él sigue en control: puede resistir, pegarme o zafarse.
     const rp = best.rp;
     const pb = rp.proxy.bodies[best.part];
     const pt = pb.translation(), prr = pb.rotation();
     M1.compose(V1.set(pt.x, pt.y, pt.z), Q1.set(prr.x, prr.y, prr.z, prr.w), V2.set(1, 1, 1)).invert();
+    // el punto: donde está la mano, pero pegado a la superficie de la parte (no adentro ni en el aire)
     const a2 = hp.clone().applyMatrix4(M1);
-    const data = RAPIER.JointData.spring(0.05, 260, 26, { x: g.x, y: g.y, z: g.z }, { x: a2.x, y: a2.y, z: a2.z });
-    h.joint = G.phys.world.createImpulseJoint(data, fore, pb, true);
+    const cap = rp.char.meta.caps?.[best.part];
+    if (cap) {
+      const ab = V3.copy(cap.b).sub(cap.a), t = clamp(V4.copy(a2).sub(cap.a).dot(ab) / Math.max(1e-6, ab.lengthSq()), 0, 1);
+      const axis = V5.copy(cap.a).addScaledVector(ab, t), off = V4.copy(a2).sub(axis);
+      a2.copy(axis).addScaledVector(off.lengthSq() > 1e-8 ? off.normalize() : off.set(0, 0, 1), cap.r * 0.9);
+    }
+    h.joint = PLAYER_GRIP;
     h.player = rp.id;
     h.part = best.part;
+    h.anchor = a2;
     this.onEvent?.('grabplayer', { side, to: rp.id, part: best.part, a: [r3(a2.x), r3(a2.y), r3(a2.z)] });
     return true;
+  }
+
+  // Punto donde tengo agarrado a otro (mundo) o null si ya no está
+  _gripAnchor(h, out) {
+    const rp = G.players.get(h.player);
+    const b = rp?.proxy?.alive ? rp.proxy.bodies[h.part] : null;
+    if (!b || !h.anchor) return null;
+    const t = b.translation(), r = b.rotation();
+    return out.copy(h.anchor).applyQuaternion(GQ.set(r.x, r.y, r.z, r.w)).add(GS.set(t.x, t.y, t.z));
+  }
+
+  // El otro se zafó (me avisa su cliente)
+  gripLost(id, side) {
+    const h = this.hands[side];
+    if (h?.joint === PLAYER_GRIP && h.player === id) this.release(side, false);
   }
 
   release(side, throwIt = true) {
@@ -852,8 +1064,9 @@ export class LocalPlayer {
       return true;
     }
     if (!h.joint) return false;
-    if (h.joint !== HOLD_JOINT) { try { G.phys.world.removeImpulseJoint(h.joint, true); } catch { /* */ } }
+    if (h.joint !== HOLD_JOINT && h.joint !== PLAYER_GRIP) { try { G.phys.world.removeImpulseJoint(h.joint, true); } catch { /* */ } }
     h.joint = null;
+    h.anchor = null;
     if (h.prop) {
       const id = h.prop;
       h.prop = 0;
@@ -867,7 +1080,8 @@ export class LocalPlayer {
       this.onEvent?.('release', { side, prop: id });
     }
     if (h.player) {
-      this.onEvent?.('releaseplayer', { side, to: h.player });
+      const v = this.handVelocity(side);
+      this.onEvent?.('releaseplayer', { side, to: h.player, v: [r3(v.x), r3(v.y), r3(v.z)] });
       h.player = 0;
       h.part = -1;
     }
@@ -881,41 +1095,158 @@ export class LocalPlayer {
       if (h.joint) this.release(side, false);
       else if (!keepItems) h.item = null;
     }
-    for (const j of this.grabbedBy.values()) { try { G.phys.world.removeImpulseJoint(j, true); } catch { /* */ } }
-    this.grabbedBy.clear();
+  }
+
+  // Los que me agarran me sueltan (reaparecí, me subí a algo). notify: avisarles
+  _clearGrips(notify = false) {
+    for (const [key, g] of [...this.grabbedBy]) {
+      this._dropGrip(key);
+      if (notify) this.onEvent?.('gripbreak', { to: g.id, side: g.side });
+    }
     this.held = 0;
+  }
+  _dropGrip(key) {
+    const g = this.grabbedBy.get(key);
+    if (g?.joint) { try { G.phys.world.removeImpulseJoint(g.joint, true); } catch { /* */ } }
+    this.grabbedBy.delete(key);
+    this.held = this.grabbedBy.size;
   }
 
   handVelocity(side) {
     return this.rag.partVel(side === 'l' ? PART.FARM_L : PART.FARM_R, new THREE.Vector3());
   }
 
-  // Otro jugador me agarró: su mano (proxy cinemático) tira de mi parte
-  grabbedByRemote(id, side, part, anchor, on) {
+  // Otro jugador me agarró: su mano tira de esa parte de mi cuerpo. De pie sigo en control (camino, pego,
+  // resisto); si me saca el equilibrio me caigo, y tirado me arrastra la física (resorte a su mano).
+  grabbedByRemote(id, side, part, anchor, on, vel = null) {
     const key = id + ':' + side;
-    const old = this.grabbedBy.get(key);
-    if (old) {
-      try { G.phys.world.removeImpulseJoint(old, true); } catch { /* */ }
-      this.grabbedBy.delete(key);
-      this.held = Math.max(0, this.held - 1);
+    const had = this.grabbedBy.has(key);
+    if (had) this._dropGrip(key);
+    if (!on) {
+      // me soltó tironeando: salgo revoleado (donde se pelea, al piso si fue fuerte; si no, trastabillo)
+      const v = Array.isArray(vel) ? V5.set(+vel[0] || 0, +vel[1] || 0, +vel[2] || 0) : null;
+      const sp = v ? v.length() : 0;
+      if (had && sp > 3.2 && !this.dead && this.physMode === 'anim' && this.state !== 'seated' && this.state !== 'driving') {
+        const pvp = G.settings.desmadre || isPvpAt(this.pos.x, this.pos.z);
+        if (sp > 5 && pvp) { this._vocal('scream'); this.knockout(1.2 + sp * 0.08, id, v.multiplyScalar(0.85).setY(Math.max(1, v.y * 0.85 + 1))); }
+        else this.stun(0.35, V2.set(v.x, 0, v.z).multiplyScalar(pvp ? 0.8 : 0.45));
+      }
+      return;
     }
-    if (!on) return;
     const rp = G.players.get(id);
-    if (!rp?.proxy?.alive || this.state === 'driving') return;
+    if (!rp?.proxy?.alive || this.state === 'driving' || !Array.isArray(anchor)) return;
     if (this.seat) this.standUp();
-    const fore = rp.proxy.bodies[side === 'l' ? PART.FARM_L : PART.FARM_R];
-    const g = rp.char.meta.gripLocal[side];
-    const mine = this.rag.bodies[part];
-    if (!fore || !mine) return;
-    // me tienen: el cuerpo pasa a física (me arrastran, me revolean); sin la mano ajena me levanto
-    this.held += 1;
-    if (this.state !== 'dead') {
-      this.state = 'ko';
-      this.koT = Math.max(this.koT, 0.6);
-      this._toRag();
+    this.grabbedBy.set(key, {
+      id, side: side === 'l' ? 'l' : 'r', part: clamp(part | 0, 0, 10), joint: null, hand: new THREE.Vector3(),
+      anchor: new THREE.Vector3(+anchor[0] || 0, +anchor[1] || 0, +anchor[2] || 0),
+    });
+    this.held = this.grabbedBy.size;
+  }
+
+  // Cada paso: lo que me hacen los que me agarran (de pie: tirón, desequilibrio, zafarse; tirado: resorte)
+  _gripPull(dt) {
+    this._gripV.set(0, 0);
+    this._gripHead = false;
+    if (!this.grabbedBy.size) { this._gripBend.multiplyScalar(Math.exp(-8 * dt)); return; }
+    const pvp = G.settings.desmadre || isPvpAt(this.pos.x, this.pos.z);
+    const k = pvp ? GRIP.k : GRIP.kSafe, cap = pvp ? GRIP.cap : GRIP.capSafe, brk = pvp ? GRIP.brk : GRIP.brkSafe;
+    const up = this.physMode === 'anim' && (this.state === 'active' || this.state === 'stun' || this.state === 'getup');
+    const bend = GT.set(0, 0, 0);
+    let by = 0;
+    for (const [key, g] of [...this.grabbedBy]) {
+      const rp = G.players.get(g.id);
+      if (!rp?.proxy?.alive) { this._dropGrip(key); continue; }
+      handWorld(rp.proxy, rp.char.meta, g.side, g.hand);
+      // tirado: me arrastra la física (resorte entre su mano y mi parte)
+      this._gripJoint(g, rp, this.physMode === 'rag');
+      if (!up) continue;
+      const b = this.rag.bodies[g.part];
+      const t = b.translation(), r = b.rotation();
+      const anc = GA.copy(g.anchor).applyQuaternion(GQ.set(r.x, r.y, r.z, r.w)).add(GS.set(t.x, t.y, t.z));
+      const d = GD.copy(g.hand).sub(anc);
+      const dist = d.length();
+      if (dist > brk) {
+        // me zafé: se estiró demasiado
+        this._dropGrip(key);
+        this.onEvent?.('gripbreak', { to: g.id, side: g.side });
+        continue;
+      }
+      // tirón horizontal hacia su mano (con tope): camina para el otro lado y resisto, corro y me zafo
+      const dh = Math.hypot(d.x, d.z);
+      if (dh > GRIP.slack) {
+        const v = Math.min(cap, (dh - GRIP.slack) * k);
+        this._gripV.x += (d.x / dh) * v;
+        this._gripV.y += (d.z / dh) * v;
+      }
+      // donde se pelea: los tirones fuertes (o levantarme una pierna) me sacan el equilibrio
+      if (pvp) {
+        // tirón: la mano respecto de SU cuerpo (caminar arrastrándome no cuenta; sacudir el brazo sí)
+        const fv = rp.proxy.partVel(g.side === 'l' ? PART.FARM_L : PART.FARM_R, GS).sub(rp.proxy.partVel(PART.PELVIS, GT2));
+        const yank = dist > 0.05 ? fv.dot(d) / dist : 0;
+        const leg = g.part >= PART.THIGH_L;
+        const w = leg ? 2 : g.part === PART.HEAD ? 1.4 : 1;
+        // cuánto subió la mano desde donde agarró (una pierna levantada te deja en una pata)
+        if (g.baseY === undefined) g.baseY = g.hand.y - this.pos.y;
+        const up = g.hand.y - this.pos.y - g.baseY;
+        const jerk = Math.max(0, yank - 2.2) * 80; // tirón seco (arrastrar no tira)
+        const lift = leg ? Math.max(0, up - 0.12) * 300 : 0; // levantarte una pierna: al piso enseguida
+        const down = g.part === PART.HEAD ? Math.max(0, -up - 0.25) * 90 : 0; // bajarte la cabeza de un tirón
+        void w;
+        this.balance -= (jerk + lift + down) * dt;
+        by = g.id;
+      }
+      // el cuerpo se va hacia la mano que tira (los brazos van por su lado: la mano va a la del otro)
+      if (g.part <= PART.HEAD) { bend.add(d); if (g.part === PART.HEAD) this._gripHead = true; }
     }
-    const data = RAPIER.JointData.spring(0.05, 700, 45, { x: g.x, y: g.y, z: g.z }, { x: anchor[0], y: anchor[1], z: anchor[2] });
-    this.grabbedBy.set(key, G.phys.world.createImpulseJoint(data, fore, mine, true));
+    const len = Math.hypot(this._gripV.x, this._gripV.y);
+    if (len > cap) this._gripV.multiplyScalar(cap / len);
+    this._gripBend.lerp(bend, 1 - Math.exp(-10 * dt));
+    if (up && by && this.balance <= 0) {
+      // derribado
+      this.balance = 55;
+      this._vocal('scream');
+      this.knockout(1.4 + Math.random() * 0.6, by, V5.set(this._gripV.x * 0.8, 1.2, this._gripV.y * 0.8));
+    }
+  }
+
+  _gripJoint(g, rp, on) {
+    if (on && !g.joint) {
+      const fore = rp.proxy.bodies[g.side === 'l' ? PART.FARM_L : PART.FARM_R], mine = this.rag.bodies[g.part];
+      if (!fore || !mine) return;
+      const gl = rp.char.meta.gripLocal[g.side];
+      // firme: tiene que poder arrastrar ~70 kg tirados contra el rozamiento del piso
+      const data = RAPIER.JointData.spring(0.05, 1800, 90, { x: gl.x, y: gl.y, z: gl.z }, { x: g.anchor.x, y: g.anchor.y, z: g.anchor.z });
+      g.joint = G.phys.world.createImpulseJoint(data, fore, mine, true);
+    } else if (!on && g.joint) {
+      try { G.phys.world.removeImpulseJoint(g.joint, true); } catch { /* */ }
+      g.joint = null;
+    }
+  }
+
+  // Tengo a alguien agarrado: si se aleja más que mi brazo, me tira a mí (arrastrar pesa); muy lejos, se escapa
+  _gripTug(dt) {
+    for (const side of ['l', 'r']) {
+      const h = this.hands[side];
+      if (h.joint !== PLAYER_GRIP) continue;
+      const anc = this._gripAnchor(h, GA);
+      if (!anc) { this.release(side, false); continue; }
+      const sh = this.rig.shoulderWorld(side, GS);
+      const L = this._armLen(side);
+      const d = anc.distanceTo(sh);
+      if (d > L + 1.2) { this.release(side, false); continue; }
+      if (d > L && (this.state === 'active' || this.state === 'stun')) {
+        const k = Math.min(2.2, (d - L) * GRIP.tug) * dt * 4.5;
+        this.push.x += ((anc.x - sh.x) / d) * k;
+        this.push.y += ((anc.z - sh.z) / d) * k;
+      }
+    }
+  }
+
+  // Mano que me tienen agarrada del brazo (la del otro, en mundo) o null
+  _armHeld(side) {
+    const a = side === 'l' ? PART.UARM_L : PART.UARM_R, b = side === 'l' ? PART.FARM_L : PART.FARM_R;
+    for (const g of this.grabbedBy.values()) if (g.part === a || g.part === b) return g.hand;
+    return null;
   }
 
   // Ítem consumible en la mano derecha (1 birra, 2 faso, 3 aerosol)
@@ -1178,9 +1509,15 @@ export class LocalPlayer {
 
   // Lo que se ve: el objeto a la pose dibujada de la mano (sin el tironeo del paso de física)
   _showHeld() {
+    const ch = this.char;
     for (const { p, side, two } of this._heldList()) {
       this._posHeld(p, side, two, 0);
       G.props.showHeld(p, HP, HQ);
+      // la muñeca acomoda la mano al mango (y la otra mano también, si va con las dos)
+      if (ch.gripAxis?.[side] && handleAxis(p.type, HQ, ch.gripAxis[side])) {
+        ch.gripOn[side] = true;
+        if (two) { const o = side === 'l' ? 'r' : 'l'; ch.gripAxis[o].copy(ch.gripAxis[side]); ch.gripOn[o] = true; }
+      }
     }
   }
 
@@ -1282,7 +1619,7 @@ export class LocalPlayer {
       const rest = this._wheelLocal(side, WHEEL[side]) || this._tableLocal(side, WHEEL[side]);
       const ctx = {
         L,
-        mass: this._heldMass(side),
+        mass: this._heldMass(side) + (this.hands[side].joint === PLAYER_GRIP ? 9 : 0), // tener a alguien pesa
         mouth: this._mouthLocal(side, MOUTH[side]),
         wheel: a.script ? null : rest,
         rest,
@@ -1301,10 +1638,22 @@ export class LocalPlayer {
           } else if (p.hold.side === side) ctx.ready = this._readyLocal(side, p, this.hands[side === 'l' ? 'r' : 'l'].prop === p.id, READY[side]);
         }
       }
+      if (hd.joint === PLAYER_GRIP && canUse && !a.on && !a.script) {
+        // no lo estoy moviendo con el mouse: la mano sigue en el punto que agarré
+        const anc = this._gripAnchor(hd, GA);
+        if (anc) { ctx.wheel = WHEEL[side].copy(anc).sub(this.rig.shoulderWorld(side, V3)).applyAxisAngle(UP, -this.yaw); ctx.grip = true; ctx.guard = false; }
+      }
+      const tugged = this._armHeld(side);
+      if (tugged) {
+        // me tienen del brazo: va hacia la mano del otro (con ese brazo no pego)
+        a.on = false; a.script = null; ctx.guard = false; ctx.grip = true;
+        ctx.wheel = WHEEL[side].copy(tugged).sub(this.rig.shoulderWorld(side, V3)).applyAxisAngle(UP, -this.yaw);
+      }
       if (spray) { a.on = false; a.script = null; ctx.wheel = this._sprayLocal(side, WHEEL[side]); }
-      stepArm(a, dt, ctx);
+      stepArm(a, this.hitStop > 0 && G.time - a.hitT < 0.2 ? dt * 0.12 : dt, ctx);
       if (spray) a.on = true;
       this._blockHand(side, a);
+      this._handOutOfBodies(side, a);
       // revoleo: la mano suelta al final del envión
       if (a.script === 'throw' && !a.released && a.t >= 0.2) {
         a.released = true;
@@ -1335,7 +1684,8 @@ export class LocalPlayer {
     if (!hit || hit.dist < 0.005) return;
     const body = hit.info?.kind === 'remote';
     const bag = hit.info?.kind === 'bag';
-    const stop = Math.max(0, Math.min(len, hit.dist + (body ? 0.035 : -R)));
+    // contra un cuerpo la mano queda apoyada en la piel (antes entraba 3.5 cm y desde adentro ya no chocaba más)
+    const stop = Math.max(0, Math.min(len, hit.dist - (body ? R * 0.6 : R)));
     to.copy(from).addScaledVector(d, stop);
     a.p.copy(to).sub(sh).applyAxisAngle(UP, -this.yaw);
     const dl = V5.copy(d).applyAxisAngle(UP, -this.yaw);
@@ -1357,6 +1707,32 @@ export class LocalPlayer {
     }
   }
 
+  // La mano no queda adentro de otro cuerpo: moviéndola despacio el rayo no ve el choque (arranca apoyada o
+  // adentro) y se podía meter la mano en la cara de otro. Se la saca a la superficie y se frena lo que empuja.
+  _handOutOfBodies(side, a) {
+    if (a.w < 0.3) return;
+    const sh = this.rig.shoulderWorld(side, V1);
+    const to = V3.copy(a.p).applyAxisAngle(UP, this.yaw).add(sh);
+    const pr = G.phys.nearest?.(to.x, to.y, to.z, BODY_Q);
+    if (!pr) return;
+    const n = V4.set(to.x - pr.x, to.y - pr.y, to.z - pr.z);
+    let d = n.length();
+    if (pr.inside) {
+      // adentro: hacia afuera es de la mano a la superficie
+      n.negate();
+      if (d < 1e-5) return;
+      n.divideScalar(d);
+    } else {
+      if (d >= HAND_R || d < 1e-6) return;
+      n.divideScalar(d);
+    }
+    to.set(pr.x, pr.y, pr.z).addScaledVector(n, HAND_R);
+    a.p.copy(to).sub(sh).applyAxisAngle(UP, -this.yaw);
+    const nl = n.applyAxisAngle(UP, -this.yaw);
+    const vIn = a.v.dot(nl);
+    if (vIn < 0) a.v.addScaledVector(nl, -vIn);
+  }
+
   // Punto objetivo de la mano para el IK (mundo) o null si manda la animación
   _armWorld(side, out, alpha = 1) {
     const a = this.arm[side];
@@ -1374,6 +1750,7 @@ export class LocalPlayer {
     const st = this.state;
     const input = G.input;
     const active = input.enabled && input.locked;
+    if (st !== 'driving') { this._gripPull(dt); this._gripTug(dt); }
     if (st === 'active' || st === 'stun' || st === 'getup') {
       const f = active ? (input.key('KeyW') ? 1 : 0) - (input.key('KeyS') ? 1 : 0) : 0;
       const s = active ? (input.key('KeyD') ? 1 : 0) - (input.key('KeyA') ? 1 : 0) : 0;
@@ -1392,7 +1769,9 @@ export class LocalPlayer {
       const slow = st === 'stun' ? 0.3 : st === 'getup' ? 0.15 : 1;
       // cargar algo pesado o estar en guardia te hace más lento
       const load = clamp(1 - (this._heldMass('l') + this._heldMass('r')) / 30, 0.55, 1) * (this.guard ? 0.7 : 1);
-      const targetSpeed = (run && !this.guard ? 6.8 : 3.9) * (1 - clamp(this.drunk, 0, 1) * 0.2) * slow * load;
+      const legGone = this.gore & ((1 << PART.THIGH_L) | (1 << PART.SHIN_L) | (1 << PART.THIGH_R) | (1 << PART.SHIN_R));
+      const limp = legGone ? 0.38 : 1;
+      const targetSpeed = (run && !this.guard && !legGone ? 6.8 : 3.9) * (1 - clamp(this.drunk, 0, 1) * 0.2) * slow * load * limp;
       const blend = 1 - Math.exp(-(length ? 14 : 20) * dt);
       this.velocity.x += (dx * targetSpeed - this.velocity.x) * blend;
       this.velocity.y += (dz * targetSpeed - this.velocity.y) * blend;
@@ -1418,9 +1797,17 @@ export class LocalPlayer {
       // empujón de un golpe (trastabillar) o de una piña propia: se suma y se apaga solo
       const pk = Math.exp(-4.5 * dt);
       this.push.multiplyScalar(pk);
-      const desired = { x: (this.velocity.x + this.push.x) * dt, y: this.vy * dt, z: (this.velocity.y + this.push.y) * dt };
+      this._crowd(dt);
+      let mx = this.velocity.x + this.push.x + this._gripV.x, mz = this.velocity.y + this.push.y + this._gripV.y;
+      // encimado con alguien: no puedo seguir metiéndome (se anula lo que va hacia él) y me separo
+      const ns = this._sepN;
+      for (let i = 0; i < ns.length; i += 2) {
+        const into = mx * ns[i] + mz * ns[i + 1];
+        if (into < 0) { mx -= ns[i] * into; mz -= ns[i + 1] * into; }
+      }
+      const desired = { x: (mx + this._sepV.x) * dt, y: this.vy * dt, z: (mz + this._sepV.y) * dt };
       // solo mundo y vehículos: sin filtro, el controlador chocaba con el propio ragdoll (piernas) y trababa el paso
-      this.controller.computeColliderMovement(this.collider, desired, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, KCC_GROUPS);
+      this.controller.computeColliderMovement(this.collider, desired, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, ns.length ? KCC_NO_PAWN : KCC_GROUPS);
       const mv = this.controller.computedMovement();
       const tr = this.body.translation();
       const nx = clamp(tr.x + mv.x, MAP_BOUNDS.x0 + 1, MAP_BOUNDS.x1 - 1);
@@ -1434,6 +1821,7 @@ export class LocalPlayer {
         if (!wasGrounded && this.fallPeak < -11) {
           const sev = (-this.fallPeak - 11) / 5;
           this.damage(sev * 25);
+          if (!this.dead) this._vocal(sev > 0.6 ? 'scream' : 'hurt');
           if (sev > 0.6) this.knockout(2 + sev * 2); else this.stun(0.6);
           this.onEvent?.('impact', { part: 0, s: sev, kind: 'blunt', src: 'world', x: this.pos.x, y: this.pos.y, z: this.pos.z, nx: 0, ny: 1, nz: 0 });
         }
@@ -1480,8 +1868,15 @@ export class LocalPlayer {
   // dt > 0: paso de física (las manos avanzan); dt = 0: dibujo (se interpolan)
   _poseRig(base, dt = 0) {
     if (this._base) for (let i = 0; i < 11; i++) this.rig.joints[i].quaternion.copy(this._base[i]);
+    this.rig.resetShoulders();
     this.rig.place(base, this.yaw);
     this._overrides();
+    // agarrado: la parte que me tienen va hacia la mano del otro (la cabeza se dobla, la pierna se levanta)
+    if (this.grabbedBy.size && this.physMode === 'anim') {
+      for (const g of this.grabbedBy.values()) {
+        for (const [j, frac, max] of GRIP_CHAIN[g.part] || []) this.rig.pullToward(j, g.part, g.anchor, g.hand, frac, max);
+      }
+    }
     this.rig.root.updateMatrixWorld(true);
     for (const side of ['l', 'r']) this._animHandLocal(side, this.arm[side].idle);
     if (dt > 0 && this.physMode === 'anim') this._stepArms(dt);
@@ -1496,16 +1891,25 @@ export class LocalPlayer {
   _overrides() {
     const J = this.rig.joints;
     if (this.state !== 'seated' && this.state !== 'driving') {
-      // peso e inercia: inclinación del torso al acelerar/girar + respingo de los golpes
-      const px = this.lean.x + this.flinch.x * 0.8, pz = this.lean.y + this.flinch.z * 0.8;
+      // peso e inercia: inclinación del torso al acelerar/girar
+      const px = this.lean.x, pz = this.lean.y;
       if (Math.abs(px) + Math.abs(pz) > 1e-3) J[1].quaternion.multiply(Q1.setFromEuler(E1.set(px, 0, pz)));
-      if (Math.abs(this.flinch.x) + Math.abs(this.flinch.z) > 1e-3) J[2].quaternion.multiply(Q1.setFromEuler(E1.set(this.flinch.x * 0.9, 0, this.flinch.z * 0.9)));
-      // trastabillando: brazos afuera buscando equilibrio, cuerpo hacia donde lo empujaron
+      // trastabillando: los brazos se sueltan y se sacuden buscando equilibrio (adelante, un poco afuera y con los
+      // codos doblados; antes quedaban horizontales y parecía una pose T) y el torso se va con el empujón
       if (this.state === 'stun') {
-        const k = clamp(this.stunT / 0.5, 0, 1);
-        const w = Math.sin(G.time * 17) * 0.25;
-        if (!this.arm.l.busy) J[3].quaternion.multiply(Q1.setFromEuler(E1.set(-0.3 * k, 0, (0.95 + w) * k)));
-        if (!this.arm.r.busy) J[5].quaternion.multiply(Q1.setFromEuler(E1.set(-0.3 * k, 0, -(0.95 - w) * k)));
+        const k = clamp(this.stunT / 0.45, 0, 1), t = G.time;
+        const wl = Math.sin(t * 9.3) * 0.28 + Math.sin(t * 15.1) * 0.1, wr = Math.sin(t * 8.1 + 1.9) * 0.28 + Math.sin(t * 13.7 + 0.4) * 0.1;
+        if (!this.arm.l.busy) {
+          J[3].quaternion.multiply(Q1.setFromEuler(E1.set((-0.45 + wl) * k, 0, (0.38 + wl * 0.4) * k)));
+          J[4].quaternion.multiply(Q1.setFromEuler(E1.set(-0.7 * k, 0, 0)));
+        }
+        if (!this.arm.r.busy) {
+          J[5].quaternion.multiply(Q1.setFromEuler(E1.set((-0.45 + wr) * k, 0, -(0.38 + wr * 0.4) * k)));
+          J[6].quaternion.multiply(Q1.setFromEuler(E1.set(-0.7 * k, 0, 0)));
+        }
+        const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
+        const pa = this.push.x * fx + this.push.y * fz, pl = this.push.x * fz - this.push.y * fx;
+        J[1].quaternion.multiply(Q1.setFromEuler(E1.set(clamp(pa * 0.07, -0.3, 0.3) * k, 0, clamp(ROLL * pl * 0.07, -0.25, 0.25) * k)));
       }
     }
     // los brazos arrastran el torso: la piña sale del hombro, el swing gira la cintura
@@ -1521,6 +1925,14 @@ export class LocalPlayer {
 
   afterPhysics() {
     this.rag.snapshot();
+    // punta del pie derecho (la de la patada) y su velocidad
+    const sb = this.rag.bodies[PART.SHIN_R], cap = this.meta.caps?.[PART.SHIN_R];
+    if (sb && cap) {
+      const t = sb.translation(), r = sb.rotation();
+      const tip = V6.copy(cap.b).applyQuaternion(Q1.set(r.x, r.y, r.z, r.w)).add(V1.set(t.x, t.y, t.z));
+      if (this._footPrev) this._footVel.copy(tip).sub(this._footPrev).multiplyScalar(60);
+      (this._footPrev || (this._footPrev = new THREE.Vector3())).copy(tip);
+    }
     const tr = this.body.translation();
     this.previousPos.copy(this.pos);
     if (this.state !== 'seated' && this.state !== 'driving') this.pos.set(tr.x, tr.y - BODY_Y, tr.z);
@@ -1542,7 +1954,9 @@ export class LocalPlayer {
       case 'ko':
         this.koT -= dt;
         this.strength = this.held > 0 ? 0.35 : 0.02;
-        if (this.koT <= 0 && this.held === 0) this._startGetup();
+        // sin las dos piernas no hay forma de pararse
+        const noLegs = (this.gore & ((1 << PART.THIGH_L) | (1 << PART.SHIN_L))) && (this.gore & ((1 << PART.THIGH_R) | (1 << PART.SHIN_R)));
+        if (!noLegs && this.koT <= (this.held > 0 ? -1.2 : 0)) this._startGetup();
         break;
       case 'getup':
         this.getupT += dt;
@@ -1562,15 +1976,17 @@ export class LocalPlayer {
       this._legsGround = legsGround;
       for (const k of LEGS) this.rag.setPartFilter(k, legsGround ? RAG_FILTER : LEG_FILTER_UP);
     }
-    // desangrándose (miembros cortados, tripas afuera)
+    // desangrándose (miembros cortados, tripas afuera): el chorro se va cortando solo en ~15-20 s
     if (this.bleedRate > 0 && !this.dead) {
       this.hp -= this.bleedRate * dt;
+      this.bleedRate = Math.max(0, this.bleedRate - dt * 0.13);
       this.lastHurtT = G.time;
       if (this.hp <= 0) { this.hp = 0; this.die(); }
     }
     // se recupera solo: equilibrio siempre; vida y sangre si hace 5 s que nadie te pega (sentado, más rápido)
     if (!this.dead) {
-      this.balance = Math.min(100, this.balance + dt * (this.state === 'ko' ? 30 : 16));
+      // agarrado se recupera más lento (el que te tiene no te deja acomodarte)
+      this.balance = Math.min(100, this.balance + dt * (this.state === 'ko' ? 30 : this.held ? 8 : 16));
       const calm = G.time - this.lastHurtT > 5 && this.bleedRate <= 0 && this.state !== 'ko';
       if (calm) {
         const k = this.state === 'seated' ? 4 : 1.6;
@@ -1584,8 +2000,11 @@ export class LocalPlayer {
       this.drunk = 1.05;
       this.onEvent?.('passout', {});
     }
+    // hit-stop: lo que acaba de pegar se frena un instante (el golpe "entra")
+    const hs = this.hitStop > 0 ? 0.12 : 1;
+    this.hitStop = Math.max(0, this.hitStop - dt);
     if (this.action) {
-      this.actionT += dt;
+      this.actionT += dt * hs;
       if (this.actionT >= this.actionDur) { this.action = null; this.actionT = 0; }
     }
     if (this.emote) {
@@ -1593,7 +2012,7 @@ export class LocalPlayer {
       if (this.emoteT > 8 && !['dance1', 'dance2', 'dance3', 'sitfloor'].includes(this.emote)) this.emote = null;
       if (this.speed > 0.5 || this.state !== 'active') this.emote = null;
     }
-    this.flinch.multiplyScalar(Math.exp(-7 * dt));
+    if (this.physMode === 'rag') this.react.reset(); else this.react.update(dt);
     this.drunk = Math.max(0, this.drunk - dt * 0.006);
     this.high = Math.max(0, this.high - dt * 0.004);
     this.headYaw = clamp(angleDiff(this.yaw, this.viewYaw), -1.35, 1.35);
@@ -1622,12 +2041,16 @@ export class LocalPlayer {
     if (!this._base) this._base = this.rig.joints.map((j) => j.quaternion.clone());
     else for (let i = 0; i < 11; i++) this._base[i].copy(this.rig.joints[i].quaternion);
     this.renderPos.copy(this.previousPos).lerp(this.pos, G.phys.alpha);
+    if (this.char.gripOn) this.char.gripOn.l = this.char.gripOn.r = false;
     this._visual(dt);
+    this._shareGrips();
     this.char.setIntox(this.drunk, this.high);
     this.char.talk = this.talk;
     const fist = (a) => a.on || a.script === 'punch' || a.script === 'swing' || this.guard;
-    this.char.grip.r = this.hands.r.item || this.hands.r.joint || fist(this.arm.r) || this.arm.r.script ? 1 : 0.3;
-    this.char.grip.l = this.hands.l.joint || fist(this.arm.l) || this.arm.l.script ? 1 : 0.3;
+    // la mano se cierra según lo que tiene: puño en un mango, a medias en una lata o el borde de una silla
+    const curl = (side) => { const h = this.hands[side]; return h.prop ? curlOf(G.props?.get(h.prop)?.type) : h.joint === PLAYER_GRIP ? 0.85 : null; };
+    this.char.grip.r = curl('r') ?? (this.hands.r.item || this.hands.r.joint || fist(this.arm.r) || this.arm.r.script ? 1 : 0.3);
+    this.char.grip.l = curl('l') ?? (this.hands.l.joint || fist(this.arm.l) || this.arm.l.script ? 1 : 0.3);
     this.char.update(dt);
     const eqSlot = { beer: 1, smoke: 2, spray: 3 }[this.hands.r.item] || 4;
     this.equipment?.update(this.char, eqSlot, this.yaw, this.action === 'drink-arm' ? 'drink' : this.action, this.actionT, this.dead);
@@ -1661,8 +2084,43 @@ export class LocalPlayer {
         o[3] = Q1.x; o[4] = Q1.y; o[5] = Q1.z; o[6] = Q1.w;
       }
       if (this.blendT < 1) this.blendT = Math.min(1, this.blendT + dt / 0.75);
+      if (this.react.active) {
+        const rp = this._rpose;
+        for (let i = 0; i < 11; i++) { const o = rp[i] || (rp[i] = new Array(7)), t = this._pose[i]; for (let k = 0; k < 7; k++) o[k] = t[k]; }
+        this.react.apply(rp);
+        this._followHeld(this._pose, rp);
+        this.char.applyWorldTransforms(rp);
+        return;
+      }
     }
     this.char.applyWorldTransforms(this._pose);
+  }
+
+  // Mis manos que tienen a alguien: su cuerpo dibujado (en MI pantalla) va pegado a mi mano en este cuadro
+  _shareGrips() {
+    for (const side of ['l', 'r']) {
+      const h = this.hands[side];
+      if (h.joint !== PLAYER_GRIP || !h.anchor) continue;
+      const rp = G.players.get(h.player);
+      if (!rp) continue;
+      const hand = this._handDrawn(side, (h._drawn || (h._drawn = new THREE.Vector3())));
+      (rp.gripViews || (rp.gripViews = [])).push({ part: h.part, anchor: h.anchor, hand });
+    }
+  }
+  // palma de la mano tal como se dibuja (si el personaje no la sabe, la del cuerpo físico)
+  _handDrawn(side, out) {
+    const w = this.char.partToWorld?.(side === 'l' ? PART.FARM_L : PART.FARM_R, this.meta.gripLocal[side], out);
+    return w && Number.isFinite(w.x) ? w : this.handPos(side, out);
+  }
+
+  // Lo que tengo firme en la mano acompaña a la mano cuando el cuerpo reacciona a un golpe
+  _followHeld(from, to) {
+    for (const { p, side } of this._heldList()) {
+      const i = side === 'l' ? 4 : 6, a = from[i], b = to[i];
+      Q1.set(b[3], b[4], b[5], b[6]).multiply(Q2.set(a[3], a[4], a[5], a[6]).invert());
+      p.group.position.sub(V1.set(a[0], a[1], a[2])).applyQuaternion(Q1).add(V1.set(b[0], b[1], b[2]));
+      p.group.quaternion.premultiply(Q1);
+    }
   }
 
   // banderas de ataque para los demás (qué partes pegan ahora)
@@ -1712,6 +2170,7 @@ export class LocalPlayer {
 
   dispose() {
     this.releaseAll();
+    this._clearGrips(false);
     this.rag.destroy();
     G.phys.untag(this.collider);
     G.phys.world.removeCharacterController(this.controller);
@@ -1744,10 +2203,20 @@ export class RemotePlayer {
     this.proxy = new Ragdoll(G.phys, this.char.meta, {
       kinematic: true, member: GR.REMOTE, filter: PROXY_FILTER, tag: { kind: 'remote', id: this.id, ref: this },
     });
+    // cápsula de movimiento (como la mía): mi controlador choca contra ella, así no nos atravesamos
+    this.body = G.phys.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, -50, 0));
+    this.pawn = G.phys.world.createCollider(RAPIER.ColliderDesc.capsule(CAPSULE_HALF, CAPSULE_RADIUS - 0.02)
+      .setCollisionGroups(groups(GR.PAWN, GR.ME)), this.body);
+    G.phys.tag(this.pawn, { kind: 'pawn', ref: this });
+    this.vel = new THREE.Vector3(); // velocidad (de la cápsula) para el empujón entre cuerpos
+    this.react = new HitReact(); // reacción a los golpes (la simulo yo: al instante si el golpe es mío)
     this._pose = [];
     this.talk = 0;
     if (data.st) this.applyState(data.st, true);
   }
+
+  // de pie ocupa lugar; tirado, sentado o manejando, no (se puede pasar por arriba o al lado)
+  get standing() { const s = this.stateData?.s ?? 0; return s === 0 || s === 1 || s === 4; }
 
   setLook(look) {
     this.look = { ...look };
@@ -1860,6 +2329,22 @@ export class RemotePlayer {
     this.char.talk = Math.max(this.talk, s.tk || 0);
     const renderT = (G.net ? G.net.now() : performance.now()) - 110;
     const pose = this.buf.length ? this._interp(renderT) : null;
+    // cápsula de movimiento: donde está su cuerpo DIBUJADO (la pose va 110 ms atrás de la última posición
+    // que llegó; con la cápsula adelantada, los empujones pasaban antes de que el cuerpo llegara)
+    const bp = this.bodyPos || (this.bodyPos = this.pos.clone());
+    const bx = bp.x, bz = bp.z;
+    if (pose) bp.set(pose[0][0], this.pos.y, pose[0][2]); else bp.copy(this.pos);
+    if (dt > 0) this.vel.set((bp.x - bx) / dt, 0, (bp.z - bz) / dt);
+    const on = this.standing;
+    if (this.pawn.isEnabled() !== on) this.pawn.setEnabled(on);
+    if (on) this.body.setNextKinematicTranslation({ x: bp.x, y: this.pos.y + BODY_Y, z: bp.z });
+    // la reacción a los golpes va sobre la pose que llega (de pie o sentado; tirado ya es física)
+    this.react.update(dt);
+    if (pose && (this.standing || s.s === 5)) this.react.apply(pose);
+    // lo tengo agarrado: en mi pantalla la parte va pegada a mi mano ya; su cliente lo mueve de verdad y, cuando
+    // llega esa pose, la diferencia se achica sola
+    if (pose && this.gripViews?.length) this._gripView(pose);
+    if (this.gripViews) this.gripViews.length = 0;
     if (pose) {
       this.char.applyWorldTransforms(pose);
       if (this.proxy.alive) {
@@ -1868,8 +2353,9 @@ export class RemotePlayer {
         if (Math.hypot(p0.x - pose[0][0], p0.y - pose[0][1], p0.z - pose[0][2]) > 1.5) this.proxy.teleport(pose);
         else this.proxy.follow(pose, dt);
       }
-      this.char.grip.l = s.gr & 1 ? 1 : 0.3;
-      this.char.grip.r = s.gr & 2 ? 1 : 0.3;
+      // la mano se cierra según lo que tiene (puño en un mango, a medias en lo que se carga de un borde)
+      this.char.grip.l = s.hl ? curlOf(G.props?.get(s.hl)?.type) : s.gr & 1 ? 1 : 0.3;
+      this.char.grip.r = s.hd ? curlOf(G.props?.get(s.hd)?.type) : s.gr & 2 ? 1 : 0.3;
     } else {
       // sin datos de cuerpo todavía: animación simple en su posición
       this.char.root.position.copy(this.pos);
@@ -1877,6 +2363,8 @@ export class RemotePlayer {
       this.char.animate({ speed: s.sp || 0, grounded: true, aimPitch: s.ap || 0, headYaw: s.hy || 0 }, dt);
     }
     this.char.update(dt);
+    // las muñecas en el mango las vuelve a poner el objeto en su cuadro (props.update, después de esto)
+    if (this.char.gripOn) this.char.gripOn.l = this.char.gripOn.r = false;
     this.equipment?.update(this.char, s.eq || 4, this.yaw, s.ac, s.at, s.s === 3);
   }
 
@@ -1884,8 +2372,55 @@ export class RemotePlayer {
     return this.char.headWorld(out);
   }
 
+  // Reapareció: sin heridas, sangre ni partes cortadas
+  resetBody() {
+    if (this.proxy.alive) G.gore?.detachFrom(this.proxy.bodies[PART.TORSO]);
+    G.gore?.restore(this.char);
+    if (this.proxy.alive) for (let k = 0; k < 11; k++) this.proxy.setPartCollide(k, true);
+    this.char.resetBody();
+    this.react.reset();
+    this.sv = 0;
+  }
+
+  // Lo tengo agarrado yo: la parte agarrada va a mi mano (si está lejos, el cuerpo entero se corre hacia ella
+  // lo que la parte no alcanza a estirarse; después se doblan las articulaciones de esa cadena)
+  _gripView(pose) {
+    for (const gv of this.gripViews) {
+      const i = gv.part, t = pose[i];
+      if (!t) continue;
+      const A = PV1.copy(gv.anchor).applyQuaternion(PQ1.set(t[3], t[4], t[5], t[6])).add(PV2.set(t[0], t[1], t[2]));
+      const dx = gv.hand.x - A.x, dz = gv.hand.z - A.z, dh = Math.hypot(dx, dz), lim = VIEW_REACH[i] ?? 0.2;
+      if (dh > lim) {
+        const k = Math.min(1.5, dh - lim) / dh;
+        for (const o of pose) { o[0] += dx * k; o[2] += dz * k; }
+      }
+      // tirado ya lo mueve la física (la cadena doblada sobre un ragdoll queda rara)
+      if (!this.standing) continue;
+      for (let it = 0; it < 2; it++) for (const [j, frac, max] of VIEW_CHAIN[i] || []) posePull(pose, j, i, gv.anchor, gv.hand, frac, max);
+    }
+  }
+
+  // Reacción a un golpe (part, fuerza s, punto en mundo, (dx, dz) hacia dónde lo empuja). Devuelve la fuerza.
+  hitReact(part, s, point, dx, dz, predicted = false) {
+    const st = this.stateData?.s ?? 0;
+    if (!(this.standing || st === 5) || !(s > 0)) return 0;
+    const d = Math.hypot(dx, dz);
+    if (d < 1e-4) { dx = -Math.sin(this.yaw); dz = -Math.cos(this.yaw); } else { dx /= d; dz /= d; }
+    // en guardia y de frente casi no se mueve
+    if (predicted && (this.stateData?.af & 16) && part <= PART.FARM_R && -(dx * Math.sin(this.yaw) + dz * Math.cos(this.yaw)) > 0.2) s *= part >= PART.UARM_L ? 0.15 : 0.35;
+    this.react.hit(part, dx, dz, s, point.x - this.pos.x, point.z - this.pos.z, this.yaw);
+    if (predicted) {
+      // el empujón real llega por la red en un rato: acá solo el sacudón del impacto
+      this.react.shove(dx, dz, 0.6 + Math.min(2.5, s) * 1.1);
+      this.react.predictT = G.time;
+    }
+    return s;
+  }
+
   dispose() {
     this.proxy.destroy();
+    G.phys.untag(this.pawn);
+    try { G.phys.world.removeRigidBody(this.body); } catch { /* */ }
     this.equipment?.dispose();
     this.char.dispose();
   }

@@ -10,7 +10,7 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-start "Duke's Lawn Server" cmd /k "cd /d ""%~dp0"" && npm start"
+start "DESMADRE - servidor" cmd /k "cd /d ""%~dp0"" && npm start"
 timeout /t 2 /nobreak >nul
 start "" "http://localhost:3000"
 endlocal

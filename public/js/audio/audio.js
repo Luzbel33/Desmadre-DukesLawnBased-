@@ -83,16 +83,23 @@ export class AudioEngine {
     voice.dispose=()=>{if(voice.dead)return;voice.dead=true;try{source.stop();}catch{}source.disconnect();gain.disconnect();pan.disconnect();this.shots.delete(voice);};
     source.onended=voice.dispose;return voice;
   }
-  trigger(name,pos=null,level=.65,{full=2,max=35,bus='sfx'}={}){
+  // variant: toma fija (todos oyen la misma); rate: tono (si no, uno al azar cerca de 1);
+  // slot: canal (p. ej. la voz de un jugador): lo nuevo corta a lo anterior del mismo canal en vez de encimarse
+  trigger(name,pos=null,level=.65,{full=2,max=35,bus='sfx',variant=-1,rate=0,slot=null}={}){
     if(!this.ctx||this.ctx.state!=='running'||this.disposed)return false;
     const space=this._spatial(pos,full,max);if(space.gain<.003)return false;
     const variants=this.samples.get(name)?.length||VARIANTS[name]||3;
     if(!this._buffer(name,0))return false;
     // Bounded polyphony; heavy rooms cannot allocate unlimited one-shot sources.
     if(this.shots.size>=40)this.shots.values().next().value.dispose();
-    const v=this._voice(name,{variant:Math.floor(Math.random()*variants),bus});
+    const v=this._voice(name,{variant:variant>=0?variant%variants:Math.floor(Math.random()*variants),bus});
     v.gain.gain.value=clamp(level)*space.gain;v.pan.pan.value=space.pan;
-    v.source.playbackRate.value=.94+Math.random()*.12;this.shots.add(v);v.source.start();this.played++;return true;
+    v.source.playbackRate.value=rate>0?rate*(.985+Math.random()*.03):.94+Math.random()*.12;
+    if(slot){
+      this.slots=this.slots||new Map();const old=this.slots.get(slot);
+      if(old&&!old.dead){try{old.gain.gain.cancelScheduledValues(this.ctx.currentTime);old.gain.gain.setTargetAtTime(0,this.ctx.currentTime,.015);old.source.stop(this.ctx.currentTime+.08);}catch{old.dispose();}}
+      this.slots.set(slot,v);
+    }this.shots.add(v);v.source.start();this.played++;return true;
   }
   test(){return this.unlock().then(ok=>{if(ok)this.trigger('ui',null,.85);return ok;});}
   // Pájaros: trinos sueltos cada tanto, de distintas direcciones y distancias (nunca un loop fijo)

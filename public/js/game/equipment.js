@@ -19,7 +19,7 @@ export function createEquippedModel(slot){
     const profile=[[0,-.105],[.028,-.105],[.032,-.095],[.033,.065],[.030,.089],[.014,.125],[.012,.18],[.015,.184],[.015,.191],[.010,.193]].map(([r,y])=>new THREE.Vector2(r,y));
     const glass=new THREE.MeshPhysicalMaterial({color:0x29491c,roughness:.17,metalness:.05,clearcoat:1,clearcoatRoughness:.12});
     group.add(mesh(new THREE.LatheGeometry(profile,40),glass));
-    const tex=labelTexture('DUQUE','MALTA  ·  330 mL','#26382b');
+    const tex=labelTexture('DESMADRE','MALTA  ·  330 mL','#26382b');
     group.add(cylinder(.0337,.115,new THREE.MeshStandardMaterial({map:tex,color:0xf3f0da,roughness:.83}),-.002));
     group.add(cylinder(.0158,.011,metal,.19));
     // Small highlights for condensation, baked into one instanced draw.

@@ -1,4 +1,4 @@
-# Duke’s Lawn: DESMADRE — 1.5.0
+# DESMADRE — 1.6.0
 
 Lobby online 3D para boludear con amigos: cuerpos físicos estilo Half Sword, piñas, objetos para revolear, gore, cortadoras de pasto, graffiti en cualquier pared, póker, fútbol, YouTube en pantallas compartidas, chat de texto y voz por proximidad.
 
@@ -40,22 +40,25 @@ No hace falta `npm install`: las librerías y los modelos vienen incluidos. Si c
 | Z | Gestos |
 | Manejando | W/S acelerar y frenar/reversa · A/D doblar · Shift turbo · Espacio cuchillas · H bocina · X bajarse · click tomar/fumar |
 | Tab | Lista de jugadores |
+| Póker (sentado a la mesa) | Espacio pasar/igualar · R subir (rueda o ↑↓ el monto; 1 mínimo, 2 medio pozo, 3 pozo, 4 todo; R confirma) · F mantenida retirarse · Tab mantenida ver jugadas · mouse mirar la mesa · X levantarse · T chat |
 | Esc | Pausa, volumen, silenciar jugadores, opciones |
 
 Se puede agarrar una cosa con las dos manos, agarrar a otro jugador con una mano y pegarle con la otra, y revolear lo que tengas moviendo el brazo y soltando. Sentado (cine, bar, sillones) los brazos y las manos siguen andando: podés tomar, fumar, comer y revolear pochoclos o pegar.
 
 ## Qué hay
 
-- **Personajes con peso (estilo GTA V / Half Sword)**: de pie se mueven con animación firme y controlable, se inclinan al acelerar, dan respingos y trastabillan con los golpes; con un golpe fuerte, un choque o una caída pasan a ragdoll real y se levantan solos. Afuera de las zonas PvP los golpes de otros empujan pero no lastiman (el bar es zona PvP; en pausa se puede activar el modo desmadre).
+- **Personajes con peso (estilo GTA V / Half Sword)**: de pie se mueven con animación firme y controlable, se inclinan al acelerar y trastabillan con los golpes; con un golpe fuerte, un choque o una caída pasan a ragdoll real (con límites de articulaciones: nada de cabezas dadas vuelta) y se levantan solos.
+- **Los golpes se sienten**: cada parte acusa el golpe con resortes (la cabeza se va para atrás con latigazo, el torso gira si pegás en un hombro, la rodilla se dobla con una patada baja); el que pega lo ve al instante sin esperar la red, la mano frena un instante al conectar, la cámara acusa el impacto y cada personaje se queja con SU voz (grabaciones CC0, cinco voces de hombre y tres de mujer) y grita con los golpes fuertes o al caer.
+- **Agarrar como en Half Sword**: agarrás de cualquier parte y tu mano queda en ese punto; el otro sigue de pie y peleando, lo arrastrás, y en tu pantalla la parte agarrada va pegada a tu mano en el instante. Lo derribás levantándole una pierna, bajándole la cabeza o con tirones secos del brazo; soltando con envión lo revoleás. Se zafa corriendo para el otro lado o pegándote. Afuera de las zonas PvP los golpes de otros empujan pero no lastiman (el bar es zona PvP; en pausa se puede activar el modo desmadre).
 - **Brazos con peso y piñas**: cada mano es una masa que persigue al mouse con inercia (lo que sostenés la hace más lenta y la tira para abajo); la piña sale del hombro con medio paso adelante y giro de torso; después de pegar las manos quedan en guardia un rato. Las manos se frenan contra paredes, vehículos y cuerpos. Solo lastima lo que está atacando (una piña, una patada, un arma blandida, algo revoleado o un vehículo que viene hacia vos): chocarse caminando no saca vida y lo que revoleás vos no te pega en la mano. El que pega avisa el golpe y el que lo recibe lo valida (distancia, zona PvP, guardia).
 - **Bolsa de boxeo** al lado del ring para practicar: se hamaca con los golpes y muestra la velocidad de cada piña o patada.
 - **Vida**: se recupera sola si hace 5 s que nadie te pega (sentado, más rápido); botiquines en el bar, la terraza, el galpón, la cancha y la plaza (vida, venda y sangre); choripán de la parrilla y pochoclos también curan.
-- **Gore**: moretones y sangre por nariz, boca, orejas y ojos; cortes con armas filosas; brazos, piernas y cabezas que se cortan con física (muñón con carne y hueso, ropa empapada alrededor del corte, gotas que se estiran al volar, niebla de sangre en el impacto); cabeza que revienta con golpes brutales (cerebro, ojos, cráneo); tripas colgando; te desangrás. Todo vuelve a la normalidad al reaparecer.
+- **Gore**: moretones y sangre por nariz, boca, orejas y ojos; cortes con armas filosas; brazos, piernas y cabezas que se cortan con física (muñón con carne y hueso, ropa empapada alrededor del corte, gotas que se estiran al volar, niebla de sangre en el impacto). Cortar un brazo o una pierna no mata: te desangrás un rato hasta que el chorro se corta solo; sin una pierna caés y después rengueás. Cabeza que revienta con golpes brutales; tripas colgando. Todo vuelve a la normalidad al reaparecer.
 - **Objetos físicos**: sillas plásticas, banquetas, botellas que se rompen, bate, katana, machete, daga, hacha, maza, sartén, ukelele, tacho, cajón de birra, barreta, cartel de piso mojado, tambor, cajas, enanos de jardín, sandías.
 - **Cortadoras antiguas y tractor clásico**: volante de madera que gira con las manos del conductor encima, tablero con relojes, ruedas delanteras que doblan, carrocería que se inclina en las curvas y vibra con el motor, humo del escape. En primera persona se ve el volante, el tablero y el capó; se puede tomar una birra manejando. Se puede cortar cualquier pasto del mapa (deja franjas) y vuelve a crecer de a poco; las cuchillas pican lo que agarran.
 - **Imagen**: cielo con cúmulos que se mueven, bruma de distancia, pasto alto claro que brilla a contraluz y llega hasta el horizonte, y sombras en dos capas: la dinámica de alta resolución alrededor tuyo y una sombra de todo el mapa calculada una sola vez (edificios, árboles, faroles), así las sombras no se cortan de golpe a los 40 m. La resolución interna se ajusta sola si el juego no llega a ~48 fps.
 - **Graffiti libre**: con el aerosol se puede pintar cualquier pared, piso, calle o rampa. Queda guardado y lo ven todos.
-- **Póker Texas Hold'em** en el bar (mesa con cámara propia, el servidor reparte y controla las fichas).
+- **Póker Texas Hold'em sin límite** en el bar, como en la vida real (la idea del de Red Dead Redemption 2): sentado en primera persona, todo pasa en la mesa — las cartas salen del mazo, las comunitarias se dan vuelta de a una, las fichas van a la apuesta, al pozo y al que gana. Tus cartas frente a vos (solo vos las ves), qué jugada tenés dicho en criollo ("Par de ases", "Full: reyes y sietes"), tabla de jugadas con Tab y parroquianos que se sientan si faltan jugadores. Se juega con el teclado, sin botones.
 - **Fútbol** en la cancha del pasto: llevás la pelota corriendo contra ella, F patea, laterales y saques de arco, partido de 5 min con marcador.
 - **YouTube compartido** en el cine, la rockola del bar y el autocine.
 - **Voz por proximidad** (WebRTC, se escucha según la distancia y la dirección) y **chat** con globos.
@@ -67,7 +70,9 @@ Se puede agarrar una cosa con las dos manos, agarrar a otro jugador con una mano
 npm test
 ```
 
-44 pruebas: movimiento del jugador físico (caminar, saltar, paredes, cámara), brazos con peso y piñas, golpes justos (sin daño por chocarse ni por lo propio revoleado, guardia, zona PvP), sentado con las manos libres, regeneración de vida, controles sin teclas pisadas, carteles tapados por paredes, vehículos, aerosol, audio, YouTube y red.
+62 pruebas: movimiento del jugador físico (caminar, saltar, paredes, cámara), brazos con peso y piñas, golpes justos y balance (patada > piña, una piña a la cabeza no noquea, lo revoleado lastima), reacciones a los golpes, agarrar (no apaga al otro, lo arrastra, se zafa, se lo derriba con la pierna o con tirones, revoleo al soltar), jugadores que no se atraviesan ni quedan encimados, la mano que no se mete en otro cuerpo, cortes sin muerte y cadáveres que caen bien, póker, regeneración de vida, controles sin teclas pisadas, carteles tapados por paredes, vehículos, aerosol, audio, YouTube y red.
+
+Bancos: `node --loader ./tests/loader.mjs tests/ragdoll-limits.mjs` (límites de articulaciones), `tests/grab-bench.mjs` (tiempos de derribo al agarrar) y `tests/gore-bench.mjs` (cortes y cadáveres).
 
 Para probar a mano desde la consola del navegador: `__dukesPause = true` congela el juego y `__dukesStep()` avanza un cuadro.
 
@@ -87,6 +92,7 @@ El servidor puede desplegarse como un único Web Service de Node en Render: sirv
 
 - Modelos y texturas: [Poly Haven](https://polyhaven.com) (CC0).
 - Sonidos: [Kenney](https://kenney.nl) (CC0).
+- Voces de dolor (CC0): HaelDB y thebardofblasphemy (OpenGameArt), Cici Fyre (RPG Voice Starter Pack), gritos de tcrocker68, pushkin y Archeos (Freesound). Detalle en `public/assets/sfx/vo/CREDITOS.txt`.
 - Personajes: Renderpeople (modelos gratuitos).
 - Árboles: [ez-tree](https://github.com/dgreenheck/ez-tree) (MIT).
 - Motor: three.js (MIT) y Rapier (Apache 2.0).

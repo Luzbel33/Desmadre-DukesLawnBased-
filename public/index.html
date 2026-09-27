@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Duke's Lawn: DESMADRE</title>
+  <title>DESMADRE</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Rubik:wght@400;600;800&display=swap" rel="stylesheet">
@@ -117,28 +117,8 @@
   </div>
 
   <!-- Póker -->
-  <div id="poker" class="hidden">
-    <div id="pk-top"><span id="pk-info">Mesa de póker</span><span id="pk-status"></span></div>
-    <div id="pk-result" class="hidden"></div>
-    <div id="pk-row">
-      <div class="pk-block"><small>Tus cartas</small><div id="pk-cards"></div></div>
-      <div class="pk-block"><small>Mesa</small><div id="pk-board"></div></div>
-      <div id="pk-actions">
-        <button id="pk-fold" class="pk-btn fold">Tirar</button>
-        <button id="pk-call" class="pk-btn call">Pasar</button>
-        <div class="pk-raise">
-          <input type="range" id="pk-amount" min="20" max="2000" step="1" aria-label="Apuesta total de esta ronda">
-          <div class="pk-quick"><button id="pk-half">½ pozo</button><button id="pk-pot">Pozo</button><button id="pk-allin">All-in</button></div>
-          <button id="pk-raise" class="pk-btn raise">Subir</button>
-        </div>
-      </div>
-      <div class="pk-side">
-        <button id="pk-rebuy" class="hidden">Recomprar (2000)</button>
-        <button id="pk-sitin" class="hidden">Volver a jugar</button>
-        <button id="pk-leave">Levantarse (X)</button>
-      </div>
-    </div>
-  </div>
+  <!-- Póker: casi todo pasa en la mesa (3D); acá solo las teclas y la línea de info (lo arma poker.js) -->
+  <div id="poker" class="hidden"></div>
 
   <!-- Pausa / ajustes -->
   <div id="pause" class="hidden">

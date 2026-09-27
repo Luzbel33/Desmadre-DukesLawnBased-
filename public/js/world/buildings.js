@@ -219,7 +219,7 @@ export function buildGarage(b, scene) {
   b.box('darkgray', X1, H / 2, Z0 + 0.2, 0.3, H, 0.3);
   b.box('darkgray', X1, H / 2, Z1 - 0.2, 0.3, H, 0.3);
   b.box('darkgray', X1, H - 0.2, (Z0 + Z1) / 2, 0.3, 0.4, Z1 - Z0);
-  const sign = signMesh('GALPÓN DEL DUQUE', 8, 1, { color: '#ffd23b', stroke: '#222', strokeW: 10, size: 120, bg: '#2a2a2a' });
+  const sign = signMesh('EL GALPÓN', 8, 1, { color: '#ffd23b', stroke: '#222', strokeW: 10, size: 120, bg: '#2a2a2a' });
   sign.position.set(X1 + 0.2, H + 0.6, (Z0 + Z1) / 2);
   sign.rotation.y = Math.PI / 2;
   scene.add(sign);
@@ -265,7 +265,7 @@ export function buildAutocine(b, scene) {
   // poste con parlante
   b.cylinder('darkgray', 0, 0.8, 64, 0.08, 0.08, 1.6, 8, { collide: true });
   b.box('red', 0, 1.7, 64, 0.5, 0.35, 0.3, { collide: false });
-  const s = signMesh('AUTOCINE DEL DUQUE', 10, 1.4, { color: '#ffd23b', stroke: '#300', strokeW: 10, size: 130, bg: '#6a0f18' });
+  const s = signMesh('AUTOCINE DESMADRE', 10, 1.4, { color: '#ffd23b', stroke: '#300', strokeW: 10, size: 130, bg: '#6a0f18' });
   s.position.set(0, 14.4, cz - 0.1);
   s.rotation.y = Math.PI;
   scene.add(s);

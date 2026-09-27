@@ -1,7 +1,7 @@
 {
   "name": "dukes-lawn-desmadre",
-  "version": "1.5.0",
-  "description": "Lobby online 3D con cuerpos fisicos, gore, poker, futbol, graffiti libre, YouTube y voz por proximidad.",
+  "version": "1.6.0",
+  "description": "DESMADRE: lobby online 3D con cuerpos fisicos, gore, poker, futbol, graffiti libre, YouTube y voz por proximidad.",
   "type": "module",
   "main": "server/server.js",
   "scripts": {

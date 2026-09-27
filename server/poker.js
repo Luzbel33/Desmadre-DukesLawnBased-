@@ -1,9 +1,10 @@
 // Póker Texas Hold'em (no limit) autoritativo en el servidor.
 // Estado público para todos + cartas privadas solo para cada jugador sentado.
 import crypto from 'node:crypto';
+import { RANKS, SUITS, rankValue as rv, bestHand, cmpScore as cmp, handName, describeHand } from '../public/js/shared/poker-rules.js';
 
-const RANKS = '23456789TJQKA';
-const SUITS = 'shdc';
+export { bestHand, handName };
+
 export const START_CHIPS = 2000;
 const SB = 10;
 const BB = 20;
@@ -23,55 +24,6 @@ function newDeck() {
     [d[i], d[j]] = [d[j], d[i]];
   }
   return d;
-}
-
-// ------------------------------------------------------------------ evaluador de manos
-const rv = (c) => RANKS.indexOf(c[0]) + 2;
-function eval5(cards) {
-  const v = cards.map(rv).sort((a, b) => b - a);
-  const suits = cards.map((c) => c[1]);
-  const flush = suits.every((s) => s === suits[0]);
-  const uniq = [...new Set(v)];
-  let straightHigh = 0;
-  if (uniq.length === 5) {
-    if (v[0] - v[4] === 4) straightHigh = v[0];
-    else if (v[0] === 14 && v[1] === 5 && v[4] === 2) straightHigh = 5; // A-2-3-4-5
-  }
-  const counts = new Map();
-  for (const x of v) counts.set(x, (counts.get(x) || 0) + 1);
-  const groups = [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0]);
-  const byGroup = groups.flatMap(([r, n]) => Array(n).fill(r));
-  if (straightHigh && flush) return [8, straightHigh];
-  if (groups[0][1] === 4) return [7, groups[0][0], groups[1][0]];
-  if (groups[0][1] === 3 && groups[1][1] === 2) return [6, groups[0][0], groups[1][0]];
-  if (flush) return [5, ...v];
-  if (straightHigh) return [4, straightHigh];
-  if (groups[0][1] === 3) return [3, ...byGroup];
-  if (groups[0][1] === 2 && groups[1][1] === 2) return [2, ...byGroup];
-  if (groups[0][1] === 2) return [1, ...byGroup];
-  return [0, ...v];
-}
-function cmp(a, b) {
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    const d = (a[i] || 0) - (b[i] || 0);
-    if (d) return d;
-  }
-  return 0;
-}
-export function bestHand(seven) {
-  let best = null, bestCards = null;
-  const n = seven.length;
-  for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) {
-    const five = seven.filter((_, i) => i !== a && i !== b);
-    const s = eval5(five);
-    if (!best || cmp(s, best) > 0) { best = s; bestCards = five; }
-  }
-  return { score: best, cards: bestCards };
-}
-const HAND_NAMES = ['Carta alta', 'Par', 'Doble par', 'Trío', 'Escalera', 'Color', 'Full', 'Póker', 'Escalera de color'];
-export function handName(score) {
-  if (score[0] === 8 && score[1] === 14) return 'Escalera real';
-  return HAND_NAMES[score[0]];
 }
 
 // ------------------------------------------------------------------ mesa
@@ -133,7 +85,15 @@ export class PokerTable {
     const want = humans === 0 ? 0 : humans === 1 ? 2 : humans === 2 ? 1 : 0;
     for (let k = bots.length; k > want; k--) this.leave(this.seats[bots[k - 1]].pid);
     for (let k = bots.length; k < want; k++) {
-      const free = this.seats.findIndex((s) => !s);
+      // la silla libre más lejos de los que ya están sentados (la mesa queda pareja, no todos amontonados)
+      const n = this.seats.length;
+      let free = -1, bestD = -1;
+      for (let i = 0; i < n; i++) {
+        if (this.seats[i]) continue;
+        let d = n;
+        for (let j = 0; j < n; j++) if (this.seats[j] && !this.seats[j].leaving) d = Math.min(d, Math.min(Math.abs(i - j), n - Math.abs(i - j)));
+        if (d > bestD) { bestD = d; free = i; }
+      }
       if (free < 0) break;
       const used = new Set(this.seats.filter(Boolean).map((s) => s.name));
       const name = BOT_NAMES.find((n) => !used.has(n)) || 'Parroquiano';
@@ -420,9 +380,10 @@ export class PokerTable {
     this.result = [...winners.entries()].map(([i, amt]) => ({
       seat: i, name: this.seats[i].name, amount: amt,
       hand: showdown && scores.get(i) ? handName(scores.get(i).score) : null,
+      desc: showdown && scores.get(i) ? describeHand(scores.get(i).score) : null,
       best: showdown && scores.get(i) ? scores.get(i).cards : null,
     }));
-    for (const r of this.result) this.hooks.sys(`🏆 ${r.name} gana ${r.amount} fichas${r.hand ? ' con ' + r.hand : ''}.`);
+    for (const r of this.result) this.hooks.sys(`🏆 ${r.name} gana ${r.amount} fichas${r.desc ? ' con ' + r.desc : ''}.`);
     this.hooks.broadcast({ t: 'pke', table: this.id, e: 'win' });
     for (const s of this.seats) if (s) { s.bet = 0; s.inHand = s.inHand && !s.leaving; }
     this.nextAt = Date.now() + NEXT_HAND_MS;

@@ -23,6 +23,12 @@ const V3 = new THREE.Vector3();
 const Q1 = new THREE.Quaternion();
 const Q2 = new THREE.Quaternion();
 const QI = new THREE.Quaternion();
+const QA = new THREE.Quaternion();
+const QB = new THREE.Quaternion();
+const QC = new THREE.Quaternion();
+const QD = new THREE.Quaternion();
+// cuánto puede girar la muñeca para acomodar la mano al mango (rad)
+const WRIST_MAX = 1.25;
 const M1 = new THREE.Matrix4();
 const M2 = new THREE.Matrix4();
 
@@ -257,13 +263,31 @@ function buildMeta(scene) {
     earR: nearestUV(new THREE.Vector3(headCenter.x - 0.085 * k, eyeMid.y - 0.02 * k, headCenter.z - 0.01), 2),
     chin: nearestUV(mouth.clone().add(new THREE.Vector3(0, -0.06 * k, 0.015 * k)), 2),
   };
+  // mano: eje de los nudillos (del meñique al índice, en el marco del hueso de la mano). Un mango en el puño
+  // pasa a lo largo de ese eje; se usa para girar la muñeca y que la mano agarre de verdad lo que tiene
+  const handGrip = {};
+  for (const side of ['l', 'r']) {
+    const hb = B['hand_' + side], ib = B['index_01_' + side], pb = B['pinky_01_' + side];
+    if (!hb || !ib || !pb) continue;
+    const kW = p(ib.name).sub(p(pb.name)).normalize();
+    handGrip[side] = { knuckle: kW.applyQuaternion(nWorld[hb.name].clone().invert()).normalize(), rest: hb.quaternion.clone() };
+  }
+  // clavículas: la base (en el marco del torso virtual, relativa a spine_01) y las rotaciones de reposo para
+  // subir el hombro como lo sube el esqueleto virtual (rig.reach)
+  const clav = {}, clavPivot = {};
+  for (const side of ['l', 'r']) {
+    const cb = B['shoulder_' + side];
+    if (!cb || !cb.parent?.isBone) continue;
+    clavPivot[side] = p(cb.name).sub(spine);
+    clav[side] = { pivot: clavPivot[side], s3inv: nWorld[cb.parent.name].clone().invert(), cw: nWorld[cb.name].clone() };
+  }
   // punto de agarre (palma) en el marco del antebrazo virtual (codo): se usa para las manos físicas
   const gripLocal = {
     l: haL.clone().sub(elL).multiplyScalar(1.13),
     r: haR.clone().sub(elR).multiplyScalar(1.13),
   };
   return {
-    map, jointRest, caps, mass, fingers, face, feet, grip, gripLocal, headInfo, vparts, faceUV, boneNames, height,
+    map, jointRest, caps, mass, fingers, face, feet, grip, gripLocal, headInfo, vparts, faceUV, boneNames, height, clav, clavPivot, handGrip,
     hipLocal: B.hip.position.clone(),
   };
 }
@@ -426,6 +450,9 @@ export class HumanCharacter {
     this.detached = new Array(11).fill(false);
     this.drips = [];
     this.grip = { l: 0.25, r: 0.25 };
+    // mango en la mano: dirección (mundo) hacia donde sale el mango del lado del pulgar. gripOn: hay mango
+    this.gripAxis = { l: new THREE.Vector3(), r: new THREE.Vector3() };
+    this.gripOn = { l: false, r: false };
     this.headVisible = true;
     this.build();
   }
@@ -574,11 +601,25 @@ export class HumanCharacter {
   _retarget(dt) {
     const B = this.bones;
     const J = this.joints;
+    // clavículas: el hombro sube/se adelanta como en el esqueleto virtual (se deduce de dónde quedó la
+    // articulación del hombro, así anda igual para mí y para los demás, sin datos extra por la red)
+    const CQ = this._clavQ || (this._clavQ = { l: new THREE.Quaternion(), r: new THREE.Quaternion() });
+    for (const [side, ji] of [['l', 3], ['r', 5]]) {
+      const c = this.meta.clav?.[side], cq = CQ[side];
+      cq.identity();
+      const bone = c && B['shoulder_' + side];
+      if (!bone) continue;
+      V1.copy(this.meta.jointRest[ji]).sub(c.pivot);
+      V2.copy(J[ji].position).sub(c.pivot);
+      if (V1.distanceToSquared(V2) > 1e-7) cq.setFromUnitVectors(V1.normalize(), V2.normalize());
+      bone.quaternion.copy(c.s3inv).multiply(cq).multiply(c.cw);
+    }
     for (const m of this.meta.map) {
       const bone = B[m.name];
       const Qj = J[m.j].quaternion;
       let q;
-      if (m.frac === 1) q = Q1.copy(Qj);
+      if (m.j === 3 || m.j === 5) q = Q1.copy(Qj).premultiply(Q2.copy(CQ[m.j === 3 ? 'l' : 'r']).invert()); // lo que ya giró la clavícula
+      else if (m.frac === 1) q = Q1.copy(Qj);
       else if (typeof m.frac === 'number') q = Q1.copy(QI).slerp(Qj, m.frac);
       else {
         // resto después de la fracción del hueso anterior (cuello -> cabeza)
@@ -587,6 +628,23 @@ export class HumanCharacter {
         q = Q1.copy(Q2).multiply(Qj);
       }
       bone.quaternion.copy(m.pre).multiply(q).multiply(m.post);
+    }
+    // manos: con un mango en el puño, la muñeca gira (con tope) para que los nudillos queden a lo largo del
+    // mango y los dedos lo rodeen; sin nada, la mano sigue al antebrazo como siempre
+    for (const side of ['l', 'r']) {
+      const hg = this.meta.handGrip?.[side], hb = B['hand_' + side];
+      if (!hg || !hb) continue;
+      hb.quaternion.copy(hg.rest);
+      if (!this.gripOn?.[side] || this.detached[side === 'l' ? 4 : 6]) continue;
+      hb.parent.updateWorldMatrix(true, false);
+      const pq = hb.parent.getWorldQuaternion(QA);
+      const hw = QB.copy(pq).multiply(hg.rest);
+      const want = V2.copy(this.gripAxis[side]);
+      if (want.lengthSq() < 1e-8) continue;
+      const d = QC.setFromUnitVectors(V1.copy(hg.knuckle).applyQuaternion(hw), want.normalize());
+      const ang = 2 * Math.acos(Math.min(1, Math.abs(d.w)));
+      const dd = ang > WRIST_MAX ? QD.identity().slerp(d, WRIST_MAX / ang) : d;
+      hb.quaternion.copy(pq.invert().multiply(dd).multiply(hw));
     }
     // cadera: posición (rebote al caminar, sentado, ragdoll)
     B.hip.position.copy(J[0].position);
@@ -735,6 +793,18 @@ export class HumanCharacter {
     this.dmgData.fill(0);
     this.dmgTex.needsUpdate = true;
     this.drips.length = 0;
+  }
+
+  // Reaparecer: cuerpo entero y limpio (sin heridas, sangre que chorrea, partes cortadas ni sombrero volado).
+  // Se rearma el modelo desde cero: es barato y no deja nada del estado anterior.
+  resetBody() {
+    this.detached.fill(false);
+    this.goreBits = [];
+    this.drips = [];
+    this.expr.dead = false;
+    const hv = this.headVisible;
+    this.build();
+    this.setVisibleHead(hv);
   }
 
   // Curarse: moretones y sangre se aclaran (k = cuánto, 0..1); las heridas profundas quedan

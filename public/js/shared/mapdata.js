@@ -21,14 +21,14 @@ export const FIELD = { cx: 0, cz: 35, hx: 27, hz: 16, goalHalfW: 3.1, goalH: 2.2
 // ---------------------------------------------------------------- Zonas
 export const ZONES = {
   bar: { x0: 95, z0: -42, x1: 123, z1: -20, pvp: true, name: 'Bar El Cortacésped' },
-  cine: { x0: 95, z0: -12, x1: 123, z1: 16, name: 'Cine Gran Duque' },
+  cine: { x0: 95, z0: -12, x1: 123, z1: 16, name: 'Cine Gran Desmadre' },
   callejon: { x0: 95, z0: -20, x1: 123, z1: -12, name: 'Callejón del Aerosol' },
   estacionamiento: { x0: 95, z0: 18, x1: 123, z1: 44, name: 'Estacionamiento' },
-  galpon: { x0: -102, z0: -22, x1: -86, z1: -6, name: 'Galpón del Duque' },
+  galpon: { x0: -102, z0: -22, x1: -86, z1: -6, name: 'El Galpón' },
   saltos: { x0: -128, z0: 14, x1: -88, z1: 62, name: 'Pista de Saltos' },
-  terraza: { x0: -24, z0: -86, x1: 24, z1: -77, name: 'Terraza del Duque' },
+  terraza: { x0: -24, z0: -86, x1: 24, z1: -77, name: 'La Terraza' },
   mansion: { x0: -36, z0: -113, x1: 36, z1: -86, name: 'Mansión' },
-  cancha: { x0: -31, z0: 15, x1: 31, z1: 55, name: 'Cancha del Duque' },
+  cancha: { x0: -31, z0: 15, x1: 31, z1: 55, name: 'La Cancha' },
   pasto: { x0: LAWN.x0, z0: LAWN.z0, x1: LAWN.x1, z1: LAWN.z1, name: 'El Gran Pasto' },
   autocine: { x0: -20, z0: 60, x1: 20, z1: 78, name: 'Autocine' },
 };
@@ -153,7 +153,7 @@ export const SURFACE_BY_ID = Object.fromEntries(SURFACES.map((s) => [s.id, s]));
 // ---------------------------------------------------------------- Pantallas (YouTube)
 export const SCREENS = [
   {
-    id: 'cine', name: 'Cine Gran Duque', c: [122.6, 4.3, 2], yaw: -Math.PI / 2, w: 13, h: 7.3125,
+    id: 'cine', name: 'Cine Gran Desmadre', c: [122.6, 4.3, 2], yaw: -Math.PI / 2, w: 13, h: 7.3125,
     zone: 'cine', hearFull: 0, hearMax: 6, // se escucha adentro del cine (y un poco afuera de la puerta)
   },
   {

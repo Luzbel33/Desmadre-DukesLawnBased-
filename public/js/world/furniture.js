@@ -330,7 +330,7 @@ const BUILD = {
     b.phys.cylinder(cx, 0.42, cz, 0.42, 1.0, { mat: 'wood' });
     b.phys.box(cx, 0.42, cz, RX * 0.85, 0.42, RZ * 0.85, 0, { mat: 'wood', paint: false });
     // luz cálida sobre la mesa
-    const l = new THREE.PointLight(0xffc27a, 10, 7, 1.7);
+    const l = new THREE.PointLight(0xffc27a, 6.5, 7, 1.7); // (más fuerte quemaba las sillas y los naipes)
     l.position.set(cx, 2.6, cz);
     scene.add(l);
     out.lights.push(l);

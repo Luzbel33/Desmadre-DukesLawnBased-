@@ -846,12 +846,18 @@ export class Character {
         break;
       }
       case 'kick': {
-        const d = 0.5;
-        const f = at < d * 0.4 ? at / (d * 0.4) : clamp(1 - (at - d * 0.4) / (d * 0.6), 0, 1);
-        J.hipR[0] = -1.5 * f;
-        J.kneeR[0] = lerp(1.4, 0.05, f) * (f > 0.05 ? 1 : 0);
-        J.spine[0] -= 0.3 * f;
-        J.shoulderL[2] = 0.5 * f; J.shoulderR[2] = -0.5 * f;
+        // patada frontal: recoge la rodilla (0-0.13 s), estira de golpe (0.13-0.22 s: ahí pega) y vuelve.
+        // El cuerpo se tira un poco atrás para compensar y los brazos se abren (equilibrio).
+        const chamber = clamp(at / 0.13, 0, 1);
+        const snap = clamp((at - 0.13) / 0.09, 0, 1);
+        const back = clamp((at - 0.26) / 0.24, 0, 1);
+        const up = chamber * (1 - back);
+        J.hipR[0] = lerp(0, -1.35 - 0.2 * snap, up);
+        J.kneeR[0] = lerp(lerp(0.1, 1.9, chamber), 0.08, snap) * (1 - back) + 0.1 * back;
+        J.hipL[0] = 0.12 * up; J.kneeL[0] = 0.25 * up; // la pierna de apoyo se flexiona
+        J.spine[0] -= 0.32 * up;
+        J.shoulderL[2] = 0.55 * up; J.shoulderR[2] = -0.4 * up;
+        J.shoulderL[0] = -0.4 * up;
         break;
       }
       case 'swing':
@@ -933,15 +939,17 @@ export class Character {
       J.hipL[2] += 0.12 * drunk; J.hipR[2] -= 0.12 * drunk;
     }
 
-    // aplicar suavizado
+    // aplicar suavizado (la pierna que patea y el cuello del cabezazo siguen más rápido: el golpe es seco)
     const k = 1 - Math.exp(-dt * 18);
+    const kFast = 1 - Math.exp(-dt * 46);
     for (let i = 0; i < JOINT_NAMES.length; i++) {
       const n = JOINT_NAMES[i];
       const tgt = J[n];
       const c = A.cur[i];
-      c.x += (tgt[0] - c.x) * k;
-      c.y += (tgt[1] - c.y) * k;
-      c.z += (tgt[2] - c.z) * k;
+      const kk = (st.action === 'kick' && (i === 9 || i === 10)) || (st.action === 'headbutt' && (i === 1 || i === 2)) ? kFast : k;
+      c.x += (tgt[0] - c.x) * kk;
+      c.y += (tgt[1] - c.y) * kk;
+      c.z += (tgt[2] - c.z) * kk;
       const j = this.joints[i];
       if (this.detached[i]) continue;
       j.rotation.set(c.x, c.y, c.z, 'YXZ');

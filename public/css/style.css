@@ -1,4 +1,4 @@
-/* Duke's Lawn — estilo único para HUD, menú, pausa, póker, pantallas, actividades y tiendas.
+/* DESMADRE — estilo único para HUD, menú, pausa, póker, pantallas, actividades y tiendas.
    Paneles oscuros translúcidos, bordes finos, dorado de acento, Rubik para todo y Bangers solo en títulos. */
 :root {
   --ink: #f4f1e8;
@@ -307,48 +307,64 @@ button.big:hover { filter: brightness(1.06); }
 @media (max-width: 600px) { #media { padding: 12px; } .media-heading h3 { font-size: 16px; } .media-heading button { max-width: 140px; } }
 
 /* ---------- póker ---------- */
-#poker { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 6; width: min(1080px, 96vw);
-  background: var(--panel-solid); border: 1px solid var(--line); border-radius: 16px; padding: 10px 14px; box-shadow: var(--shadow); }
-#pk-top { display: flex; justify-content: space-between; font-size: 13px; color: var(--dim); margin-bottom: 6px; }
-#pk-status { font-weight: 800; color: var(--accent); }
-#pk-result { text-align: center; font-weight: 800; font-size: 18px; color: var(--accent); margin: 2px 0 8px; }
-#pk-row { display: flex; align-items: flex-end; gap: 14px; }
-.pk-block { display: flex; flex-direction: column; gap: 4px; }
-.pk-block small { color: var(--faint); font-size: 10.5px; letter-spacing: 1.2px; text-transform: uppercase; }
-#pk-cards, #pk-board { display: flex; gap: 5px; min-height: 84px; align-items: flex-end; }
-.pk-card { border-radius: 7px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5); }
-#pk-actions { flex: 1; display: flex; gap: 8px; align-items: flex-end; justify-content: center; }
-#pk-actions.disabled { opacity: 0.35; pointer-events: none; filter: grayscale(0.6); }
-.pk-btn { min-width: 104px; padding: 11px 14px; font-size: 15px; font-weight: 800; border-radius: 10px; }
-.pk-btn.fold { background: #5a1c1c; border-color: #7a2a2a; }
-.pk-btn.call { background: #1f4a2c; border-color: #2d6a3e; }
-.pk-btn.raise { background: #7a5a12; border-color: #9a7418; width: 100%; }
-.pk-raise { display: flex; flex-direction: column; gap: 6px; min-width: 230px; }
-.pk-quick { display: flex; gap: 6px; }
-.pk-quick button { flex: 1; padding: 5px; font-size: 12px; }
-.pk-side { display: flex; flex-direction: column; gap: 6px; }
-.pk-label { position: absolute; left: 0; top: 0; padding: 4px 9px; border-radius: 9px; background: rgba(12, 12, 10, 0.78);
-  border: 1px solid var(--line); text-align: center; font-size: 11.5px; white-space: nowrap; pointer-events: none; }
-.pk-label b { display: block; font-size: 12.5px; }
-.pk-label b i { font-style: normal; background: #f5f0e0; color: #111; border-radius: 50%; padding: 0 5px; margin-left: 4px; font-size: 10.5px; }
-.pk-label span { color: var(--dim); }
-.pk-label em { display: block; font-style: normal; font-weight: 800; color: var(--accent); }
-.pk-label small { display: block; color: #ff9a6a; font-weight: 800; }
-.pk-label.turn { border-color: var(--accent); box-shadow: 0 0 12px rgba(255, 204, 51, 0.5); }
-.pk-label.folded { opacity: 0.5; }
-#poker { box-sizing: border-box; max-height: 48vh; overflow-y: auto; }
-#pk-row { flex-wrap: wrap; }
-#pk-cards .pk-card { width: 72px; height: auto; }
-#pk-board .pk-card { width: 58px; height: auto; }
-#pk-actions { flex-wrap: wrap; }
-#pk-actions button:disabled, #pk-actions input:disabled { cursor: default; opacity: 0.45; }
-@media (max-width: 800px) {
-  #poker { bottom: 6px; padding: 8px; }
-  #pk-row { gap: 8px; }
-  #pk-actions { flex-basis: 100%; order: 2; }
-  .pk-side { margin-left: auto; }
-  .pk-raise { min-width: 180px; flex: 1; }
-  .pk-btn { min-width: 82px; padding: 10px; }
-  #pk-cards .pk-card { width: 56px; }
-  #pk-board .pk-card { width: 42px; }
+
+/* ------------------------------------------------------------------ póker (como en la vida real: casi todo pasa en la mesa) */
+#poker { position: fixed; inset: 0; z-index: 6; pointer-events: none; font-family: inherit; }
+#pk-line { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; gap: 18px; align-items: baseline;
+  padding: 7px 16px; border-radius: 999px; background: rgba(10, 9, 7, 0.55); color: #e9e2d2; font-size: 14px; white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8); backdrop-filter: blur(3px); }
+#pk-line b { color: #fff; font-weight: 800; }
+#pk-line b.hand { color: #ffd66b; }
+#pk-line .dim { color: #b9b1a0; font-style: italic; }
+#pk-keys { position: absolute; right: 22px; bottom: 22px; display: flex; flex-direction: column; align-items: flex-end; gap: 7px; }
+#pk-keys .k { position: relative; display: flex; align-items: center; gap: 9px; padding: 6px 12px 6px 7px; border-radius: 9px;
+  background: rgba(10, 9, 7, 0.62); color: #eee7d6; font-size: 15px; font-weight: 700; overflow: hidden; text-shadow: 0 1px 2px #000; }
+#pk-keys .k.main { font-size: 17px; background: rgba(28, 58, 34, 0.78); }
+#pk-keys .k.fold span { color: #e0b0a8; }
+#pk-keys .k.fold i { position: absolute; left: 0; bottom: 0; height: 3px; background: #e0574a; }
+#pk-keys kbd, #pk-bet kbd { display: inline-block; min-width: 24px; padding: 2px 7px; border-radius: 6px; border: 1.5px solid rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.08); color: #fff; font: 800 12.5px/1.4 inherit; text-align: center; }
+#pk-keys .sub { display: flex; gap: 6px; opacity: 0.75; }
+#pk-keys .sub .k { font-size: 12.5px; padding: 4px 9px 4px 5px; }
+#pk-keys .timer { font-size: 13px; font-weight: 800; color: #ffcf7a; text-shadow: 0 1px 2px #000; }
+#pk-keys.turn .k.main { box-shadow: 0 0 0 1.5px rgba(255, 214, 107, 0.7), 0 0 18px rgba(255, 214, 107, 0.25); }
+#pk-bet { position: absolute; left: 50%; bottom: 70px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 10px 22px 12px; border-radius: 14px; background: rgba(10, 9, 7, 0.66); color: #eee7d6; text-shadow: 0 1px 2px #000; }
+#pk-bet small { font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; color: #cfc6b2; }
+#pk-bet b { font-size: 46px; line-height: 1; color: #ffd66b; font-weight: 900; }
+#pk-bet .bar { width: 260px; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.15); overflow: hidden; }
+#pk-bet .bar i { display: block; height: 100%; background: linear-gradient(90deg, #d9a53a, #ffd66b); }
+#pk-bet .hint { font-size: 12px; color: #cfc6b2; }
+#pk-bet .hint kbd { min-width: 0; padding: 0 5px; font-size: 11px; }
+#pk-banner { position: absolute; left: 50%; top: 13%; transform: translateX(-50%); padding: 10px 24px; border-radius: 12px; background: rgba(10, 9, 7, 0.6);
+  color: #f3ecdc; font-size: 24px; font-weight: 800; text-shadow: 0 2px 4px #000; white-space: nowrap; animation: pkIn 0.35s ease-out; }
+#pk-banner.win { color: #ffd66b; box-shadow: 0 0 30px rgba(255, 214, 107, 0.25); }
+@keyframes pkIn { from { opacity: 0; transform: translate(-50%, -10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+#pk-help { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(560px, 92vw); padding: 16px 20px 12px; border-radius: 14px;
+  background: rgba(14, 12, 9, 0.9); color: #eee7d6; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6); }
+#pk-help h3 { margin: 0 0 10px; font-size: 16px; color: #ffd66b; letter-spacing: 0.5px; }
+#pk-help .row { display: grid; grid-template-columns: auto 150px 1fr; align-items: center; gap: 10px; padding: 3px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+#pk-help .row b { font-size: 14px; }
+#pk-help .row small { font-size: 12.5px; color: #cfc6b2; }
+#pk-help .cards { display: flex; gap: 2px; }
+#pk-help p { margin: 10px 0 0; font-size: 12.5px; color: #b9b1a0; }
+.pk-mini { border-radius: 3px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); }
+.pk-label { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 3px 9px 4px; border-radius: 8px;
+  background: rgba(10, 9, 7, 0.5); color: #e9e2d2; font-size: 11.5px; line-height: 1.25; text-align: center; pointer-events: none; text-shadow: 0 1px 2px #000; }
+.pk-label b { font-size: 12.5px; color: #fff; }
+.pk-label span { color: #d9d0bc; }
+.pk-label em { font-style: normal; font-weight: 800; font-size: 13px; color: #ffd66b; }
+.pk-label em.a-fold { color: #bdb6a8; }
+.pk-label em.a-call, .pk-label em.a-check { color: #9fe0a8; }
+.pk-label em.a-raise, .pk-label em.a-bet { color: #ffb45a; }
+.pk-label em.a-allin { color: #ff6b5a; }
+.pk-label small { color: #ffcf7a; font-weight: 800; }
+.pk-label.turn { background: rgba(40, 32, 10, 0.72); box-shadow: 0 0 0 1.5px rgba(255, 214, 107, 0.8); }
+.pk-label.folded { opacity: 0.45; }
+@media (max-width: 720px) {
+  #pk-line { font-size: 12px; gap: 10px; bottom: 10px; }
+  #pk-keys { right: 10px; bottom: 50px; }
+  #pk-bet b { font-size: 36px; }
+  #pk-bet .bar { width: 200px; }
+  #pk-banner { font-size: 18px; }
 }

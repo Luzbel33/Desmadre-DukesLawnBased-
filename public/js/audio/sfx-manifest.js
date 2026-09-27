@@ -1,5 +1,7 @@
 // Sonidos reales CC0 (Kenney: Impact Sounds, RPG Audio, Casino Audio, Interface Sounds — kenney.nl, dominio público).
 // Nombre lógico -> variantes. Si falta un archivo, el motor usa el sonido procedural del mismo nombre.
+// Voces de dolor: grabaciones CC0 de OpenGameArt/Freesound (assets/sfx/vo/CREDITOS.txt).
+import { vocalManifest } from './vocals.js';
 const A = 'assets/sfx/';
 const seq = (base, from, to, pad = 3) => Array.from({ length: to - from + 1 }, (_, i) => `${A}${base}${String(from + i).padStart(pad, '0')}.ogg`);
 const list = (...names) => names.map((n) => `${A}${n}.ogg`);
@@ -33,4 +35,5 @@ export const SFX_MANIFEST = {
   'ui-err': list('error_001', 'error_002'),
   'ui-select': list('select_001', 'select_002', 'select_003'),
   door: list('doorOpen_1', 'doorOpen_2'),
+  ...vocalManifest(),
 };

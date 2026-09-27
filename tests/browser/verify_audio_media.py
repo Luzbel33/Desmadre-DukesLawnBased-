@@ -63,7 +63,7 @@ with sync_playwright() as pw:
  camera.position.set(110,1.7,2);camera.lookAt(122.6,4.3,2);camera.updateMatrixWorld();
   $('pause').classList.add('hidden');$('media').classList.remove('hidden');
   $('media-title').textContent='Cine — QA de componentes';
-  const opt=document.createElement('option');opt.textContent='Cine Gran Duque';$('media-screen').append(opt);
+  const opt=document.createElement('option');opt.textContent='Cine Gran Desmadre';$('media-screen').append(opt);
   media.apply('cine',{cur:{v:'M7lc1UVf-VE',playId:'test',start:Date.now()-5000,paused:false,d:120},queue:[]});media.focus('cine',$('media-view'));
  };
  function frame(){media.update(camera,camera.position,{active:true});requestAnimationFrame(frame);}requestAnimationFrame(frame);

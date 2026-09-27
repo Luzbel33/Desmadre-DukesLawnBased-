@@ -18,6 +18,18 @@ const REACT = [1, 1, 1, 0.6, 0.6, 0.6, 0.6, 0, 0, 0, 0];
 const ABS = [false, false, false, false, false, false, false, true, true, true, true];
 // codos y rodillas: bisagras con límites (en radianes, eje X local)
 const HINGE = { 4: [-2.55, 0.08], 6: [-2.55, 0.08], 8: [-0.08, 2.5], 10: [-0.08, 2.5] };
+// Límites anatómicos de las articulaciones esféricas: [AngX, AngY, AngZ] = [mín, máx] en radianes, relativos a
+// la pose de reposo y en el marco local del padre (las convenciones del animador: hombro X negativo = brazo
+// adelante/arriba y Z = abrir al costado; cadera X negativa = pierna adelante; columna X positiva = inclinarse).
+// Sin esto un ragdoll desmayado quedaba con la cabeza dada vuelta o los brazos metidos en el pecho.
+export const JOINT_LIMITS = {
+  1: [[-0.6, 1.2], [-0.8, 0.8], [-0.55, 0.55]], // columna
+  2: [[-1.0, 0.95], [-1.3, 1.3], [-0.65, 0.65]], // cuello
+  3: [[-3.05, 1.2], [-1.4, 1.4], [-0.6, 2.95]], // hombro izquierdo
+  5: [[-3.05, 1.2], [-1.4, 1.4], [-2.95, 0.6]], // hombro derecho
+  7: [[-2.35, 0.8], [-0.75, 0.75], [-0.4, 1.2]], // cadera izquierda
+  9: [[-2.35, 0.8], [-0.75, 0.75], [-1.2, 0.4]], // cadera derecha
+};
 // Equilibrio: torque absoluto (sin reacción) hacia la orientación objetivo en pelvis, torso y cabeza.
 // Es la "trampa" de los ragdolls jugables: sin esto el cuerpo no puede sostenerse solo.
 const BAL_KP = { 0: 900, 1: 900, 2: 700 }; // 1/s² (por inercia efectiva)
@@ -139,6 +151,11 @@ export class Ragdoll {
       }
       const j = W.createImpulseJoint(data, pb, cb, true);
       if (HINGE[i] && Ragdoll.cfg.hinges && j.setLimits) j.setLimits(HINGE[i][0], HINGE[i][1]);
+      else if (JOINT_LIMITS[i] && Ragdoll.cfg.limits !== false) {
+        // la API de JS solo expone límites en articulaciones de un eje; por debajo Rapier acepta uno por eje angular
+        const L = JOINT_LIMITS[i], raw = W.impulseJoints.raw;
+        for (let a = 0; a < 3; a++) raw.jointSetLimits(j.handle, R.JointAxis.AngX + a, L[a][0], L[a][1]);
+      }
       j.setContactsEnabled(false);
       this.joints.push(j);
     }
@@ -150,7 +167,7 @@ export class Ragdoll {
   destroy() {
     if (!this.alive) return;
     const W = this.phys.world;
-    for (const j of this.joints) { try { W.removeImpulseJoint(j, true); } catch { /* ya borrado */ } }
+    for (const j of this.joints) { if (!j) continue; try { W.removeImpulseJoint(j, true); } catch { /* ya borrado */ } }
     for (const c of this.colliders) this.phys.untag(c);
     for (const b of this.bodies) { try { W.removeRigidBody(b); } catch { /* ya borrado */ } }
     this.bodies = [];
@@ -434,6 +451,21 @@ export class Ragdoll {
   setPartCollide(i, on) {
     const c = this.colliders[i];
     if (c) c.setEnabled(on);
+  }
+
+  // Tramo cortado (gore): se desengancha del cuerpo y deja de existir para la física. Si solo se apagaba la
+  // colisión, el tramo quedaba colgando de la articulación SIN MASA (inamovible para el solver): el cadáver
+  // quedaba parado colgado de un brazo invisible, o ese pedazo lo arrastraba volando. Se rearma con build().
+  detachBranch(i, branch) {
+    const j = this.joints[i - 1];
+    if (j) {
+      try { this.phys.world.removeImpulseJoint(j, true); } catch { /* ya borrado */ }
+      this.joints[i - 1] = null;
+    }
+    for (const k of branch) {
+      this.colliders[k]?.setEnabled(false);
+      this.bodies[k]?.setEnabled(false);
+    }
   }
 }
 

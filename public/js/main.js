@@ -1,4 +1,4 @@
-// Duke's Lawn: DESMADRE — cliente jugable integrado.
+// DESMADRE — cliente jugable integrado.
 import * as THREE from 'three';
 import { G, clamp } from './core/G.js';
 import { Physics, GR, groups } from './core/physics.js';
@@ -10,7 +10,7 @@ import { setMaxAniso } from './world/textures.js';
 import { installFarShadowChunk } from './world/shadows.js';
 import { Post } from './fx/post.js';
 import { FX, Decals } from './fx/particles.js';
-import { LocalPlayer, RemotePlayer } from './game/player.js';
+import { LocalPlayer, RemotePlayer, predictHit } from './game/player.js';
 import { VehicleManager } from './game/entities.js';
 import { PropManager, defOf } from './game/props.js';
 import { preloadAssets, registerManifest } from './game/assets.js';
@@ -28,6 +28,7 @@ import { AvatarPreview } from './ui/avatar-preview.js';
 import { Hud } from './ui/hud.js';
 import { preloadHumans, MODELS, DEFAULT_MODEL } from './char/human.js';
 import { AudioEngine } from './audio/audio.js';
+import { voiceOf, voiceRate, vocalName } from './audio/vocals.js';
 import { YouTubeScreenManager } from './media/screens.js';
 import { youtubeId, mediaPosition } from './media/youtube.js';
 import { ZONES, zoneAt, isPvpAt, INTERACT, SCREENS, SCREEN_BY_ID, FIELD } from './shared/mapdata.js';
@@ -84,7 +85,8 @@ function setMode(mode) {
   show($('activities'), mode === 'activities');
   show($('palette'), mode === 'palette');
   show($('poker'), mode === 'poker');
-  show($('hud'), ingame && mode !== 'menu');
+  // sentado al póker no hay HUD del juego (zona, barras, etc.): solo la mesa
+  show($('hud'), ingame && mode !== 'menu' && mode !== 'poker');
   show($('chat'), ingame);
   if (mode !== 'chat') $('chat')?.classList.remove('open');
   if (G.input) { G.input.enabled = mode === 'game'; if (mode !== 'game') G.input.releaseAll(); }
@@ -368,7 +370,8 @@ function updateNameTags() {
 }
 
 function openChat() {
-  if (state.mode !== 'game') return;
+  if (state.mode !== 'game' && state.mode !== 'poker') return;
+  state.chatFrom = state.mode; // sentado al póker también se chatea (y al cerrar se vuelve a la mesa)
   state.mode = 'chat';
   G.input.enabled = false;
   G.input.unlock();
@@ -380,7 +383,9 @@ function openChat() {
 function closeChat(lock = true) {
   $('chat').classList.remove('open');
   if (!G.inGame) return;
-  state.mode = 'game'; G.input.enabled = true;
+  if (state.chatFrom === 'poker' && G.poker?.isSeated()) { state.mode = 'poker'; G.input.enabled = false; }
+  else { state.mode = 'game'; G.input.enabled = true; }
+  state.chatFrom = null;
   if (lock) setTimeout(() => G.input.lock(), 0);
 }
 
@@ -419,7 +424,7 @@ function nearestWorldInteract() {
 }
 
 // Ayudas contextuales (chiquitas, al costado, se desvanecen según la opción de la pausa):
-// X usa el mundo (sentarse, subir, heladerita, el Duque...), E/Q agarran o sueltan. Nunca comparten tecla.
+// X usa el mundo (sentarse, subir, heladerita...), E/Q agarran o sueltan. Nunca comparten tecla.
 // La mira se marca cuando hay algo para usar o agarrar (eso se ve siempre, aunque las ayudas estén apagadas).
 function updatePrompt() {
   state.promptAction = null;
@@ -687,8 +692,15 @@ function throwPopcorn(side) {
   state.net?.send({ t: 'ev', k: 'pop', x: +pos.x.toFixed(2), y: +pos.y.toFixed(2), z: +pos.z.toFixed(2), dx: +dir.x.toFixed(2), dy: +dir.y.toFixed(2), dz: +dir.z.toFixed(2) });
 }
 
+// Voz de dolor de un jugador (cada uno con su voz y su tono). pos null = la mía (sin espacializar)
+function playVocal(kind, vi, look, id, pos) {
+  const voice = voiceOf(MODELS[look?.model]?.gender || MODELS[DEFAULT_MODEL].gender, id);
+  G.sfx?.trigger(vocalName(kind, voice), pos, kind === 'hurt' ? 0.8 : 0.95, { variant: vi | 0, rate: voiceRate(id), full: 3, max: 32, slot: 'vo' + id });
+}
+
 function hitFx(pos, amount = 0.5, dir = null) {
   G.sfx?.trigger('hit', pos, clamp(0.4 + amount * 0.5, 0, 1));
+  if (amount > 0.8) G.sfx?.trigger('hit-soft', pos, clamp(amount * 0.45, 0, 0.8), { rate: 0.72 }); // el peso del golpe
   if (!G.fx) return;
   const d = dir || tmpV.set(Math.random() - 0.5, 0.5 + Math.random(), Math.random() - 0.5).normalize();
   G.fx.blood(pos.clone ? pos.clone() : new THREE.Vector3(pos.x, pos.y, pos.z), d, amount);
@@ -728,12 +740,19 @@ function handleEvent(m) {
     case 'wd': // herida de otro jugador (la calculó su dueño)
       if (rp) rp.char.wound(m.p | 0, new THREE.Vector3(m.l?.[0] || 0, m.l?.[1] || 0, m.l?.[2] || 0), m.kd || 'blunt', +m.s || 0.5, null, (m.p * 7919 + (m.s * 1000 | 0)) | 0);
       break;
-    case 'imp': { // impacto (sangre/sonido) visto por los demás
+    case 'imp': { // impacto (sangre/sonido/reacción del cuerpo) visto por los demás
       const pos = new THREE.Vector3(+m.x || 0, +m.y || 0, +m.z || 0);
+      // si el golpe fue mío ya lo vi y lo escuché al instante (predicción): no repetir
+      const predicted = rp && m.by === G.myId && G.time - rp.react.predictT < 0.9;
+      if (predicted) break;
+      if (rp && (m.p | 0) >= 0 && m.p != null) rp.hitReact(m.p | 0, +m.s || 0, pos, +m.nx || 0, +m.nz || 0);
       if (!m.hl && m.s > 0.15) hitFx(pos, clamp(m.s, 0.2, 1.4), new THREE.Vector3(+m.nx || 0, Math.abs(+m.ny || 0.5), +m.nz || 0));
       else G.sfx?.trigger('hit', pos, 0.35);
       break;
     }
+    case 'vo': // quejido / grito de otro (él eligió la toma: todos oyen lo mismo)
+      if (rp) playVocal(String(m.kd || 'hurt'), m.vi | 0, rp.look, rp.id, tmpV.set(rp.pos.x, rp.pos.y + 1.55, rp.pos.z));
+      break;
     case 'ko':
       if (m.by && m.by !== m.id) killfeed(`💫 ${nameOf(m.by)} dejó KO a ${nameOf(m.id)}`);
       else killfeed(`💫 ${nameOf(m.id)} quedó KO`);
@@ -745,7 +764,10 @@ function handleEvent(m) {
       killfeed(`🍺 ${nameOf(m.id)} se desmayó de tanto escabio`);
       break;
     case 'grab':
-      if (m.to === G.myId && state.local) state.local.grabbedByRemote(m.id, m.side, m.part | 0, m.a || [0, 0, 0], !!m.on);
+      if (m.to === G.myId && state.local) state.local.grabbedByRemote(m.id, m.side, m.part | 0, m.a || [0, 0, 0], !!m.on, m.v);
+      break;
+    case 'gbrk': // el que tenía agarrado se zafó
+      if (m.to === G.myId && state.local) { state.local.gripLost(m.id, m.side === 'l' ? 'l' : 'r'); updateHotbar(); }
       break;
     case 'hc': // "te pegué": el atacante avisa; el golpeado valida y decide el daño
       if (m.to === G.myId) state.local?.hitClaim(m);
@@ -780,6 +802,9 @@ function handleEvent(m) {
     case 'emote':
       if (rp) rp.stateData = { ...(rp.stateData || {}), em: m.e, et: 0 };
       break;
+    case 'rs': // reapareció: cuerpo entero y limpio para todos
+      rp?.resetBody();
+      break;
     default:
       break;
   }
@@ -798,18 +823,37 @@ function onLocalEvent(type, d) {
       else if (!d.harmless && d.s > 0.1) {
         hitFx(pos, clamp(d.s, 0.2, 1.5), new THREE.Vector3(d.nx, Math.abs(d.ny) + 0.3, d.nz));
         state.hurt = Math.min(1, state.hurt + 0.35 + d.s * 0.3);
-        if (d.part === PART.HEAD) G.sfx?.trigger('pain', null, 0.8);
       } else G.sfx?.trigger('hit', pos, 0.4);
-      state.shake = Math.min(1, (state.shake || 0) + (d.blocked ? 0.12 : 0.25 + d.s * 0.35));
-      net?.send({ t: 'ev', k: 'imp', x: +d.x.toFixed(2), y: +d.y.toFixed(2), z: +d.z.toFixed(2), nx: +d.nx.toFixed(2), ny: +d.ny.toFixed(2), nz: +d.nz.toFixed(2), s: +d.s.toFixed(2), hl: d.harmless ? 1 : 0 });
+      // la vista se va con el golpe (hacia donde me empuja); en la cabeza, más
+      if (d.src !== 'world') camHit(d.nx, d.nz, (d.blocked ? 0.35 : 1) * clamp(0.35 + d.s * 0.6, 0.2, 1.8) * (d.part === PART.HEAD ? 1.4 : 1));
+      state.shake = Math.min(1, (state.shake || 0) + (d.blocked ? 0.06 : 0.1 + d.s * 0.2));
+      net?.send({ t: 'ev', k: 'imp', p: d.src === 'world' ? -1 : d.part, by: d.by || 0, x: +d.x.toFixed(2), y: +d.y.toFixed(2), z: +d.z.toFixed(2), nx: +d.nx.toFixed(2), ny: +d.ny.toFixed(2), nz: +d.nz.toFixed(2), s: +d.s.toFixed(2), hl: d.harmless ? 1 : 0 });
       break;
     }
-    case 'hitdealt':
-      // mi piña/patada/arma tocó a alguien: suena, sacude un poco y le aviso (él valida y decide el daño)
-      G.sfx?.trigger('hit', new THREE.Vector3(d.x, d.y, d.z), clamp(d.dv / 8, 0.3, 1));
-      state.shake = Math.min(1, (state.shake || 0) + clamp(d.dv / 30, 0.05, 0.25));
-      net?.send({ t: 'ev', k: 'hc', to: d.id, p: d.part, s: +d.dv.toFixed(2), x: +d.x.toFixed(2), y: +d.y.toFixed(2), z: +d.z.toFixed(2), w: d.w || 0 });
+    case 'vocal':
+      playVocal(d.kind, d.vi, state.local.look, G.myId, null);
+      net?.send({ t: 'ev', k: 'vo', kd: d.kind, vi: d.vi });
       break;
+    case 'hitdealt': {
+      // mi piña/patada/arma tocó a alguien: le aviso (él valida y decide el daño), pero lo que se ve y se
+      // escucha va YA: su cuerpo acusa el golpe, salta la sangre si ahí lastima, mi brazo frena un instante
+      const L = state.local, rp = G.players.get(d.id), pt = new THREE.Vector3(d.x, d.y, d.z);
+      let s = predictHit(d.a, d.dv, d.w || null);
+      if (rp) {
+        const dx = rp.pos.x - L.pos.x, dz = rp.pos.z - L.pos.z;
+        s = rp.hitReact(d.part, s, pt, dx, dz, true);
+        if (s > 0.15 && (G.settings.desmadre || isPvpAt(rp.pos.x, rp.pos.z))) hitFx(pt, clamp(s, 0.2, 1.4), tmpV2.set(dx, 0.6, dz).normalize());
+        else G.sfx?.trigger('hit', pt, clamp(d.dv / 8, 0.3, 1));
+      } else G.sfx?.trigger('hit', pt, clamp(d.dv / 8, 0.3, 1));
+      if (s > 0.1) {
+        L.hitStop = Math.max(L.hitStop, 0.035 + Math.min(0.06, s * 0.04));
+        camKick.v.x -= 0.45 + Math.min(1.4, s * 0.9);
+        camKick.v.z += (Math.random() - 0.5) * 0.9 * Math.min(1.5, s);
+      }
+      state.shake = Math.min(1, (state.shake || 0) + clamp(d.dv / 40, 0.03, 0.15));
+      net?.send({ t: 'ev', k: 'hc', to: d.id, p: d.part, s: +d.dv.toFixed(2), x: +d.x.toFixed(2), y: +d.y.toFixed(2), z: +d.z.toFixed(2), w: d.w || 0, a: d.a || 'p' });
+      break;
+    }
     case 'handwall':
       G.sfx?.trigger(d.s > 5 ? 'hit' : 'hit-soft', new THREE.Vector3(d.x, d.y, d.z), clamp(d.s / 10, 0.2, 0.7));
       break;
@@ -848,12 +892,18 @@ function onLocalEvent(type, d) {
       updateHotbar();
       break;
     case 'releaseplayer':
-      net?.send({ t: 'ev', k: 'grab', to: d.to, side: d.side, on: 0 });
+      net?.send({ t: 'ev', k: 'grab', to: d.to, side: d.side, on: 0, v: d.v });
       updateHotbar();
+      break;
+    case 'gripbreak': // me zafé (o reaparecí): el que me tenía tiene que soltarme
+      net?.send({ t: 'ev', k: 'gbrk', to: d.to, side: d.side });
       break;
     case 'grab':
     case 'release':
       updateHotbar();
+      break;
+    case 'respawn':
+      net?.send({ t: 'ev', k: 'rs' });
       break;
     case 'throwitem': {
       const L = state.local;
@@ -1010,7 +1060,8 @@ async function joinGame() {
     state.graffiti = new GraffitiManager(G.scene, state.net); G.graffiti = state.graffiti;
     G.poker = new PokerView({
       scene: G.scene, net: state.net, tables: G.world.pokerTables || [], seats: G.world.seats || [],
-      onSit: (seat) => { state.local.sitAt({ ...seat, poker: true }); setMode('poker'); G.input.unlock(); },
+      // sentado a la mesa el mouse sigue capturado: se mira alrededor y se juega con el teclado (sin botones)
+      onSit: (seat) => { state.local.sitAt({ ...seat, poker: true }); setMode('poker'); if (!G.input.locked) setTimeout(() => G.input.lock(), 0); },
       onLeave: () => { if (state.local?.seat) state.local.standUp(); if (state.mode === 'poker') { setMode('game'); setTimeout(() => G.input.lock(), 0); } },
       onAct: (act) => state.local?.pokerGesture(act),
     });
@@ -1103,9 +1154,17 @@ function setupUIEvents() {
     if (state.mode === 'media' || state.mode === 'emotes' || state.mode === 'palette') {
       if (e.key === 'Escape' || (state.mode === 'palette' && e.code === 'KeyR')) { e.preventDefault(); closeOverlayToGame(); }
     } else if (state.mode === 'pause' && e.key === 'Escape') { e.preventDefault(); resumeGame(); }
-    else if (state.mode === 'poker' && (e.key === 'Escape' || e.code === 'KeyX') && e.target?.tagName !== 'INPUT') { e.preventDefault(); G.poker?.leave(); }
+    else if (state.mode === 'poker' && !typing) {
+      // póker: las teclas de la mesa primero (apostar, pasar, retirarse, ver jugadas); X se levanta; T/Enter chat
+      if (G.poker?.key(e, true)) { e.preventDefault(); return; }
+      if (e.code === 'KeyX') { e.preventDefault(); G.poker?.leave(); }
+      else if ((e.code === 'KeyT' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); openChat(); }
+    }
   });
-  addEventListener('keyup', (e) => { if (e.code === 'KeyV') G.voice?.setPTT(false); });
+  addEventListener('keyup', (e) => {
+    if (e.code === 'KeyV') G.voice?.setPTT(false);
+    if (state.mode === 'poker' && G.poker?.key(e, false)) e.preventDefault();
+  });
   addEventListener('blur', () => G.voice?.setPTT(false));
 }
 
@@ -1229,7 +1288,10 @@ function updateCamera(dt) {
   const down = L.state === 'ko' || L.state === 'dead';
   const mode = down ? 0 : state.cameraMode;
   state.shake = Math.max(0, (state.shake || 0) - dt * 2.5);
-  const sh = state.shake * 0.08;
+  stepCamKick(dt);
+  const sh = state.shake * 0.08, tt = G.time || 0;
+  const shx = sh * (Math.sin(tt * 43.1) * 0.6 + Math.sin(tt * 67.7 + 1.3) * 0.4) * 0.6;
+  const shy = sh * (Math.sin(tt * 51.3 + 2.1) * 0.6 + Math.sin(tt * 79.1) * 0.4) * 0.6;
   if (mode === 2) {
     // primera persona: los ojos del cuerpo. Se suaviza solo el bamboleo de la cabeza RESPECTO del cuerpo
     // (antes se suavizaba la posición absoluta y a velocidad la cámara quedaba atrás, dentro del torso)
@@ -1242,8 +1304,9 @@ function updateCamera(dt) {
     state.eyeOff.lerp(off, 1 - Math.exp(-30 * dt));
     state.eye = (state.eye || new THREE.Vector3()).copy(base).add(state.eyeOff);
     G.camera.position.copy(state.eye);
-    G.camera.position.x += (Math.random() - 0.5) * sh; G.camera.position.y += (Math.random() - 0.5) * sh;
+    G.camera.position.x += shx; G.camera.position.y += shy;
     G.camera.lookAt(state.eye.clone().addScaledVector(fwd, 10));
+    G.camera.rotateX(camKick.a.x); G.camera.rotateY(camKick.a.y); G.camera.rotateZ(camKick.a.z);
     L.char.setVisibleHead(false);
     return;
   }
@@ -1265,14 +1328,36 @@ function updateCamera(dt) {
   if (hit && hit.dist < len) desired.copy(pivot).addScaledVector(dir, Math.max(0.45, hit.dist - 0.18));
   const k = 1 - Math.exp(-16 * dt);
   G.camera.position.lerp(desired, k);
-  G.camera.position.x += (Math.random() - 0.5) * sh; G.camera.position.y += (Math.random() - 0.5) * sh;
+  G.camera.position.x += shx; G.camera.position.y += shy;
   G.camera.lookAt(pivot.clone().addScaledVector(right, -side));
+  G.camera.rotateX(camKick.a.x); G.camera.rotateY(camKick.a.y); G.camera.rotateZ(camKick.a.z);
+}
+
+// Sacudón de la cámara: resorte en cabeceo (x), giro (y) y rolido (z) que los golpes patean
+const camKick = { a: new THREE.Vector3(), v: new THREE.Vector3() };
+function stepCamKick(dt) {
+  const w = 24, z = 0.5, n = Math.max(1, Math.ceil(dt * 240)), h = dt / n, a = camKick.a, v = camKick.v;
+  for (let i = 0; i < n; i++) {
+    v.x += (-w * w * a.x - 2 * z * w * v.x) * h;
+    v.y += (-w * w * a.y - 2 * z * w * v.y) * h;
+    v.z += (-w * w * a.z - 2 * z * w * v.z) * h;
+    a.addScaledVector(v, h);
+  }
+  a.clampScalar(-0.35, 0.35);
+}
+// me pegaron: la vista se va hacia donde me empujan ((nx, nz) = empujón, k = fuerza)
+function camHit(nx, nz, k) {
+  const fx = Math.sin(state.viewYaw), fz = Math.cos(state.viewYaw);
+  const f = nx * fx + nz * fz, l = nx * fz - nz * fx;
+  camKick.v.x += -f * 2.4 * k;
+  camKick.v.y += l * 1.1 * k;
+  camKick.v.z += l * 1.8 * k;
 }
 
 function updateHud(dt) {
   if (!state.local) return;
   const z = zoneAt(state.local.pos.x, state.local.pos.z);
-  $('zone').textContent = z ? ZONES[z].name : 'Afueras del Duque';
+  $('zone').textContent = z ? ZONES[z].name : 'Afueras';
   $('pvp').classList.toggle('hidden', !(G.settings.desmadre || isPvpAt(state.local.pos.x, state.local.pos.z)));
   $('ping').textContent = Math.round(state.net?.rtt || 0);
   $('pcount').textContent = G.players.size + 1;
@@ -1365,7 +1450,7 @@ async function boot() {
     G.fx.onBloodLand = (x, z, size) => G.blood.add(x, z, size);
     G.input = new Input(canvas); G.input.enabled = false;
     G.input.onLockChange = (locked) => { if (!locked && G.inGame && state.mode === 'game') openPause(); };
-    canvas.addEventListener('click', () => { if (G.inGame && state.mode === 'game' && !G.input.locked) G.input.lock(); });
+    canvas.addEventListener('click', () => { if (G.inGame && (state.mode === 'game' || state.mode === 'poker') && !G.input.locked) G.input.lock(); });
 
     G.sfx = new AudioEngine({ opts: G.opts, changed: updateAudioUI });
     G.sfx.setSamples(SFX_MANIFEST);
@@ -1418,6 +1503,8 @@ async function boot() {
         state.vehicles.update(dt); state.local.update(dt);
         for (const p of G.players.values()) p.update(dt);
         state.props.update(dt); // attach props after local and remote skeletons have animated
+        // sentado al póker: el mouse mira alrededor de la mesa y la rueda elige cuánto apostar
+        if (state.mode === 'poker' && G.poker && G.input.locked) { G.poker.lookAround(G.input.dx, G.input.dy); G.poker.wheel(G.input.wheel); }
         if (state.mode === 'poker' && G.poker?.cameraPose(G.camera, dt)) state.local.char.setVisibleHead(false); // cámara en los ojos: sin ver la propia cabeza
         else updateCamera(dt);
         G.poker?.update(G.camera, dt);
