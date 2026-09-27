@@ -141,7 +141,8 @@ export class Post {
     this.composer.addPass(this.renderPass);
     // brillo suave en lo que emite luz (neones, lamparitas, fuego, el sol): solo pasa lo que supera el umbral HDR
     if (opts.bloom !== false) {
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.5, 0.35, 1.8);
+      // umbral alto: brillan los neones, las lamparitas, el fuego y el sol, no una silla blanca bajo una lámpara
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.38, 0.35, 2.5);
       // umbral suave: solo suma lo que EXCEDE el umbral (neones, lamparitas, fuego, el disco del sol).
       // El cielo brillante alrededor del sol queda casi afuera; con el umbral duro lavaba la pantalla.
       const hp = this.bloom.materialHighPassFilter;
