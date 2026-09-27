@@ -29,6 +29,35 @@ const QC = new THREE.Quaternion();
 const QD = new THREE.Quaternion();
 // cuánto puede girar la muñeca para acomodar la mano al mango (rad)
 const WRIST_MAX = 1.25;
+// dedos: grosor (m) y cierre máximo por falange (rad) [base, medio, punta]
+const FINGER_R = 0.0085;
+const CURL_MAX = [1.45, 1.65, 1.2];
+const THUMB_MAX = [0.55, 0.95, 0.95];
+const V4 = new THREE.Vector3();
+const V5 = new THREE.Vector3();
+
+// Distancia con signo de un punto (mundo) a lo que tiene la mano: un mango (recta por el puño con su radio) o la
+// forma del objeto (caja, cilindro, bola, cápsula en su marco). Negativa = adentro.
+function gripDistance(g, p) {
+  if (g.line) {
+    const d = V4.copy(p).sub(g.line.o);
+    return d.addScaledVector(g.line.dir, -d.dot(g.line.dir)).length() - g.line.r;
+  }
+  const q = V5.copy(p).applyMatrix4(g.inv);
+  const def = g.def;
+  const y = q.y - (def.oy || 0);
+  if (def.shape === 'ball') return Math.hypot(q.x, y, q.z) - def.r;
+  if (def.shape === 'cyl') {
+    const dr = Math.hypot(q.x, q.z) - def.r, dy = Math.abs(y) - def.h / 2;
+    return Math.min(Math.max(dr, dy), 0) + Math.hypot(Math.max(dr, 0), Math.max(dy, 0));
+  }
+  if (def.shape === 'capsule') {
+    const hh = Math.max(0, def.h / 2 - def.r);
+    return Math.hypot(q.x, Math.max(0, Math.abs(y) - hh), q.z) - def.r;
+  }
+  const qx = Math.abs(q.x) - (def.hx || 0.1), qy = Math.abs(y) - (def.hy || 0.1), qz = Math.abs(q.z) - (def.hz || 0.1);
+  return Math.hypot(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qy, qz), 0);
+}
 const M1 = new THREE.Matrix4();
 const M2 = new THREE.Matrix4();
 
@@ -177,7 +206,7 @@ function buildMeta(scene) {
         const axisW = new THREE.Vector3().crossVectors(d, f === 'thumb' ? palm.clone().lerp(new THREE.Vector3(0, 0, 1), 0.5).normalize() : palm).normalize();
         const inv = nWorld[bone.name].clone().invert();
         const axisL = axisW.applyQuaternion(inv).normalize();
-        fingers[side].push({ name: bone.name, axis: axisL, rest: bone.quaternion.clone(), thumb: f === 'thumb', n });
+        fingers[side].push({ name: bone.name, axis: axisL, rest: bone.quaternion.clone(), thumb: f === 'thumb', n, tip: child.position.clone() });
       }
     }
     void hand;
@@ -453,6 +482,9 @@ export class HumanCharacter {
     // mango en la mano: dirección (mundo) hacia donde sale el mango del lado del pulgar. gripOn: hay mango
     this.gripAxis = { l: new THREE.Vector3(), r: new THREE.Vector3() };
     this.gripOn = { l: false, r: false };
+    // lo que hay en cada mano para cerrar los dedos contra su forma: { def, inv } (objeto) o radio del mango
+    this.gripShape = { l: null, r: null };
+    this.gripRadius = { l: 0, r: 0 };
     this.headVisible = true;
     this.build();
   }
@@ -568,6 +600,51 @@ export class HumanCharacter {
     if (this.glasses) this.glasses.visible = v;
   }
 
+  // Forma contra la que se cierran los dedos de esa mano, o null
+  _gripTarget(side) {
+    if (this.gripOn?.[side] && this.gripRadius[side] > 0) {
+      // mango: recta por el centro del puño a lo largo del mango
+      const t = this._gt || (this._gt = { l: { line: { o: new THREE.Vector3(), dir: new THREE.Vector3(), r: 0 } }, r: { line: { o: new THREE.Vector3(), dir: new THREE.Vector3(), r: 0 } } });
+      const L = t[side].line;
+      this.fistWorld(side, L.o);
+      L.dir.copy(this.gripAxis[side]).normalize();
+      L.r = this.gripRadius[side];
+      return t[side];
+    }
+    return this.gripShape?.[side] || null;
+  }
+
+  // Cada dedo, de la base a la punta: la falange se cierra de a poco hasta que su medio o su punta tocan la forma
+  _wrapFingers(side, target) {
+    const B = this.bones;
+    const hand = B['hand_' + side];
+    hand?.updateWorldMatrix(true, false);
+    for (const f of this.meta.fingers[side]) {
+      const bone = B[f.name];
+      if (!bone || !f.tip) continue;
+      const max = (f.thumb ? THUMB_MAX : CURL_MAX)[f.n - 1];
+      let amt = max;
+      for (let s = 0; s <= 10; s++) {
+        const a = (max * s) / 10;
+        bone.quaternion.copy(f.rest).multiply(Q2.setFromAxisAngle(f.axis, a));
+        bone.updateWorldMatrix(false, false);
+        const tip = V1.copy(f.tip).applyMatrix4(bone.matrixWorld);
+        const mid = V2.copy(f.tip).multiplyScalar(0.5).applyMatrix4(bone.matrixWorld);
+        if (gripDistance(target, tip) < FINGER_R || gripDistance(target, mid) < FINGER_R) { amt = Math.max(0, a - max * 0.05); break; }
+      }
+      bone.quaternion.copy(f.rest).multiply(Q2.setFromAxisAngle(f.axis, amt));
+      bone.updateWorldMatrix(false, false);
+    }
+  }
+
+  // Centro del puño (donde queda el mango) en mundo, según el hueso de la mano ya acomodado
+  fistWorld(side, out = new THREE.Vector3()) {
+    const hb = this.bones?.['hand_' + side];
+    if (!hb) return out.set(0, -100, 0);
+    hb.updateWorldMatrix(true, false);
+    return out.copy(this.meta.grip[side]).applyMatrix4(hb.matrixWorld);
+  }
+
   headWorld(out = new THREE.Vector3()) {
     this.root.updateWorldMatrix(true, true);
     return this.bones.head.localToWorld(out.copy(this.meta.headInfo.center));
@@ -657,9 +734,13 @@ export class HumanCharacter {
         B['foot_' + side].quaternion.copy(f.rest).multiply(Q2);
       }
     }
-    // dedos
+    // dedos: con algo en la mano cada falange se cierra hasta tocar su forma (un mango fino queda en puño, una
+    // lata a medias, el borde de una silla agarrado); sin nada, el cierre de siempre (puño o mano floja)
     for (const side of ['l', 'r']) {
       const g = this.grip[side];
+      const target = this._gripTarget(side);
+      // una forma gruesa que ya envuelve la mano (la caja de una silla) no sirve para cerrar contra ella: gancho
+      if (target && (target.line || gripDistance(target, this.fistWorld(side, V3)) > 0.005)) { this._wrapFingers(side, target); continue; }
       for (const f of this.meta.fingers[side]) {
         const amt = f.thumb ? g * (f.n === 1 ? 0.25 : 0.55) : g * (f.n === 1 ? 1.15 : f.n === 2 ? 1.35 : 0.95);
         Q2.setFromAxisAngle(f.axis, amt);

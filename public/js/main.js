@@ -1280,6 +1280,28 @@ function updateInput(dt) {
   } else state.sprayT = 0;
 }
 
+// Lo que se empuña queda en el puño: la muñeca gira para agarrar el mango y eso corre el puño respecto del
+// antebrazo; se corre lo que se ve (la física del objeto sigue al brazo)
+function snapHeldToFists() {
+  const fix = (char, pid, side) => {
+    const p = pid ? state.props.get(pid) : null;
+    if (!p?.group || !char?.fistWorld || !char.gripOn?.[side] || !(char.gripRadius?.[side] > 0) || !p.def?.grip) return;
+    const fist = char.fistWorld(side, tmpV);
+    const g = p.def.grip;
+    const gw = tmpV2.set(g[0], g[1], g[2]).applyQuaternion(p.group.quaternion).add(p.group.position);
+    if (fist.distanceToSquared(gw) < 0.04) p.group.position.add(fist.sub(gw));
+  };
+  const L = state.local;
+  if (L?._heldList) for (const { p, side } of L._heldList()) fix(L.char, p.id, side);
+  for (const rp of G.players.values()) {
+    const s = rp.stateData;
+    if (!s) continue;
+    const two = s.hd && s.hd === s.hl;
+    if (s.hd) fix(rp.char, s.hd, two ? (s.tw === 'l' ? 'l' : 'r') : 'r');
+    if (s.hl && !two) fix(rp.char, s.hl, 'l');
+  }
+}
+
 function updateCamera(dt) {
   const L = state.local; if (!L) return;
   const pitch = state.viewPitch;
@@ -1503,6 +1525,7 @@ async function boot() {
         state.vehicles.update(dt); state.local.update(dt);
         for (const p of G.players.values()) p.update(dt);
         state.props.update(dt); // attach props after local and remote skeletons have animated
+        snapHeldToFists();
         // sentado al póker: el mouse mira alrededor de la mesa y la rueda elige cuánto apostar
         if (state.mode === 'poker' && G.poker && G.input.locked) { G.poker.lookAround(G.input.dx, G.input.dy); G.poker.wheel(G.input.wheel); }
         if (state.mode === 'poker' && G.poker?.cameraPose(G.camera, dt)) state.local.char.setVisibleHead(false); // cámara en los ojos: sin ver la propia cabeza

@@ -49,6 +49,23 @@ export const BODY_HITS = {
   h: { thr: 1.4, span: 2.4, cap: 1.5, base: 13, bal: 1.5, push: 1.3 },
 };
 
+// Radio del mango de cada cosa que se empuña (los dedos se cierran hasta él): fino = puño, grueso = mano abierta
+export const GRIP_R = {
+  bat: 0.017, katana: 0.014, sword: 0.014, machete: 0.014, knife: 0.012, axe: 0.016, sledge: 0.018, crowbar: 0.012,
+  pan: 0.013, cue: 0.014, guitar: 0.02, bottle: 0.017, can: 0.033, spraycan: 0.031, popcorn: 0.05,
+};
+const GS_M = new THREE.Matrix4();
+// Qué tiene en la mano un personaje, para que cierre los dedos contra eso (mango o forma del objeto)
+export function setHandGrip(ch, side, p, two) {
+  if (!ch?.gripRadius || !p) return;
+  const r = handleAxis(p.type, p.group.quaternion, V6) ? (GRIP_R[p.type] ?? 0.016) : 0;
+  const sides = two ? ['l', 'r'] : [side];
+  for (const s of sides) {
+    ch.gripRadius[s] = r;
+    ch.gripShape[s] = r ? null : { def: p.def, inv: GS_M.compose(p.group.position, p.group.quaternion, p.group.scale).clone().invert() };
+  }
+}
+
 // Fuerza que va a calcular el golpeado para un aviso de golpe (a: tipo, speed: m/s, w: arma u objeto revoleado).
 // El que pega la usa para ver la reacción al instante, sin esperar la ida y vuelta de la red.
 export function predictHit(a, speed, w = null) {
@@ -1513,11 +1530,12 @@ export class LocalPlayer {
     for (const { p, side, two } of this._heldList()) {
       this._posHeld(p, side, two, 0);
       G.props.showHeld(p, HP, HQ);
-      // la muñeca acomoda la mano al mango (y la otra mano también, si va con las dos)
+      // la muñeca acomoda la mano al mango (y la otra mano también, si va con las dos); los dedos, a su forma
       if (ch.gripAxis?.[side] && handleAxis(p.type, HQ, ch.gripAxis[side])) {
         ch.gripOn[side] = true;
         if (two) { const o = side === 'l' ? 'r' : 'l'; ch.gripAxis[o].copy(ch.gripAxis[side]); ch.gripOn[o] = true; }
       }
+      setHandGrip(ch, side, p, two);
     }
   }
 
@@ -1537,6 +1555,25 @@ export class LocalPlayer {
     if (!bp || !h || h.snap < 1 || dt <= 0) return;
     const a = this.arm[side];
     const now = G.time;
+    // despacio el barrido no ve nada: si alguna parte del arma quedó adentro de otro cuerpo, la mano retrocede
+    // hasta que el arma quede apoyada en la superficie (el arma tiene cuerpo: no se mete en la gente)
+    let worst = 0, wx = 0, wy = 0, wz = 0;
+    for (const lp of bp.pts) {
+      const q = SW1.copy(lp).applyQuaternion(h.quat).add(h.pos);
+      const pr = G.phys.nearest?.(q.x, q.y, q.z, BODY_Q);
+      if (!pr?.inside) continue;
+      const dd = Math.hypot(pr.x - q.x, pr.y - q.y, pr.z - q.z);
+      if (dd > worst) { worst = dd; wx = (pr.x - q.x) / (dd || 1); wy = (pr.y - q.y) / (dd || 1); wz = (pr.z - q.z) / (dd || 1); }
+    }
+    if (worst > 0.005) {
+      const nl = V5.set(wx, wy, wz).applyAxisAngle(UP, -this.yaw);
+      const push = Math.min(0.12, worst + 0.012);
+      // también la posición anterior: lo dibujado interpola entre las dos y si no, se veía adentro
+      a.p.addScaledVector(nl, push);
+      a.pp.addScaledVector(nl, push);
+      const vIn = a.v.dot(nl);
+      if (vIn < 0) a.v.addScaledVector(nl, -vIn);
+    }
     for (const lp of bp.pts) {
       const cur = SW1.copy(lp).applyQuaternion(h.quat).add(h.pos);
       const prev = SW2.copy(lp).applyQuaternion(h.prevQuat).add(h.prevPos);
@@ -1556,14 +1593,21 @@ export class LocalPlayer {
       const pt = new THREE.Vector3(hit.x, hit.y, hit.z);
       const kind = hit.info?.kind;
       if (kind === 'remote') {
-        // un golpe por víctima en cada tajo (el filo sigue de largo por el cuerpo, eso no suma otro golpe);
-        // cuenta el 70% de la velocidad de la punta (parte de la energía se va en mover al otro)
+        // un golpe por víctima en cada tajo; cuenta el 70% de la velocidad de la punta (parte de la energía se va
+        // en mover al otro)
         const last = (this._swingHits || (this._swingHits = new Map())).get(hit.info.id) || -9;
         if (now - last > 0.45) {
           this._swingHits.set(hit.info.id, now);
           this._claimHit(hit.info.id, hit.info.part ?? 1, Math.min(13, speed) * 0.7, pt, p.type);
         }
-        a.v.multiplyScalar(0.6); // la carne frena el filo
+        // el arma choca de verdad: no atraviesa el cuerpo. La mano retrocede lo que el filo se metió (queda
+        // apoyado en la piel, apenas hundido) y pierde la velocidad que la llevaba adentro
+        const deep = Math.max(0, len - hit.dist - 0.025);
+        const dl = V5.copy(d).applyAxisAngle(UP, -this.yaw);
+        if (deep > 0) a.p.addScaledVector(dl, -deep);
+        const vIn = a.v.dot(dl);
+        if (vIn > 0) a.v.addScaledVector(dl, -vIn * 0.9);
+        a.v.multiplyScalar(0.7);
         this._breakHeld(p, speed);
         return;
       }
@@ -2042,6 +2086,7 @@ export class LocalPlayer {
     else for (let i = 0; i < 11; i++) this._base[i].copy(this.rig.joints[i].quaternion);
     this.renderPos.copy(this.previousPos).lerp(this.pos, G.phys.alpha);
     if (this.char.gripOn) this.char.gripOn.l = this.char.gripOn.r = false;
+    if (this.char.gripRadius) { this.char.gripRadius.l = this.char.gripRadius.r = 0; this.char.gripShape.l = this.char.gripShape.r = null; }
     this._visual(dt);
     this._shareGrips();
     this.char.setIntox(this.drunk, this.high);
@@ -2356,6 +2401,13 @@ export class RemotePlayer {
       // la mano se cierra según lo que tiene (puño en un mango, a medias en lo que se carga de un borde)
       this.char.grip.l = s.hl ? curlOf(G.props?.get(s.hl)?.type) : s.gr & 1 ? 1 : 0.3;
       this.char.grip.r = s.hd ? curlOf(G.props?.get(s.hd)?.type) : s.gr & 2 ? 1 : 0.3;
+      if (this.char.gripRadius) {
+        this.char.gripRadius.l = this.char.gripRadius.r = 0;
+        this.char.gripShape.l = this.char.gripShape.r = null;
+        const two = s.hd && s.hd === s.hl;
+        if (s.hd) setHandGrip(this.char, two ? (s.tw === 'l' ? 'l' : 'r') : 'r', G.props?.get(s.hd), two);
+        if (s.hl && !two) setHandGrip(this.char, 'l', G.props?.get(s.hl), false);
+      }
     } else {
       // sin datos de cuerpo todavía: animación simple en su posición
       this.char.root.position.copy(this.pos);

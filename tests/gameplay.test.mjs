@@ -619,3 +619,43 @@ test('cortar un miembro no mata en el acto, y el cadáver con miembros cortados 
     assert.ok(Math.hypot(r.pelvis[0], r.pelvis[2]) < 3, `parte ${part}: el cadáver se fue a ${JSON.stringify(r.pelvis)}`);
   }
 });
+
+test('el arma no atraviesa a otro jugador: si queda metida en su cuerpo, la mano retrocede hasta la piel', async () => {
+  const { p, ph } = await fixture();
+  const pm = new PropManager({ send: () => {} }, p);
+  G.props = pm;
+  for (let n = 0; n < 20; n++) frame(p, ph);
+  const s = pm.addRow([900011, 'sword', 0.05, 0.85, 0.42, 0, 0, 0, 1, 0, 0]);
+  G.camera.position.set(0, 1.6, 0.05);
+  G.camera.lookAt(0.05, 0.95, 0.42);
+  assert.equal(p.toggleGrab('r'), true, 'no agarró la katana');
+  for (let n = 0; n < 40; n++) frame(p, ph);
+  const bladePt = (k) => new THREE.Vector3(0, 0.12 + k * 0.75, 0).applyQuaternion(s.group.quaternion).add(s.group.position);
+  // otro jugador parado justo donde está la hoja (su pecho la envuelve)
+  const mid = bladePt(0.45);
+  const meta = fakeMeta();
+  const rig = new PoseRig(meta.jointRest);
+  rig.place(new THREE.Vector3(mid.x, 0.02, mid.z), Math.PI);
+  rig.animate({ speed: 0, grounded: true }, 1 / 60);
+  const proxy = new Ragdoll(ph, meta, { kinematic: true, member: GR.REMOTE, filter: GR.RAGDOLL, tag: { kind: 'remote', id: 5 } });
+  proxy.build(rig.transforms());
+  G.players = new Map([[5, { id: 5, pos: new THREE.Vector3(mid.x, 0.02, mid.z), proxy, standing: true, vel: new THREE.Vector3() }]]);
+  const deepest = () => {
+    let w = 0;
+    for (const k of [0.2, 0.45, 0.7, 0.95]) {
+      const q = bladePt(k);
+      const pr = ph.nearest(q.x, q.y, q.z, groups(0xffff, GR.REMOTE));
+      if (pr?.inside) w = Math.max(w, Math.hypot(q.x - pr.x, q.y - pr.y, q.z - pr.z));
+    }
+    return w;
+  };
+  ph.world.step(); // que las consultas de Rapier ya vean su cuerpo
+  const d0 = deepest();
+  for (let n = 0; n < 60; n++) frame(p, ph);
+  const d1 = deepest();
+  assert.ok(d0 > 0.03, `la prueba no metió la hoja en el cuerpo (${d0.toFixed(3)} m)`);
+  assert.ok(d1 < 0.03, `la hoja quedó ${d1.toFixed(3)} m adentro del otro`);
+  G.players = new Map();
+  G.props = null;
+  ph.world.free();
+});
