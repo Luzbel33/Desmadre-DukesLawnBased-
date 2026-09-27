@@ -1,7 +1,7 @@
 name: Desmadre QA
 on:
   push:
-    branches: [main, feature/poker-combat-20260927]
+    branches: [main]
   pull_request:
     branches: [main]
 permissions:
@@ -27,6 +27,8 @@ jobs:
           node "$RUNNER_TEMP/poker-browser/node_modules/playwright/cli.js" install --with-deps chromium
       - name: Browser input, layout and multiplayer poker
         run: PLAYWRIGHT_MODULE="$RUNNER_TEMP/poker-browser/node_modules/playwright" node tests/poker-browser.cjs
+      - name: Real character rendering and physical transitions
+        run: PLAYWRIGHT_MODULE="$RUNNER_TEMP/poker-browser/node_modules/playwright" node tests/body-browser.cjs
       - name: Upload UI evidence
         if: always()
         uses: actions/upload-artifact@v5
