@@ -1,3 +1,30 @@
+# Revisión de físicas — 27/09/2026
+
+Trabajo en `fix/gpt-web-pendientes-20260927`, sobre el snapshot `331902a`. No se desplegó en Render ni se actualizó `main`.
+
+## Corregido y probado en esta iteración
+
+- Agarre del jugador: no se borra una sujeción ajena al quedar KO; paquetes repetidos no recrean el joint; cada mano se libera independientemente. Desconexión, respawn y teletransporte limpian las sujeciones correspondientes.
+- Arrastre y liberación: el cuerpo KO no pelea contra un servo que intenta devolverlo a la animación. El agarre tiene rigidez y amortiguación suficientes para arrastrarlo. La recuperación usa el apoyo real y espera velocidades bajas; no teletransporta al piso desde el aire.
+- Red: durante ragdoll se transmite la pose física actual, no una pose vieja del render. La raíz sigue a la pelvis. Las correcciones de posición limpian velocidades cinemáticas almacenadas.
+- Colisiones: el controlador de desplazamiento consulta también los cuerpos remotos y no les aplica impulsos automáticos. Hay una prueba de caminar contra un torso remoto sin atravesarlo.
+- Articulaciones: límites angulares de torso, cuello, hombros y caderas; codos y rodillas conservan sus bisagras limitadas. Los marcos se definen respecto del reposo anatómico, no de la pose de creación. Rapier 0.21 requiere el adaptador raw aislado en `ragdoll.js` para límites multieje.
+- Pruebas: 59/59 de núcleo, audio, jugabilidad y regresiones físicas; 65 módulos sin errores de sintaxis. Prueba HTTP/WebSocket con tres clientes: PASS, incluyendo mensajes de agarre/liberación de ambas manos. Se reemplazó una aserción de red obsoleta sobre el texto de versión por una comprobación del control real de audio.
+
+Comandos reproducibles: `npm test`, `npm run check`, `npm run test:network` (la prueba de red requiere Node 22+). En esta revisión se ejecutaron directamente los mismos scripts con Node y las dependencias vendorizadas.
+
+## Pendiente antes de considerar lograda la referencia Half Sword
+
+No es todavía un active ragdoll completo: al estar de pie sigue habiendo locomoción cinemática y animación con IK. Faltan equilibrio dinámico, reacción física continua, límites en objetivos animados, prevención integral de interpenetraciones y validación con dos jugadores reales y latencia. Los tests incluyen arrastrar cuatro metros, soltar y recuperarse cerca del punto de liberación, además de un límite angular sometido a impulsos físicos; no sustituyen esa prueba de jugabilidad.
+
+No se completaron en esta iteración vehículos dinámicos/rampas, gore/feedback audiovisual, rediseño de póker, Halloween, texturas, configuración de controles/micrófono ni búsquedas web integradas. No marcar esos puntos como terminados por estas correcciones.
+
+Los módulos `player-core.js` y `ragdoll-core.js` conservan el código anterior; las extensiones están en `player.js` y `ragdoll.js`. Tener en cuenta ambos al continuar.
+
+---
+
+El diagnóstico siguiente es histórico: sus referencias a archivos, cantidad de tests y cambios sin commit pueden estar desactualizadas. Contrastar cada pendiente con el código actual antes de rehacerlo.
+
 # Pendientes y diagnóstico — sesión del 2026-09-26 (después de la 1.5.0)
 
 Documento de traspaso para seguir en un chat nuevo. Los cambios de la 1.5.0 están en el árbol de trabajo **sin commitear** (no se pidió commit). `npm test` da 44/44.

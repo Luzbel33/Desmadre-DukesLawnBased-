@@ -8,7 +8,7 @@
     "start": "node server/server.js",
     "vendor": "node scripts/vendor.mjs",
     "check": "node scripts/check.mjs",
-    "test": "node --no-warnings --loader ./tests/loader.mjs --test ./tests/core.test.mjs ./tests/audio-media.test.mjs ./tests/gameplay.test.mjs",
+    "test": "node --no-warnings --loader ./tests/loader.mjs --test ./tests/core.test.mjs ./tests/audio-media.test.mjs ./tests/gameplay.test.mjs ./tests/physics-regressions.test.mjs",
     "test:network": "node scripts/test-network.mjs"
   },
   "engines": {
