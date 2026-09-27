@@ -26,9 +26,21 @@ try{
  await until(()=>log.includes('servidor andando'),'server startup');
  for(const file of ['/health','/','/js/audio/audio.js','/js/audio/synthesis.js','/js/media/screens.js','/js/media/playback.js','/js/media/youtube.js','/vendor/three/addons/renderers/CSS3DRenderer.js']){
   const r=await fetch(`http://127.0.0.1:${port}${file}`);assert.equal(r.status,200,file);report.http.push(file);
-  if(file==='/'){assert.equal(r.headers.get('referrer-policy'),'strict-origin-when-cross-origin');assert.match(await r.text(),/AUDIO \+ YOUTUBE/);}
+  if(file==='/'){assert.equal(r.headers.get('referrer-policy'),'strict-origin-when-cross-origin');assert.match(await r.text(),/id="audio-toggle"/);}
  }
  const a=await peer('QA A'),b=await peer('QA B');
+ const aid=a.messages.find(m=>m.t==='welcome').id,bid=b.messages.find(m=>m.t==='welcome').id;
+ for(const side of ['r','l']) {
+  a.send({t:'ev',k:'grab',to:bid,side,part:0,a:[0,0,0],on:1});
+  const received=await until(()=>b.messages.find(m=>m.t==='ev'&&m.k==='grab'&&m.side===side&&m.on===1),'grab '+side);
+  assert.equal(received.id,aid);assert.equal(received.to,bid);assert.deepEqual(received.a,[0,0,0]);
+ }
+ for(const side of ['r','l']) {
+  a.send({t:'ev',k:'grab',to:bid,side,on:0});
+  await until(()=>b.messages.find(m=>m.t==='ev'&&m.k==='grab'&&m.side===side&&m.on===0),'release '+side);
+ }
+ report.checks.push('grab/release for both hands relayed between two real WebSocket clients');
+
  a.send({t:'media',s:'cine',a:'add',v:'M7lc1UVf-VE'});
  const first=await until(()=>b.latest()?.cur?.v==='M7lc1UVf-VE'&&b.latest().cur,'shared video');assert.ok(first.playId);report.checks.push('add shared across 2 clients');
  a.send({t:'media',s:'cine',a:'pause'});await until(()=>b.latest()?.cur?.paused,'pause');assert.ok(b.latest().cur.pos>=0);report.checks.push('pause shared; nonnegative early position');
@@ -47,3 +59,4 @@ try{
 }finally{
  for(const p of peers)p.ws.close();await sleep(100);server.kill('SIGTERM');await new Promise(r=>server.once('exit',r));fs.rmSync(dir,{recursive:true,force:true});
 }
+
