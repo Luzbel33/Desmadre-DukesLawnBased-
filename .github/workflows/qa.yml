@@ -16,18 +16,30 @@ jobs:
         with:
           node-version: '22'
       - name: Unit and physics tests
-        run: npm test
+        shell: bash
+        run: |
+          mkdir -p artifacts/poker
+          npm test 2>&1 | tee artifacts/poker/unit-tests.log
+      - name: Trace physical drag transitions
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: node --no-warnings --loader ./tests/loader.mjs tests/grip-diagnostic.mjs | tee artifacts/poker/grip-trace.jsonl
       - name: JavaScript syntax
+        if: ${{ !cancelled() }}
         run: npm run check
       - name: HTTP and WebSocket integration
+        if: ${{ !cancelled() }}
         run: npm run test:network
       - name: Install isolated browser test tools
+        if: ${{ !cancelled() }}
         run: |
           npm install --prefix "$RUNNER_TEMP/poker-browser" --no-save --ignore-scripts playwright@1.57.0
           node "$RUNNER_TEMP/poker-browser/node_modules/playwright/cli.js" install --with-deps chromium
       - name: Browser input, layout and multiplayer poker
+        if: ${{ !cancelled() }}
         run: PLAYWRIGHT_MODULE="$RUNNER_TEMP/poker-browser/node_modules/playwright" node tests/poker-browser.cjs
       - name: Real character rendering and physical transitions
+        if: ${{ !cancelled() }}
         run: PLAYWRIGHT_MODULE="$RUNNER_TEMP/poker-browser/node_modules/playwright" node tests/body-browser.cjs
       - name: Upload UI evidence
         if: always()
