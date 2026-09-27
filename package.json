@@ -8,16 +8,11 @@
     "start": "node server/server.js",
     "vendor": "node scripts/vendor.mjs",
     "check": "node scripts/check.mjs",
-    "test": "node --no-warnings --loader ./tests/loader.mjs --test ./tests/core.test.mjs ./tests/audio-media.test.mjs ./tests/gameplay.test.mjs ./tests/physics-regressions.test.mjs",
+    "test": "node --no-warnings --loader ./tests/loader.mjs --test ./tests/core.test.mjs ./tests/audio-media.test.mjs ./tests/gameplay.test.mjs ./tests/physics-regressions.test.mjs ./tests/poker-rules.test.mjs ./tests/body-stability.test.mjs",
     "test:network": "node scripts/test-network.mjs"
   },
-  "engines": {
-    "node": ">=18"
-  },
+  "engines": { "node": ">=18" },
   "license": "MIT",
   "private": true,
-  "devDependencies": {
-    "@dimforge/rapier3d-compat": "0.21.0",
-    "three": "0.186.1"
-  }
+  "devDependencies": { "@dimforge/rapier3d-compat": "0.21.0", "three": "0.186.1" }
 }
