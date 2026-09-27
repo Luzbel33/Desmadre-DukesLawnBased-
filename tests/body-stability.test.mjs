@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { Physics, GR } from '../public/js/core/physics.js';
+import { Physics, GR, RAPIER, groups } from '../public/js/core/physics.js';
 import { G } from '../public/js/core/G.js';
 import { LocalPlayer, PROXY_FILTER } from '../public/js/game/player.js';
 import { Ragdoll } from '../public/js/game/ragdoll.js';
@@ -17,3 +17,22 @@ test('standing constraint preserves locomotion and available arm controls',async
 test('restoring disabled parts restores all joints and positive masses',async()=>{const {p,ph}=await fixture();try{p.rag.setPartCollide(3,false);p.rag.setPartCollide(4,false);p.rag.setPartCollide(3,true);p.rag.setPartCollide(4,true);ph.world.step();assert.equal(p.rag.joints.filter(j=>j?.isValid()).length,10);assert.ok(p.rag.bodies.every(b=>b.isEnabled()&&b.mass()>0));}finally{ph.world.free();}});
 test('an arm injury is survivable and affects only its own controls',async()=>{const {p,ph}=await fixture();try{p._impact(4,1.5,{src:'prop',by:2,kind:'cut'},new THREE.Vector3(.2,1.1,0),new THREE.Vector3(0,0,1));assert.ok(p.gore&(1<<4));assert.equal(p.dead,false);assert.ok(p.hp>0);assert.equal(p.hasHand('l'),false);assert.equal(p.hasHand('r'),true);}finally{ph.world.free();}});
 test('body contacts produce a voice cue for non-head impacts',async()=>{const {p,ph}=await fixture();const sounds=[];G.sfx={trigger:(name)=>sounds.push(name)};try{p._impact(1,.8,{src:'remote',by:2,kind:'blunt'},new THREE.Vector3(0,1.2,0),new THREE.Vector3(0,0,1));assert.ok(sounds.includes('pain'));}finally{G.sfx=null;ph.world.free();}});
+
+
+test('support from a remote collider cannot accumulate imaginary falling velocity', async () => {
+  const { p, ph } = await fixture();
+  // A remote collision surface isolates support from avatar animation and network jitter.
+  G.players.set(99, { proxy: { alive: true } });
+  const body = ph.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, .25, 0));
+  const surface = ph.world.createCollider(RAPIER.ColliderDesc.cuboid(1, .25, 1).setCollisionGroups(groups(GR.REMOTE, GR.ME)), body);
+  try {
+    p.teleport(new THREE.Vector3(0, .52, 0), 0);
+    for (let i = 0; i < 180; i++) frame(p, ph);
+    assert.equal(p.grounded, true, 'supported body is incorrectly counted as airborne');
+    assert.ok(p.vy > -1 && p.fallPeak > -1, `imaginary falling velocity: ${p.vy}, peak ${p.fallPeak}`);
+    ph.world.removeCollider(surface, true);
+    for (let i = 0; i < 180; i++) frame(p, ph);
+    assert.equal(p.hp, 100, 'a half-metre drop caused false high-speed impact damage');
+    assert.equal(p.state, 'active');
+  } finally { ph.world.free(); }
+});

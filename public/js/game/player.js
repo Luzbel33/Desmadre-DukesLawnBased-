@@ -17,6 +17,17 @@ export class LocalPlayer extends PlayerCore {
   constructor(look,opts={}){
     super(look,opts);this.collider.setCollisionGroups(WALK_GROUPS);this.controller.setApplyImpulsesToDynamicBodies(false);
     this._gripVelocity=new THREE.Vector2();this._cutTrauma=new Map();
+    // Adapt this instance's public query, not the Rapier world/prototype. The core
+    // reads movement, grounding and fall speed from this SAME query result.
+    const query=this.controller.computeColliderMovement.bind(this.controller);
+    this.controller.computeColliderMovement=(collider,desired,flags,filter,predicate)=>{
+      if(collider===this.collider&&this._movementDt>0){
+        desired.x+=this._gripVelocity.x*this._movementDt;
+        desired.z+=this._gripVelocity.y*this._movementDt;
+        filter=WALK_GROUPS;
+      }
+      return query(collider,desired,flags,filter,predicate);
+    };
   }
   _dropGrip(key){const joint=this.grabbedBy.get(key);if(!joint)return;if(joint.isValid())G.phys.world.removeImpulseJoint(joint,true);this.grabbedBy.delete(key);this.held=this.grabbedBy.size;if(!this.held&&this.state==='ko')this.koT=Math.max(this.koT,.5);}
   _clearIncomingGrips(){if(this.grabbedBy)for(const key of this.grabbedBy.keys())this._dropGrip(key);this._gripVelocity?.set(0,0);}
@@ -68,17 +79,18 @@ export class LocalPlayer extends PlayerCore {
     return velocity;
   }
   physicsStep(dt,viewYaw){
-    this._pruneGrips();if(this.physMode==='rag')this.strength=0;this.collider.setEnabled(this.physMode!=='rag');
-    super.physicsStep(dt,viewYaw);if(!G.inGame)return;
-    if(this.physMode==='rag'){const pt=this.rag.pelvis().translation();this.body.setNextKinematicTranslation({x:pt.x,y:pt.y-this.meta.jointRest[0].y+BODY_Y,z:pt.z});return;}
-    if(!['active','stun','getup'].includes(this.state))return;
-    const pull=this._standingPull(dt);
-    if(!G.players.size&&pull.lengthSq()<.0001)return;
-    const from=this.body.translation(),next=this.body.nextTranslation();
-    const desired={x:next.x-from.x+pull.x*dt,y:next.y-from.y,z:next.z-from.z+pull.y*dt};
-    this.controller.computeColliderMovement(this.collider,desired,RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,WALK_GROUPS);
-    const mv=this.controller.computedMovement();this.body.setNextKinematicTranslation({x:from.x+mv.x,y:from.y+mv.y,z:from.z+mv.z});
-    this.speed=Math.hypot(mv.x,mv.z)/dt;this.fwdSpeed=(mv.x*Math.sin(viewYaw)+mv.z*Math.cos(viewYaw))/dt;
+    if(!G.inGame)return;
+    this._pruneGrips();
+    if(this.physMode==='anim'&&['active','stun','getup'].includes(this.state))this._standingPull(dt);
+    if(this.physMode==='rag')this.strength=0;
+    this.collider.setEnabled(this.physMode!=='rag');
+    this._movementDt=dt;
+    try { super.physicsStep(dt,viewYaw); }
+    finally { this._movementDt=0; }
+    if(this.physMode==='rag'){
+      const pt=this.rag.pelvis().translation();
+      this.body.setNextKinematicTranslation({x:pt.x,y:pt.y-this.meta.jointRest[0].y+BODY_Y,z:pt.z});
+    }
   }
   _poseRig(base,dt=0){
     super._poseRig(base,dt);
