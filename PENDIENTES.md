@@ -48,12 +48,18 @@ Nombre: solo **DESMADRE** (hecho: título, carteles, zonas, marcas; quedan clave
 - Aturdido sin "pose T" (brazos que se sacuden buscando equilibrio).
 - Póker nuevo: 3D en primera persona, reparto animado, fichas que vuelan, carteles chicos, teclado (ver README),
   reglas compartidas en `shared/poker-rules.js` (servidor y cliente), parroquianos que se sientan separados.
+- Manos: cada falange se cierra hasta tocar el mango (`GRIP_R` por arma) o, en lo que se carga, en gancho; lo
+  empuñado queda en el centro del puño (`snapHeldToFists` en main.js, solo lo que se ve).
+- Armas con cuerpo: el filo frena en la carne a cualquier velocidad y despacio la mano retrocede hasta la piel.
+- Cuerpo más suelto: inclinación con resortes (rebote al frenar, hacia adentro al doblar), cabeza que compensa,
+  rodillas que ceden al caer. Menos bloom (solo luces, no objetos blancos iluminados).
 
 ## Sigue (pedidos de Luz sin hacer todavía)
 
-- Armas con colisión activa contra cuerpos (que frenen en la carne) y que puedan quedar clavadas en un jugador.
-- Miembros cortados como objetos agarrables/revoleables por todos (props de red) con limpieza (tope y vencimiento).
-- Manos con dedos que se acomoden de verdad al objeto (curvar cada dedo hasta tocar la forma).
+- Armas que queden clavadas en un jugador (y se saquen agarrándolas) — necesita tocar `props.js` (sincronización
+  de objetos); el clasificador de permisos bloqueó su lectura en esta sesión.
+- Miembros cortados como objetos agarrables/revoleables por todos (props de red) con limpieza (tope y
+  vencimiento) — mismo motivo.
 - Movimiento secundario más suelto (tipo GTA V), vehículos con física real, iluminación/AO/materiales, mansión,
   Halloween + fogata, controles, micrófono, YouTube con búsqueda, fútbol.
 
