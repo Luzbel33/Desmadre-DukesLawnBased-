@@ -1,0 +1,36 @@
+name: Desmadre QA
+on:
+  push:
+    branches: [main, feature/poker-combat-20260927]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Unit and physics tests
+        run: npm test
+      - name: JavaScript syntax
+        run: npm run check
+      - name: HTTP and WebSocket integration
+        run: npm run test:network
+      - name: Install isolated browser test tools
+        run: |
+          npm install --prefix "$RUNNER_TEMP/poker-browser" --no-save --ignore-scripts playwright@1.57.0
+          node "$RUNNER_TEMP/poker-browser/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Browser input, layout and multiplayer poker
+        run: PLAYWRIGHT_MODULE="$RUNNER_TEMP/poker-browser/node_modules/playwright" node tests/poker-browser.cjs
+      - name: Upload UI evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: poker-ui-qa
+          path: artifacts/poker/
+          retention-days: 7
