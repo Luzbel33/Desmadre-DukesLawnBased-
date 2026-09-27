@@ -15,11 +15,13 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
-      - name: Unit and physics tests
-        shell: bash
+      - name: Save self-contained numeric test reproducer
         run: |
           mkdir -p artifacts/poker
-          npm test 2>&1 | tee artifacts/poker/unit-tests.log
+          tar -czf artifacts/poker/reproduction-source.tgz package.json package-lock.json public/js public/vendor public/css public/index.html server scripts tests
+      - name: Unit and physics tests
+        shell: bash
+        run: npm test 2>&1 | tee artifacts/poker/unit-tests.log
       - name: Trace physical drag transitions
         if: ${{ !cancelled() }}
         shell: bash
