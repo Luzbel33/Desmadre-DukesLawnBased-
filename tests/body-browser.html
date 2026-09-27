@@ -1,0 +1,21 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><style>body{margin:0;background:#171b20;color:#ddd;font:15px Arial}canvas{display:block}#status{position:fixed;left:20px;top:16px;padding:12px;background:#111b;pointer-events:none}</style><script type="importmap">{"imports":{"three":"/vendor/three/three.module.js","three/addons/":"/vendor/three/addons/","rapier":"/vendor/rapier/rapier.mjs"}}</script></head><body><div id="status">Cargando personaje de prueba…</div><script type="module">
+import * as THREE from 'three';
+import {Physics} from '/js/core/physics.js';
+import {G} from '/js/core/G.js';
+import {LocalPlayer} from '/js/game/player.js';
+import {preloadHumans} from '/js/char/human.js';
+import {Gore} from '/js/game/gore.js';
+const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});renderer.setSize(1000,700);renderer.setPixelRatio(1);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;document.body.append(renderer.domElement);
+const scene=new THREE.Scene();scene.background=new THREE.Color('#292f38');const camera=new THREE.PerspectiveCamera(42,1000/700,.05,100);camera.position.set(3,2.4,4);camera.lookAt(0,.9,0);
+scene.add(new THREE.HemisphereLight(0xffffff,0x56604f,2));const light=new THREE.DirectionalLight(0xffe6c4,3);light.position.set(2,5,3);scene.add(light);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(40,40),new THREE.MeshStandardMaterial({color:0x707b70,roughness:.9}));floor.rotation.x=-Math.PI/2;floor.position.y=-.005;scene.add(floor);scene.add(new THREE.GridHelper(40,40,0x4e5851,0x657166));
+const ph=new Physics();await ph.init();ph.ground(0);
+Object.assign(G,{phys:ph,scene,camera,renderer,inGame:true,time:0,myId:1,players:new Map(),props:null,net:null,sfx:null,fx:null,settings:{desmadre:true}});G.input={enabled:false,locked:false,key:()=>false,hit:()=>false,btn:()=>false};G.gore=new Gore(scene,ph);
+await preloadHumans();let player;
+function spawn(model){if(player)player.dispose();G.gore.clear();player=new LocalPlayer({model,hat:'none',glasses:'none'});G.me=player;player.teleport(new THREE.Vector3(0,.02,0),0);player.char.setVisibleHead(true);step(90);return metrics();}
+function step(frames){for(let i=0;i<frames;i++){ph.step(1/60,dt=>player.physicsStep(dt,0),()=>player.afterPhysics());G.time+=1/60;player.update(1/60);G.gore.update(1/60);}return metrics();}
+function metrics(){const b=player.rag.bodies.filter(b=>b.isEnabled());const pose=player.rag.read();return {state:player.state,mode:player.physMode,hp:player.hp,held:player.held,gore:player.gore,finite:pose.flat().every(Number.isFinite),peakY:Math.max(...b.map(b=>b.translation().y)),peakSpeed:Math.max(...b.map(b=>{const v=b.linvel();return Math.hypot(v.x,v.y,v.z);})),pelvis:pose[0].slice(0,3),enabled:b.length};}
+async function draw(label){const p=player.rag.pelvis().translation();const center=new THREE.Vector3(p.x,Math.max(.5,p.y*.65),p.z);camera.position.copy(center).add(new THREE.Vector3(2.8,1.5,3.6));camera.lookAt(center);document.querySelector('#status').textContent=label+' · '+player.state+' · '+Math.round(player.hp)+' HP';await new Promise(resolve=>requestAnimationFrame(()=>{renderer.render(scene,camera);resolve();}));return metrics();}
+window.bodyQA={ready:true,spawn,step,metrics,draw,hit:()=>{const p=player.rag.bodies[2].translation();player._impact(2,1.5,{src:'remote',by:2,kind:'blunt'},new THREE.Vector3(p.x,p.y,p.z),new THREE.Vector3(0,0,-1));return step(12);},cut:()=>{const p=player.rag.bodies[4].translation();player._impact(4,1.5,{src:'prop',by:2,kind:'cut'},new THREE.Vector3(p.x,p.y,p.z),new THREE.Vector3(0,0,-1));return step(20);},die:()=>{player.die();return step(180);}};
+spawn('eric');await draw('Modelo real: postura inicial');
+</script></body></html>

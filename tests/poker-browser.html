@@ -1,0 +1,14 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/css/style.css"><script type="importmap">{"imports":{"three":"/vendor/three/three.module.js","three/addons/":"/vendor/three/addons/","rapier":"/vendor/rapier/rapier.mjs"}}</script></head><body><div id="poker" class="hidden"></div><script type="module">
+import {PokerView} from '/js/game/poker.js';
+import {PokerInterface} from '/js/game/poker-ui.js';
+import {G} from '/js/core/G.js';
+import {PROTOCOL} from '/js/shared/mapdata.js';
+import {legalActions} from '/js/shared/poker-rules.js';
+const sent=[];G.sfx=null;G.myId=1;
+const view=Object.assign(Object.create(PokerView.prototype),{panel:document.querySelector('#poker'),mySeat:-1,myCards:[],st:null,seats:Array.from({length:6},(_,seatIndex)=>({seatIndex})),_syncBots(){},_render(){this.ui.render();},onSit(){},onLeave(){},_botEmote(){},net:{send:m=>sent.push(m)}});
+G.poker=view;view.ui=new PokerInterface(view);
+const player=(pid,name,extra={})=>({pid,name,bot:false,chips:1940,bet:60,total:60,inHand:true,folded:false,allin:false,shown:null,hasCards:true,raiseAllowed:true,...extra});
+function seed(extra={}){const st={phase:'flop',handNo:7,revision:21,board:['As','7h','7d'],turn:0,dealer:2,currentBet:60,minRaise:40,bb:20,pot:360,deadline:Date.now()+35000,turnMs:35000,history:[],seats:[player(1,'Vos',{bet:20,total:20,chips:1980}),player(2,'Tito'),player(3,'La Chola'),player(4,'El Ruso'),player(5,'Doña Rosa'),player(6,'Pocho')],...extra};view.mySeat=0;view.myCards=['Ah','Kd'];view._cardsHand=st.handNo;view.applyState(st);return st;}
+window.pokerQA={view,sent,seed,legal:()=>legalActions(view.st,view.mySeat),ready:true,connect:()=>new Promise((resolve,reject)=>{const ws=new WebSocket(`ws://${location.host}/ws?sala=poker-ui-test`);let sat=false;view.mySeat=-1;view.st=null;view.myCards=[];view.net.send=m=>{sent.push(m);ws.send(JSON.stringify(m));};ws.onopen=()=>ws.send(JSON.stringify({t:'join',v:PROTOCOL,name:'Prueba de teclado',look:{}}));ws.onerror=reject;ws.onmessage=e=>{if(typeof e.data!=='string')return;const m=JSON.parse(e.data);if(m.t==='welcome'){G.myId=m.id;}if(m.t==='ready'&&!sat){sat=true;ws.send(JSON.stringify({t:'pk',a:'sit',seat:0}));}if(m.t==='pk')view.applyState(m.st);if(m.t==='pkc')view.setCards(m);if(m.t==='pke'&&m.e==='error')view.ui.error(m.message);if(view.mySeat>=0)resolve(true);};window.pokerQA.socket=ws;})};
+seed();setInterval(()=>view.ui.tick(),100);
+</script></body></html>
