@@ -315,6 +315,9 @@ export class LocalPlayer {
     this._vocalT = -9;
     this._vocalKind = null;
     this.lean = new THREE.Vector2(); // inclinación por aceleración (x) y giro (y): da peso
+    this.leanV = new THREE.Vector2(); // (resortes con un poco de rebote: el cuerpo se pasa y vuelve)
+    this.land = 0; // flexión al caer de un salto (rodillas que ceden)
+    this.landV = 0;
     this.push = new THREE.Vector2(); // empujón horizontal que decae (trastabillar)
     this.held = 0; // manos ajenas que me tienen agarrado
     this.blendT = 1;
@@ -1835,9 +1838,14 @@ export class LocalPlayer {
       const ax = (this.velocity.x - (this._pvx ?? this.velocity.x)) / dt, az = (this.velocity.y - (this._pvz ?? this.velocity.y)) / dt;
       this._pvx = this.velocity.x; this._pvz = this.velocity.y;
       const cy = Math.cos(this.yaw), sy = Math.sin(this.yaw);
-      const kL = 1 - Math.exp(-5 * dt);
-      this.lean.x += (clamp((ax * sy + az * cy) * 0.022, -0.2, 0.2) - this.lean.x) * kL;
-      this.lean.y += (clamp((ax * cy - az * sy) * 0.018, -0.16, 0.16) - this.lean.y) * kL;
+      // el cuerpo se inclina hacia donde acelera (al arrancar adelante, al frenar atrás, al doblar corriendo hacia
+      // adentro de la curva) con resortes subamortiguados: se pasa un poco y vuelve. Antes era un filtro plano
+      const tx = clamp((ax * sy + az * cy) * 0.02, -0.22, 0.22), tz = clamp(-(ax * cy - az * sy) * 0.016, -0.2, 0.2);
+      const w = 9, z = 0.42;
+      this.leanV.x += ((tx - this.lean.x) * w * w - 2 * z * w * this.leanV.x) * dt;
+      this.leanV.y += ((tz - this.lean.y) * w * w - 2 * z * w * this.leanV.y) * dt;
+      this.lean.x = clamp(this.lean.x + this.leanV.x * dt, -0.3, 0.3);
+      this.lean.y = clamp(this.lean.y + this.leanV.y * dt, -0.26, 0.26);
       // empujón de un golpe (trastabillar) o de una piña propia: se suma y se apaga solo
       const pk = Math.exp(-4.5 * dt);
       this.push.multiplyScalar(pk);
@@ -1861,6 +1869,8 @@ export class LocalPlayer {
       this.grounded = this.vy <= 0 && this.controller.computedGrounded() === true;
       if (!this.grounded) this.fallPeak = Math.min(this.fallPeak, this.vy);
       if (this.grounded) {
+        // al caer de un salto las rodillas ceden (más cuanto más fuerte cae) y vuelven con un rebotito
+        if (!wasGrounded && this.fallPeak < -2.5) this.landV += Math.min(6.5, -this.fallPeak * 0.9);
         // caída fuerte: aturde o desmaya
         if (!wasGrounded && this.fallPeak < -11) {
           const sev = (-this.fallPeak - 11) / 5;
@@ -1913,6 +1923,7 @@ export class LocalPlayer {
   _poseRig(base, dt = 0) {
     if (this._base) for (let i = 0; i < 11; i++) this.rig.joints[i].quaternion.copy(this._base[i]);
     this.rig.resetShoulders();
+    if (this.land > 1e-3 && this.grounded && this.state !== 'seated' && this.state !== 'driving') base = V2.copy(base).setY(base.y - this.land * 0.11);
     this.rig.place(base, this.yaw);
     this._overrides();
     // agarrado: la parte que me tienen va hacia la mano del otro (la cabeza se dobla, la pierna se levanta)
@@ -1935,9 +1946,21 @@ export class LocalPlayer {
   _overrides() {
     const J = this.rig.joints;
     if (this.state !== 'seated' && this.state !== 'driving') {
-      // peso e inercia: inclinación del torso al acelerar/girar
+      // peso e inercia: inclinación del torso al acelerar/girar; la cabeza compensa la mitad (mira al frente)
       const px = this.lean.x, pz = this.lean.y;
-      if (Math.abs(px) + Math.abs(pz) > 1e-3) J[1].quaternion.multiply(Q1.setFromEuler(E1.set(px, 0, pz)));
+      if (Math.abs(px) + Math.abs(pz) > 1e-3) {
+        J[1].quaternion.multiply(Q1.setFromEuler(E1.set(px, 0, pz)));
+        J[2].quaternion.multiply(Q1.setFromEuler(E1.set(-px * 0.5, 0, -pz * 0.5)));
+      }
+      // cayendo de un salto: caderas y rodillas ceden, el torso se inclina un poco adelante
+      if (this.land > 1e-3 && this.grounded) {
+        const k = this.land;
+        for (const [hi, kn] of [[7, 8], [9, 10]]) {
+          J[hi].quaternion.multiply(Q1.setFromEuler(E1.set(-0.55 * k, 0, 0)));
+          J[kn].quaternion.multiply(Q1.setFromEuler(E1.set(1.1 * k, 0, 0)));
+        }
+        J[1].quaternion.multiply(Q1.setFromEuler(E1.set(0.3 * k, 0, 0)));
+      }
       // trastabillando: los brazos se sueltan y se sacuden buscando equilibrio (adelante, un poco afuera y con los
       // codos doblados; antes quedaban horizontales y parecía una pose T) y el torso se va con el empujón
       if (this.state === 'stun') {
@@ -2043,6 +2066,13 @@ export class LocalPlayer {
       this.knockout(9);
       this.drunk = 1.05;
       this.onEvent?.('passout', {});
+    }
+    // rodillas al caer: resorte hacia 0
+    if (this.land || this.landV) {
+      this.landV += (-this.land * 160 - this.landV * 13) * dt;
+      this.land = clamp(this.land + this.landV * dt, 0, 0.9);
+      if (this.land === 0 && this.landV < 0) this.landV = 0;
+      if (Math.abs(this.land) + Math.abs(this.landV) < 1e-3) { this.land = 0; this.landV = 0; }
     }
     // hit-stop: lo que acaba de pegar se frena un instante (el golpe "entra")
     const hs = this.hitStop > 0 ? 0.12 : 1;

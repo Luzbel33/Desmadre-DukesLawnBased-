@@ -659,3 +659,29 @@ test('el arma no atraviesa a otro jugador: si queda metida en su cuerpo, la mano
   G.props = null;
   ph.world.free();
 });
+
+test('cuerpo con peso: al frenar el torso se va, se pasa un poco y vuelve; al caer de un salto las rodillas ceden', async () => {
+  const keys = new Set(['KeyW']);
+  const { p, ph } = await fixture(keys);
+  for (let n = 0; n < 60; n++) frame(p, ph);
+  keys.clear();
+  let minX = 0, maxAfter = -1, crossed = false;
+  for (let n = 0; n < 90; n++) {
+    frame(p, ph);
+    minX = Math.min(minX, p.lean.x);
+    if (minX < -0.05 && p.lean.x > 0) crossed = true;
+    if (crossed) maxAfter = Math.max(maxAfter, p.lean.x);
+  }
+  assert.ok(minX < -0.05, `al frenar el torso no acusó (${minX.toFixed(3)})`);
+  assert.ok(crossed && maxAfter > 0.005, 'sin rebote: el torso volvió sin pasarse (rígido)');
+  for (let n = 0; n < 120; n++) frame(p, ph);
+  assert.ok(Math.abs(p.lean.x) < 0.01 && Math.abs(p.lean.y) < 0.01, 'no se quedó quieto');
+  // salto: al caer las rodillas ceden y después vuelven
+  keys.add('Space'); p.queueJump(); frame(p, ph); keys.clear();
+  let land = 0;
+  for (let n = 0; n < 90; n++) { frame(p, ph); land = Math.max(land, p.land); }
+  assert.ok(land > 0.15, `al caer no cedieron las rodillas (${land.toFixed(2)})`);
+  for (let n = 0; n < 60; n++) frame(p, ph);
+  assert.ok(p.land < 0.02, 'las rodillas quedaron dobladas');
+  ph.world.free();
+});
