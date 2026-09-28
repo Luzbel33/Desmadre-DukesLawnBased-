@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { Builder, getMat } from './builder.js';
 import { rng } from '../core/G.js';
-import { CASTLE, STORM } from '../shared/mapdata.js';
+import { CASTLE, STORM, MOON } from '../shared/mapdata.js';
 
 const KX0 = CASTLE.keep.x0, KX1 = CASTLE.keep.x1, KZ0 = CASTLE.keep.z0, KZ1 = CASTLE.keep.z1;
 const KT = 1.2; // muros del torreón
@@ -121,6 +121,7 @@ export class Castle {
     this.seats = [];
     this.interact = []; // puntos de "X" propios del castillo
     this.windowsLit = []; // materiales de ventanas que el relámpago enciende
+    this.shafts = []; // haces de luna por ventanas y puertas (fx/volume.js)
     this.rand = rng(1313);
   }
 
@@ -167,7 +168,8 @@ export class Castle {
     this.cur.geo(key, g);
     if (maskRect) this.mask.rect(...maskRect);
   }
-  room(x0, y0, z0, x1, y1, z1) { this.rooms.push({ x0, y0, z0, x1, y1, z1 }); }
+  // id: edificio * 100 + cuarto (el pool de luces trata distinto al cuarto de al lado que a otro edificio)
+  room(x0, y0, z0, x1, y1, z1, id = 100 + this.rooms.length + 1) { this.rooms.push({ x0, y0, z0, x1, y1, z1, id }); }
 
   // luz virtual (la reparte el LightPool): { position, color, intensity, distance, decay, priority }
   light(x, y, z, color, intensity, distance, { flicker = false, priority = 1, decay = 1.7, shadow = false } = {}) {
@@ -186,8 +188,14 @@ export class Castle {
 
   // ================================================================ armado
   build() {
-    this.room(IX0, F0 - 0.2, IZ0, IX1, KTOP, IZ1);
-    this.room(8.3, -0.5, IZ0, IX1, F0 - 0.25, IZ1);
+    // torreón por cuartos: salón, retratos, comedor, cocina, biblioteca, cuarto secreto; y la cripta abajo
+    this.room(-8, F0 - 0.2, -116.8, 8, KTOP, IZ1, 101);
+    this.room(-8, F0 - 0.2, IZ0, 8, KTOP, -116.8, 102);
+    this.room(IX0, F0 - 0.2, -115, -8, KTOP, IZ1, 103);
+    this.room(IX0, F0 - 0.2, IZ0, -8, KTOP, -115, 104);
+    this.room(8, F0 - 0.2, -115, IX1, KTOP, IZ1, 105);
+    this.room(8, F0 - 0.2, IZ0, IX1, KTOP, -115, 106);
+    this.room(8.3, -0.5, IZ0, IX1, F0 - 0.25, IZ1, 201);
     this._grounds();
     this._curtain();
     this._gatehouse();
@@ -212,13 +220,13 @@ export class Castle {
     this.deco('cobble', 0, 0.02, (CZ1 - WT + KZ1) / 2, CX1 * 2 - WT * 2, 0.04, (CZ1 - WT) - KZ1, { noShadow: true, mask: false });
     // franja de atrás del torreón y pasaje del portón
     this.deco('cobble', 0, 0.02, (KZ0 + CZ0 + WT) / 2, (KX1 - KX0) + 0.6, 0.04, KZ0 - (CZ0 + WT), { noShadow: true, mask: false });
-    this.deco('cobble', 0, 0.02, -79.6, 6.4, 0.04, 9.8, { noShadow: true, mask: false });
+    this.deco('cobble', 0, 0.03, -79.55, 6.4, 0.06, 10.3, { noShadow: true, mask: false });
     // huerta (oeste) y cementerio (este): barro con hojas
     const yz = (KZ1 + CZ0 + WT) / 2, yd = KZ1 - (CZ0 + WT);
     this.deco('mud', (CX0 + WT + KX0) / 2, 0.018, yz, KX0 - (CX0 + WT), 0.036, yd, { noShadow: true, mask: false });
     this.deco('mud', (CX1 - WT + KX1) / 2, 0.018, yz, (CX1 - WT) - KX1, 0.036, yd, { noShadow: true, mask: false });
     // camino de lajas desde la explanada hasta el portón
-    this.deco('flagstone', 0, 0.025, -66.5, 5.2, 0.05, 17, { noShadow: true, mask: false });
+    this.deco('flagstone', 0, 0.035, -66.35, 5.2, 0.07, 16.3, { noShadow: true, mask: false });
   }
 
   // ---------------------------------------------------------------- murallas y torres de las esquinas
@@ -479,6 +487,38 @@ export class Castle {
     for (const [z, m] of [[-118, cold], [-124, lit]]) add(ex, 12.8, z, 1.3, 3.2, Math.PI / 2, m);
     // anclas: la silueta que cruza una ventana de arriba
     this.anchors.upperWindow = new THREE.Vector3(-17.3, 12.8, fz - 0.4);
+    this._moonShafts();
+  }
+
+  // Haces de luna por las aberturas del frente (la luna viene del sudoeste: entra por el frente, no por los costados).
+  // El grosor del muro recorta la luz oblicua: queda el rectángulo común entre la boca de adentro y la de afuera
+  // corrida por la luz. La cruz de hierro y el emplomado se miden en el plano del vidrio (medio muro).
+  _moonShafts() {
+    const D = new THREE.Vector3(-MOON[0], -MOON[1], -MOON[2]).normalize();
+    const dn = -D.z; // hacia adentro del frente es -z
+    if (dn < 0.05) return;
+    const T = KT, zin = KZ1 - KT;
+    const hall = { bmin: new THREE.Vector3(-7.7, F0, -116.5), bmax: new THREE.Vector3(7.7, 16.2, IZ1) };
+    const dining = { bmin: new THREE.Vector3(IX0, F0, -115), bmax: new THREE.Vector3(-8.3, F1, IZ1) };
+    const library = { bmin: new THREE.Vector3(8.3, F0, -115), bmax: new THREE.Vector3(IX1, F1, IZ1) };
+    const add = (x0, x1, y0, y1, room, bars = true, extra = {}) => {
+      const da = (T * D.x) / dn, db = (T * D.y) / dn;
+      const a0 = Math.max(x0, x0 + da), a1 = Math.min(x1, x1 + da);
+      const b0 = Math.max(y0, y0 + db), b1 = Math.min(y1, y1 + db);
+      if (a1 - a0 < 0.1 || b1 - b0 < 0.1) return;
+      const ca = (a0 + a1) / 2, cb = (b0 + b1) / 2;
+      this.shafts.push({
+        c: new THREE.Vector3(ca, cb, zin), u: new THREE.Vector3(1, 0, 0), v: new THREE.Vector3(0, 1, 0), d: D.clone(),
+        hw: (a1 - a0) / 2, hh: (b1 - b0) / 2, len: (b1 - room.bmin.y) / -D.y + 1.5,
+        glass: [((T / 2) * D.x) / dn + (x0 + x1) / 2 - ca, ((T / 2) * D.y) / dn + (y0 + y1) / 2 - cb],
+        bars, bmin: room.bmin, bmax: room.bmax, ...extra,
+      });
+    };
+    for (const x of [-5, 5]) { add(x - 0.8, x + 0.8, 5, 8.6, hall); add(x - 0.8, x + 0.8, 11, 14.6, hall); }
+    for (const x of [-20.5, -12.5]) add(x - 0.75, x + 0.75, 5, 8.6, dining);
+    for (const x of [12.5, 20.5]) add(x - 0.75, x + 0.75, 5, 8.6, library);
+    // la puerta principal (si la cierran de golpe, se corta)
+    add(-1.8, 1.8, F0, 8.7, hall, false, { on: () => (this.doors.keep?.open ?? 1) > 0.5 });
   }
 
   _leadedGlass() {
@@ -499,7 +539,7 @@ export class Castle {
       map = new THREE.CanvasTexture(cv);
       map.colorSpace = THREE.SRGBColorSpace;
     }
-    this._glass = new THREE.MeshStandardMaterial({ map, color: 0x9aa4b0, roughness: 0.18, metalness: 0.35, emissive: 0x6a88c0, emissiveIntensity: 0, emissiveMap: map });
+    this._glass = new THREE.MeshStandardMaterial({ map, color: 0x5a6470, roughness: 0.22, metalness: 0.3, emissive: 0x6a88c0, emissiveIntensity: 0.25, emissiveMap: map, envMapIntensity: 0.12 });
     this.windowsCold = this._glass;
     return this._glass;
   }
@@ -845,7 +885,7 @@ export class Castle {
 
   // ---------------------------------------------------------------- el aljibe (reemplaza a la fuente de la explanada)
   _well() {
-    const x = 0, z = -65;
+    const x = -21, z = -66.5;
     this.cyl('castleStone', x, 0.5, z, 1.25, 1.35, 1.0, 20, { collide: true, open: true });
     this.cyl('castleStone', x, 0.5, z, 0.95, 0.95, 1.0, 20, { open: true, mask: false });
     const lip = new THREE.RingGeometry(0.93, 1.3, 20);
@@ -860,7 +900,7 @@ export class Castle {
     this.deco('woodDark', x, 2.62, z, 2.6, 0.16, 0.16, {});
     this.b.cylinder('woodDark', x, 2.05, z, 0.09, 0.09, 2.2, 10, { rz: Math.PI / 2 });
     this.deco('woodDark', x + 1.32, 2.05, z, 0.05, 0.05, 0.45, {});
-    this.b.cylinder('hay', x, 1.35, z, 0.014, 0.014, 1.4, 5, {});
+    this.b.cylinder('hemp', x, 1.35, z, 0.014, 0.014, 1.4, 5, {});
     for (const s of [1, -1]) this.box('slate', x, 3.0, z + s * 0.5, 2.9, 0.08, 1.2, { rx: s * 0.6 });
     this.anchors.well = new THREE.Vector3(x, 0, z);
     this.interact.push({ id: 'aljibe', k: 'haunt', ev: 'well', p: [x, 1.0, z], r: 2.3, label: 'Asomarse al aljibe' });
@@ -868,7 +908,9 @@ export class Castle {
 
   // ---------------------------------------------------------------- antorchas en las murallas y el portón
   _torches() {
-    const t = (x, y, z, nx, nz) => {
+    this.soot = this.soot || []; // [x, y, z, nx, nz, grande]: mancha de hollín en la pared (castle-stains.js)
+    const t = (x, y, z, nx, nz, wall = 0.2) => {
+      this.soot.push([x - nx * wall, y, z - nz * wall, nx, nz, 1]);
       this.deco('iron', x - nx * 0.1, y - 0.3, z - nz * 0.1, nx ? 0.3 : 0.1, 0.1, nz ? 0.3 : 0.1, { mask: false });
       const cup = new THREE.CylinderGeometry(0.12, 0.06, 0.22, 8);
       cup.translate(x, y, z);
@@ -885,13 +927,13 @@ export class Castle {
     for (const z of [-92, -118]) { t(-ix, 3.4, z, 1, 0); t(ix, 3.4, z, -1, 0); }
     for (const x of [-16, 16]) t(x, 3.4, bz, 0, 1);
     // puerta del torreón
-    t(-2.9, F0 + 3.3, KZ1 + 0.3, 0, 1); t(2.9, F0 + 3.3, KZ1 + 0.3, 0, 1);
+    t(-2.9, F0 + 3.3, KZ1 + 0.3, 0, 1, 0.3); t(2.9, F0 + 3.3, KZ1 + 0.3, 0, 1, 0.3);
   }
 
   // ---------------------------------------------------------------- consultas
   // cuarto cerrado donde está un punto (el pool de luces no gasta luces de adentro si la cámara está afuera)
   roomOf(x, y, z) {
-    for (let i = 0; i < this.rooms.length; i++) { const r = this.rooms[i]; if (x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1 && y > r.y0 && y < r.y1) return i + 1; }
+    for (const r of this.rooms) if (x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1 && y > r.y0 && y < r.y1) return r.id;
     return 0;
   }
   indoorAt(x, y, z) {

@@ -12,8 +12,8 @@ export const ACTIVITIES = [
   { id: 'futbol', icon: '⚽', name: 'Cancha de fútbol', where: 'El Gran Pasto', p: [0, 4.5, 35], how: 'X en el cartel del costado arranca un partido de 5 min. F patea, corré contra la pelota para llevarla.' },
   { id: 'cortadoras', icon: '🚜', name: 'Cortadoras y tractor', where: 'Galpón (oeste)', p: [-80, 3.2, -13], how: 'X para subir y bajar, W/S acelerar, Espacio prende las cuchillas: cortá cualquier pasto del mapa (deja franjas).' },
   { id: 'saltos', icon: '🏁', name: 'Pista de saltos', where: 'Oeste, pasando el galpón', p: [-108, 4, 38], how: 'Rampas para volar con la cortadora, el tractor o el carrito.' },
-  { id: 'terraza', icon: '🥩', name: 'La Terraza', where: 'Frente a la mansión', p: [0, 3.8, -82], how: 'Parrilla (X = choripán, cura), heladerita (X = birra), botiquín, bong y sillones.' },
-  { id: 'fogon', icon: '🔥', name: 'Fogón', where: 'Explanada de la mansión', p: [-28, 2.8, -65], how: 'Para charlar alrededor del fuego (voz por cercanía: V o M).' },
+  { id: 'castillo', icon: '🏰', name: 'Castillo del Terror', where: 'Norte, pasando el portón', p: [0, 9.5, -103], how: 'Entrá al torreón por la escalinata: salón, comedor, biblioteca (hay un pasadizo...), sala de los retratos y la cripta. Con X: campana, reloj, candelabros, cofres.' },
+  { id: 'fogon', icon: '🔥', name: 'El Fogón', where: 'Patio del castillo', p: [-27, 6.2, -92.5], how: 'Techado, con lluvia y truenos alrededor: charla por voz (V o M), pantalla para historias de terror (X en el proyector), parrilla, birra y un leño al fuego (X).' },
   { id: 'autocine', icon: '🎥', name: 'Autocine', where: 'Sur del Gran Pasto', p: [0, 15.5, 71.6], how: 'X en el poste del parlante para elegir el video de la pantalla gigante.' },
 ];
 

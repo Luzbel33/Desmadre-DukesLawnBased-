@@ -9,7 +9,7 @@
 //   alturas de lo construido (setRainMask).
 import * as THREE from 'three';
 import { G, clamp, lerp } from '../core/G.js';
-import { STORM, stormAt } from '../shared/mapdata.js';
+import { STORM, stormAt, MOON } from '../shared/mapdata.js';
 
 const C1 = new THREE.Color();
 const V1 = new THREE.Vector3();
@@ -358,6 +358,8 @@ export class Storm {
     plate.position.set((STORM.x0 + STORM.x1) / 2 + off.x, Hh, (STORM.z0 + STORM.z1) / 2 + off.y);
     plate.castShadow = true;
     plate.receiveShadow = false;
+    // capa propia: la ven solo las sombras del sol (world.js); la luna y la cámara no
+    plate.layers.set(3);
     plate.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, alphaMap, alphaTest: 0.5, side: THREE.DoubleSide });
     plate.name = 'storm-cloud-shadow';
     this.scene.add(plate);
@@ -514,7 +516,7 @@ export class Storm {
     fog.color.lerp(C1.setRGB(0.35, 0.4, 0.52), fin * 0.5);
     fog.density = lerp(B.fogD, Nn.fogD, s);
     if (w.hemi) {
-      const inDark = this.indoor * 0.75; // adentro: solo las velas
+      const inDark = this.indoor * 0.62; // adentro: velas, luna por las ventanas y un poco de rebote
       w.hemi.intensity = lerp(B.hemi, Nn.hemi, sI) * (1 - inDark * s) + fin * 1.4;
       w.hemi.color.copy(B.hemiSky).lerp(Nn.hemiSky, s);
       w.hemi.groundColor.copy(B.hemiGround).lerp(Nn.hemiGround, s);
@@ -533,10 +535,10 @@ export class Storm {
     // centro encajado a la grilla de texels (la sombra no tiembla al caminar)
     const tex = (this.moonS * 2) / 1024;
     const mcx = Math.round(cam.x / tex) * tex, mcz = Math.round(cam.z / tex) * tex;
-    ML.position.set(mcx - 0.5 * 140, 150, mcz + 0.78 * 140);
+    ML.position.set(mcx + MOON[0], MOON[1], mcz + MOON[2]);
     ML.target.position.set(mcx, 0, mcz);
     ML.target.updateMatrixWorld();
-    ML.intensity = fin * 5.5 + s * (1 - this.indoor) * 0.5;
+    ML.intensity = fin * 5.5 + s * (0.5 + this.indoor * 1.4);
     if (ML.castShadow && s > 0.02) {
       this.moonT += dt;
       if (this.moonT > 0.25 || Math.hypot(mcx - this.moonC.x, mcz - this.moonC.y) > 3) {

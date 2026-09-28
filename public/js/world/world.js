@@ -78,7 +78,7 @@ export class World {
     this.pool.roomAt = (x, y, z) => this.castle.roomOf(x, y, z);
     // las luces de los edificios y muebles también pasan al pool (la escena siempre tiene las mismas luces)
     this.pool.adopt(scene);
-    loadAssetsLater(CASTLE_MANIFEST);
+    this.castleAssets = loadAssetsLater(CASTLE_MANIFEST);
     // todo lo construido hasta acá es quieto: entra en la sombra lejana horneada
     scene.traverse((o) => { if (o.isMesh) o.userData.static = true; });
     this._trees();
@@ -154,6 +154,9 @@ export class World {
     this.shadowSize = S;
     // segunda capa: sombra de todo el mapa, horneada una vez (ver shadows.js). Va después del sol (luz 1)
     this.farSun = makeFarSun(this.sunDir, quality === 'baja' ? 2048 : 4096);
+    // la placa de la nube de tormenta (capa 3) solo le hace sombra al sol
+    this.farSun.shadow.camera.layers.enable(3);
+    this.sun.shadow.camera.layers.enable(3);
     this.scene.add(this.farSun);
     this.scene.add(this.farSun.target);
     this.farSun.target.updateMatrixWorld();

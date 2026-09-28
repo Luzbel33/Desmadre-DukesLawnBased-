@@ -382,7 +382,7 @@ export class Haunt {
     ];
     for (const it of list) INTERACT.push({ ...it, k: 'haunt' });
     // la soga de la campana cuelga en el salón
-    const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 11.4, 5), getMat('hay'));
+    const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 11.4, 6), getMat('hemp'));
     rope.position.set(4.5, F0 + 1.1 + 5.7, -113.6);
     this.scene.add(rope);
     this.bellRope = rope;
@@ -830,7 +830,7 @@ export class Haunt {
       for (const p of this.decor?.portraits || []) { p.mat.map = skull ? p.skull : p.normal; }
     }
     // ventanas: el relámpago las ilumina desde afuera y entra por ellas
-    if (this.castle.windowsCold) this.castle.windowsCold.emissiveIntensity = fl * 2.2;
+    if (this.castle.windowsCold) this.castle.windowsCold.emissiveIntensity = 0.25 + fl * 2.2;
     for (const l of this.winLights) l.intensity = fl * 16;
     // fuego del fogón (llamarada al tirar un leño)
     this.fireBoost = Math.max(0, this.fireBoost - dt / 6);

@@ -15,6 +15,23 @@ import { VehicleManager } from './game/entities.js';
 import { PropManager, defOf } from './game/props.js';
 import { preloadAssets, registerManifest } from './game/assets.js';
 import { Haunt } from './game/haunt.js';
+import { pbrReady } from './world/builder.js';
+
+// Que no se vea nada provisorio: compila todos los shaders de la escena (también los de los fantasmas, que arrancan
+// ocultos) para el estado en que se dibujan de verdad (adentro del pase de post), antes de mostrar el menú.
+async function precompileScene(renderer) {
+  try {
+    const rt = G.post?.ao?.beautyRenderTarget || G.post?.composer?.renderTarget1 || null;
+    const hidden = [];
+    for (const o of [G.haunt?.count?.root, G.haunt?.lady?.g?.char?.root]) if (o && !o.visible) { o.visible = true; hidden.push(o); }
+    G.world?.update(1 / 60, { x: 0, z: -60 });
+    const prev = renderer.getRenderTarget();
+    renderer.setRenderTarget(rt);
+    await Promise.race([renderer.compileAsync(G.scene, G.camera), new Promise((r) => setTimeout(r, 12000))]);
+    renderer.setRenderTarget(prev);
+    for (const o of hidden) o.visible = false;
+  } catch (e) { console.warn('precompilación de shaders', e); }
+}
 import { ASSET_MANIFEST } from './game/asset-manifest.js';
 import { SFX_MANIFEST } from './audio/sfx-manifest.js';
 import { VoiceChat } from './audio/voice.js';
@@ -1464,6 +1481,7 @@ async function boot() {
     status('Construyendo el mundo...'); G.world = new World(G.scene, G.phys); G.world.build(renderer, G.opts.shadows);
     G.grass = new Grass(G.scene); G.grass.setMask(G.world.mask); G.grass.makeLawnGround(); G.grass.build(G.opts.grass);
     G.post = new Post(renderer, G.scene, G.camera, { bloom: G.opts.shadows !== 'baja', ao: G.opts.shadows !== 'baja' }); G.fx = new FX(G.scene); G.blood = new Decals(G.scene);
+    G.post.vol?.setShafts(G.world.castle?.shafts || [], G.world.storm, { x0: -40, x1: 40, z0: -140, z1: -80 });
     G.gore = new Gore(G.scene, G.phys);
     G.football = new FootballView(G.scene);
     G.markers = new ActivityMarkers(G.scene);
@@ -1492,6 +1510,11 @@ async function boot() {
     populateSwatches(); setupModelPicker(); setupMenuDefaults(); setupHotbar(); setupUIEvents();
     addEventListener('pagehide', () => { G.sfx?.stop(); G.media?.stop(); });
     document.addEventListener('visibilitychange', () => { if (document.hidden) { G.sfx?.stop(); G.media?.stop(); } });
+    // texturas, modelos del castillo y shaders listos antes de mostrar nada (al entrar no aparece nada a medio cargar)
+    status('Cargando texturas y modelos...');
+    await Promise.race([Promise.allSettled([pbrReady(), G.world.castleAssets]), new Promise((r) => setTimeout(r, 20000))]);
+    status('Preparando luces, sombras y materiales...');
+    await precompileScene(renderer);
     show($('loading'), false); setMode('menu');
   try { state.preview = new AvatarPreview($('avatar-preview'), readLook()); }
   catch (error) { console.warn('Avatar preview unavailable', error); $('avatar-preview').textContent = 'Vista previa no disponible en este navegador.'; }

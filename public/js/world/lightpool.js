@@ -5,8 +5,8 @@
 // Una luz virtual es cualquier objeto con { position, color, intensity, distance, decay, visible } (sirve un
 // THREE.PointLight fuera de la escena). Se leen cada cuadro: el parpadeo y el movimiento se ven solos.
 // Además hay UNA luz "heroica" con sombras reales (cubemap): la toma la luz marcada `shadow: true` que más
-// aporta (el fogón, el candelabro del salón, las chimeneas). Solo proyectan sombra los objetos de la capa 1
-// (personajes, muebles, leños): las mallas grandes fusionadas del mapa no, para que no cueste seis pasadas.
+// aporta (el fogón, el candelabro del salón, las chimeneas). Proyectan el mapa (capa 0: muros, para que la luz no
+// atraviese tabiques) y los objetos de la capa 1 (personajes, muebles, leños). La placa de nube (capa 3) no.
 import * as THREE from 'three';
 
 export const SHADOW_LAYER = 1;
@@ -35,7 +35,8 @@ export class LightPool {
       light.shadow.normalBias = 0.05;
       light.shadow.radius = 3;
       light.shadow.camera.near = 0.15;
-      light.shadow.camera.layers.set(SHADOW_LAYER);
+      light.shadow.camera.layers.set(0);
+      light.shadow.camera.layers.enable(SHADOW_LAYER);
       // el mapa de sombra se rehace a ~20 Hz: el fuego no se mueve, solo la gente (a 60 Hz costaba 6 ms)
       light.shadow.autoUpdate = false;
       scene.add(light);
@@ -85,9 +86,10 @@ export class LightPool {
     let s = (v.base ?? v.intensity) * (v.priority || 1) * range * range / (d2 + range * range * 0.35);
     // detrás de la cámara y lejos: no ilumina nada que se vea
     if (!inView && d2 > range * range) s *= 0.08;
-    // luz de adentro de un cuarto con la cámara afuera (o al revés): apenas se ve por las ventanas
+    // luz de adentro de un cuarto con la cámara afuera (o al revés): apenas se ve por las ventanas.
+    // Los cuartos van numerados por edificio (101, 102... el torreón; 201 la cripta): el de al lado, por la puerta, algo
     const room = v.room || 0;
-    if (room !== camRoom) s *= room ? 0.04 : 0.3;
+    if (room !== camRoom) s *= room && camRoom && Math.floor(room / 100) === Math.floor(camRoom / 100) ? 0.3 : room ? 0.04 : 0.3;
     return s;
   }
 
@@ -135,26 +137,24 @@ export class LightPool {
       const hv = hero.next;
       if (hv) for (let i = rank.length - 1; i >= 0; i--) if (rank[i].v === hv || rank[i].v === hero.src) rank.splice(i, 1);
     }
+    // histéresis: la que ya tiene lugar suma un 35% (no se suelta por una diferencia chica: no parpadea), pero una
+    // que aporta claramente más siempre entra (antes una vieja "retenida" podía dejar afuera a la del cuarto nuevo)
+    const cur = new Set();
+    for (const s of this.slots) { const c = s.next || s.src; if (c) cur.add(c); }
+    for (const r of rank) if (cur.has(r.v)) r.s *= 1.35;
     rank.sort((a, b) => b.s - a.s);
     const n = this.slots.length;
     const want = new Set();
     for (let i = 0; i < Math.min(n, rank.length); i++) want.add(rank[i].v);
-    // histéresis: una luz asignada que sigue estando cerca del corte no se suelta (evita parpadeos)
-    const cut = rank.length > n ? rank[n - 1].s * 0.5 : 0;
-    const keep = new Set();
+    const taken = new Set();
     for (const s of this.slots) {
-      const cur = s.next || s.src;
-      if (!cur) continue;
-      const r = rank.find((x) => x.v === cur);
-      if (r && (want.has(cur) || r.s >= cut)) keep.add(cur);
+      const c = s.next || s.src;
+      s.next = c && want.has(c) && !taken.has(c) ? c : null;
+      if (s.next) taken.add(s.next);
     }
     const fresh = [];
-    for (const v of want) if (!keep.has(v)) fresh.push(v);
-    for (const s of this.slots) {
-      const cur = s.next || s.src;
-      if (cur && keep.has(cur)) { s.next = cur; continue; }
-      s.next = fresh.shift() || null;
-    }
+    for (const v of want) if (!taken.has(v)) fresh.push(v);
+    for (const s of this.slots) if (!s.next) s.next = fresh.shift() || null;
     for (const s of this.slots) this._fade(s, dt);
     if (hero) {
       const prev = hero.src;

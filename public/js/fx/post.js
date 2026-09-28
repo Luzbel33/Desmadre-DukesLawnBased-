@@ -6,6 +6,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { N8AOPass } from '../../vendor/n8ao/N8AO.js';
+import { VolumePass } from './volume.js';
 
 // ---------------------------------------------------------------- pase final "de cine"
 // Reemplaza al OutputPass: exposición, tone mapping ACES, gradación de color por zona (día / tormenta / adentro),
@@ -250,6 +251,9 @@ export class Post {
       c.screenSpaceRadius = false;
       this.ao = ao;
       this.composer.addPass(ao);
+      // haces de luna y polvo (se cortan con la profundidad de la escena que deja este pase)
+      this.vol = new VolumePass(camera, () => this.ao.beautyRenderTarget.depthTexture);
+      this.composer.addPass(this.vol);
     } else this.composer.addPass(this.renderPass);
     // brillo suave en lo que emite luz (neones, lamparitas, fuego, el sol): solo pasa lo que supera el umbral HDR
     if (opts.bloom !== false) {
@@ -295,6 +299,7 @@ export class Post {
     u.uTime.value = time;
     // la oclusión ambiental pesa más de noche y adentro (rincones oscuros)
     if (this.ao) this.ao.configuration.intensity = 2.2 + storm * 0.3;
+    if (this.vol) this.vol.time = time;
   }
   setSize(w, h) {
     this.composer.setSize(w, h);

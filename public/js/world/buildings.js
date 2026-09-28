@@ -183,7 +183,8 @@ export function buildTerrace(b) {
 }
 
 export function buildForecourt(b) {
-  b.box('gravel', 0, 0.01, -64.5, 80, 0.06, 25, { collide: false, noShadow: true });
+  // termina en z = -74.4 (antes seguía debajo del empedrado del portón, a la misma altura: parpadeaba)
+  b.box('gravel', 0, 0.01, -63.2, 80, 0.06, 22.4, { collide: false, noShadow: true });
   // senderos hacia el pueblo y el galpón
   b.box('gravel', 61, 0.012, -54, 42, 0.06, 4, { collide: false, noShadow: true });
   b.box('gravel', -61, 0.012, -54, 42, 0.06, 4, { collide: false, noShadow: true });

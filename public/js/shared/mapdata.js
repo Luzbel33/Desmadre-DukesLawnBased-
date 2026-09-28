@@ -48,6 +48,8 @@ export const CASTLE = {
 };
 // Tormenta local: adentro del rectángulo es de noche, llueve y truena; hacia afuera se desvanece en `fade` metros.
 export const STORM = { x0: -62, z0: -142, x1: 62, z1: -74, fade: 18 };
+// de dónde llega la luz de la luna (desplazamiento desde el punto iluminado): alta, desde el sudoeste
+export const MOON = [-70, 150, 109.2];
 export function stormAt(x, z) {
   const dx = Math.max(STORM.x0 - x, 0, x - STORM.x1), dz = Math.max(STORM.z0 - z, 0, z - STORM.z1);
   const t = Math.min(1, Math.hypot(dx, dz) / STORM.fade);

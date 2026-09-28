@@ -95,4 +95,6 @@ El servidor puede desplegarse como un único Web Service de Node en Render: sirv
 - Voces de dolor (CC0): HaelDB y thebardofblasphemy (OpenGameArt), Cici Fyre (RPG Voice Starter Pack), gritos de tcrocker68, pushkin y Archeos (Freesound). Detalle en `public/assets/sfx/vo/CREDITOS.txt`.
 - Personajes: Renderpeople (modelos gratuitos).
 - Árboles: [ez-tree](https://github.com/dgreenheck/ez-tree) (MIT).
+- Oclusión ambiental: [N8AO](https://github.com/N8python/n8ao) (ISC).
+- Castillo: manchas de filtración de [ambientCG](https://ambientcg.com) (CC0); sangre, hollín, moho y rajaduras generados en `assets/blender/decals.py`. Música y sonidos CC0: detalle en `public/assets/music/CREDITOS.txt` y `public/assets/sfx/castillo/CREDITOS.txt`.
 - Motor: three.js (MIT) y Rapier (Apache 2.0).

@@ -9570,7 +9570,8 @@ function WebGLShadowMap( renderer, objects, capabilities ) {
 
 		if ( object.visible === false ) return;
 
-		const visible = object.layers.test( camera.layers );
+		// DESMADRE: capas de la cámara de sombra (cada luz elige qué proyecta), no las de la cámara principal
+		const visible = object.layers.test( shadowCamera.layers );
 
 		if ( visible && ( object.isMesh || object.isLine || object.isPoints ) ) {
 

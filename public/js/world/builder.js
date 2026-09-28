@@ -42,14 +42,22 @@ const PBR = {
   mud: { id: 'brown_mud_leaves_01', tint: 0x8c7c6c, size: 3.2, rough: 0.75, ao: 1, disp: 0.035, weather: [0, 0, 0, 0.6], wet: 0.8 },
   flagstone: { id: 'monastery_stone_floor', tint: 0xa8a298, size: 2.8, ao: 1, disp: 0.022, weather: [0.25, 0, 0.1, 0.5], wet: 0 },
   oldWood: { id: 'old_wood_floor', tint: 0xa88c74, size: 2.4, ao: 1, disp: 0.008, weather: [0.2, 0, 0, 0.5], wet: 0 },
-  moldy: { id: 'worn_mossy_plasterwall', tint: 0x9c968a, size: 3.2, ao: 1, disp: 0.01, weather: [0.6, 0.6, 0.2, 0.7], wet: 0 },
+  moldy: { id: 'rough_plaster_brick_02', tint: 0x8e8478, size: 2.8, ao: 1, disp: 0.025, weather: [0.6, 0.6, 0.2, 0.7], wet: 0 },
   doorWood: { id: 'medieval_wood', tint: 0x9a8472, size: 1.8, ao: 1, disp: 0.012, weather: [0.2, 0.3, 0, 0.3], wet: 0.2 },
   velvet: { id: 'velour_velvet', tint: 0x9a1a24, size: 0.9 },
   cryptBrick: { id: 'mossy_brick', tint: 0x8c8c82, size: 2.2, ao: 1, disp: 0.03, weather: [0.6, 0.4, 0.6, 0.6], wet: 0 },
 };
 const loader = new THREE.TextureLoader();
+// cargas en curso: la pantalla de carga espera a que terminen (si no, al entrar se ven las texturas provisorias)
+const PENDING = [];
+export function pbrReady() { return Promise.allSettled(PENDING); }
 export function pbrMaps(id, repeatFrom = null, cb = null, extra = {}) {
   if (typeof document === 'undefined') return Promise.resolve({}); // Node (tests): sin imágenes
+  const p = pbrMapsLoad(id, repeatFrom, cb, extra);
+  PENDING.push(p);
+  return p;
+}
+function pbrMapsLoad(id, repeatFrom, cb, extra) {
   const load = (kind, srgb) => new Promise((resolve) => {
     loader.load(`assets/tex/${id}_${kind}.jpg`, (t) => {
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -162,6 +170,7 @@ const COLORMATS = {
   ash: { color: 0x24201e, rough: 1 },
   ember: { color: 0x2a0c06, emissive: 0xff4a10, emissiveIntensity: 2.4 },
   hay: { color: 0x8a7440, rough: 1 },
+  hemp: { color: 0x3a2c1e, rough: 1 }, // soga vieja y sucia
 };
 
 export function getMat(key) {
