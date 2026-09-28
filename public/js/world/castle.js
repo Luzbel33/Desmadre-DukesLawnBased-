@@ -9,6 +9,7 @@
 // - anclas para los sustos e interacciones (haunt.js)
 import * as THREE from 'three';
 import { Builder, getMat } from './builder.js';
+import { PROXY_LAYER } from './lightpool.js';
 import { rng } from '../core/G.js';
 import { CASTLE, STORM, MOON } from '../shared/mapdata.js';
 
@@ -185,6 +186,17 @@ export class Castle {
     this.flames.push(i);
     return i;
   }
+  // fuego de verdad (volumétrico): base en (x, y, z), medio ancho hx/hz y alto h. En calidad baja, llamas planas
+  fire3d(x, y, z, hx, hz, h, { intensity = 1, wind = 0, speed = 1 } = {}) {
+    const w = this.world;
+    if (w.fires && w.quality !== 'baja') return w.fires.add(x, y, z, hx, hz, h, { intensity, wind, speed });
+    const n = Math.max(1, Math.round((hx + hz) / 0.35));
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2;
+      this.flame(x + Math.cos(a) * hx * 0.4 * (n > 1 ? 1 : 0), y, z + Math.sin(a) * hz * 0.4 * (n > 1 ? 1 : 0), Math.min(hx, hz) * 1.6, h * (k === 0 ? 1 : 0.8), { wind });
+    }
+    return -1;
+  }
 
   // ================================================================ armado
   build() {
@@ -207,6 +219,7 @@ export class Castle {
     this._yards();
     this._well();
     this._torches();
+    this._shadowProxies();
     const meshes = this.b.finish(this.scene);
     for (const m of meshes) m.userData.castle = true;
     for (const m of this.bp.finish(this.scene)) { m.userData.castle = true; m.layers.enable(1); meshes.push(m); }
@@ -639,6 +652,69 @@ export class Castle {
     this.secretCollider = this.phys.box(16.5, F0 + 1.3, -115, 0.85, 1.3, 0.35, 0, { paint: false });
   }
 
+  // Muros del torreón en cajas simples (con los huecos de las puertas) que solo ve la sombra de la luz heroica
+  // (capa 4): así el candelabro y las chimeneas no alumbran a través de los tabiques, sin redibujar todo el castillo
+  _shadowProxies() {
+    const boxes = [];
+    const B = (x0, y0, z0, x1, y1, z1) => { if (x1 - x0 > 0.01 && y1 - y0 > 0.01 && z1 - z0 > 0.01) boxes.push([x0, y0, z0, x1, y1, z1]); };
+    // tramo de muro con huecos [a0, a1, y0, y1] a lo largo del eje ax ('x' o 'z'); c0..c1 su grosor
+    const run = (ax, a0, a1, c0, c1, y0, y1, holes = []) => {
+      const put = (p, q, ya, yb) => (ax === 'x' ? B(p, ya, c0, q, yb, c1) : B(c0, ya, p, c1, yb, q));
+      let a = a0;
+      for (const [h0, h1, hy0, hy1] of [...holes].sort((p, q) => p[0] - q[0])) {
+        if (h0 > a) put(a, h0, y0, y1);
+        if (hy1 < y1) put(h0, h1, hy1, y1);
+        if (hy0 > y0) put(h0, h1, y0, hy0);
+        a = h1;
+      }
+      if (a < a1) put(a, a1, y0, y1);
+    };
+    const D = (a0, a1, h = 3.2) => [a0, a1, F0 - 0.1, F0 + h];
+    // cáscara del torreón (la puerta principal y la salida de la cripta abiertas)
+    run('x', KX0, KX1, IZ1, KZ1, 0, KTOP, [[-1.8, 1.8, F0, 8.7]]);
+    run('x', KX0, KX1, KZ0, IZ0, 0, KTOP);
+    run('z', KZ0, KZ1, KX0, IX0, 0, KTOP);
+    run('z', KZ0, KZ1, IX1, KX1, 0, KTOP, [[-109.4, -107.4, 0, 2.6]]);
+    // tabiques con sus puertas
+    run('z', IZ0, IZ1, -8.3, -7.7, F0, 16.2, [D(-107.1, -104.9), D(-122.6, -120.4)]);
+    run('z', IZ0, IZ1, 7.7, 8.3, F0, 16.2, [D(-110.6, -108.4)]);
+    run('x', IX0, -8.3, -115.3, -114.7, F0, F1, [D(-17.1, -14.9)]);
+    run('x', 8.3, IX1, -115.3, -114.7, F0, F1, [D(15.7, 17.3, 2.6)]);
+    run('x', -7.7, 7.7, -117.1, -116.5, F0, 16.2, [D(1.8, 4.2)]);
+    // losa del piso (la luz del salón no baja a la cripta) y cielorrasos de los cuartos bajos
+    B(IX0, F0 - 0.3, IZ0, IX1, F0, IZ1);
+    B(IX0, F1, IZ0, -8, F1 + 0.3, IZ1);
+    B(8, F1, IZ0, IX1, F1 + 0.3, IZ1);
+    const geos = boxes.map(([x0, y0, z0, x1, y1, z1]) => {
+      const g = new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0);
+      g.translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+      g.deleteAttribute('uv');
+      g.deleteAttribute('normal');
+      return g;
+    });
+    if (!geos.length) return;
+    let n = 0;
+    for (const g of geos) n += g.attributes.position.count;
+    const pos = new Float32Array(n * 3), idx = [];
+    let o = 0;
+    for (const g of geos) {
+      pos.set(g.attributes.position.array, o * 3);
+      for (const i of g.index.array) idx.push(i + o);
+      o += g.attributes.position.count;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setIndex(idx);
+    geo.computeBoundingSphere();
+    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+    mesh.name = 'keep-shadow-proxies';
+    mesh.castShadow = true;
+    mesh.receiveShadow = false;
+    mesh.layers.set(PROXY_LAYER);
+    this.scene.add(mesh);
+    this.proxies = mesh;
+  }
+
   // Hoja de puerta con bisagra en (hx, y, hz); se abre girando. along: 'x' si la puerta está en un muro que corre en x
   _doorLeaf(hx, y, hz, w, h, along) {
     const pivot = new THREE.Group();
@@ -752,7 +828,7 @@ export class Castle {
   }
   brazier(x, y, z, big = 1) {
     const w = this.world;
-    for (let k = 0; k < 3; k++) this.flame(x + (k - 1) * 0.18, y - 0.05, z + ((k * 7) % 3 - 1) * 0.12, 0.45 * big, (0.8 + k * 0.15) * big, { wind: 1 });
+    this.fire3d(x, y - 0.12, z, 0.44 * big, 0.44 * big, 1.25 * big, { wind: 1 });
     w.embers?.add(x, y + 0.2, z, 14, { radius: 0.25, height: 2.6, strength: 0.8 });
     this.light(x, y + 0.9, z, 0xff7a2e, 6 * big, 12, { flicker: true, priority: 1.4 });
   }
@@ -799,9 +875,7 @@ export class Castle {
     this.phys.cylinder(fx, 0.2, fz, 0.2, 1.25);
     this.anchors.fire = new THREE.Vector3(fx, 0, fz);
     this.fire = { x: fx, z: fz, flames: [], boost: 0 };
-    for (const [dx, dz, w, h] of [[0, 0, 1.0, 1.9], [0.25, 0.1, 0.8, 1.5], [-0.25, -0.1, 0.8, 1.45], [0.1, -0.3, 0.7, 1.2], [-0.15, 0.3, 0.7, 1.25], [0.35, -0.25, 0.5, 0.9], [-0.35, 0.2, 0.5, 0.95]]) {
-      this.fire.flames.push({ i: this.flame(fx + dx, 0.22, fz + dz, w, h), w, h });
-    }
+    this.fire.vol = this.fire3d(fx, 0.16, fz, 0.62, 0.62, 2.1, { intensity: 1.15 });
     this.fire.embers = this.world.embers?.add(fx, 0.5, fz, 70, { radius: 0.45, height: 5.5, strength: 1, speed: 0.4 });
     this.fire.smoke = this.world.smoke?.add(fx, 1.8, fz, 26, { radius: 0.6, height: 9, opacity: 0.16, speed: 0.07 });
     this.fire.light = this.light(fx, 1.25, fz, 0xff7a30, 22, 23, { flicker: true, priority: 3, decay: 1.4, shadow: true });
@@ -915,7 +989,7 @@ export class Castle {
       const cup = new THREE.CylinderGeometry(0.12, 0.06, 0.22, 8);
       cup.translate(x, y, z);
       this.geo('iron', cup);
-      this.flame(x, y + 0.08, z, 0.26, 0.6, { wind: 1 });
+      this.fire3d(x, y + 0.04, z, 0.13, 0.13, 0.62, { wind: 1, speed: 1.3, intensity: 0.9 });
       this.world.embers?.add(x, y + 0.25, z, 5, { radius: 0.12, height: 1.6, strength: 0.6 });
       return this.light(x + nx * 0.4, y + 0.4, z + nz * 0.4, 0xff8a3a, 4.5, 11, { flicker: true, priority: 1.2 });
     };

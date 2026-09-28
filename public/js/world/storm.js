@@ -88,7 +88,7 @@ export class Storm {
     };
     this.night = {
       fog: new THREE.Color(0x151b24), fogD: 0.0125, hemi: 0.34, hemiSky: new THREE.Color(0x6a80a8),
-      hemiGround: new THREE.Color(0x221f1a), sun: 0.3, sunColor: new THREE.Color(0x8ea4d6), env: 0.12,
+      hemiGround: new THREE.Color(0x221f1a), sun: 0.12, sunColor: new THREE.Color(0x8ea4d6), env: 0.12,
     };
     this.wind = new THREE.Vector2(2.2, 0.9); // m/s: la lluvia cae inclinada
     this._played = new Set();
@@ -98,9 +98,17 @@ export class Storm {
   _build(quality) {
     const scene = this.scene;
     // ------------------------------------------------ cielo de tormenta (cúpula alrededor de la cámara)
+    // la luna: la misma dirección de la que llega su luz (MOON), con su textura (NASA, dominio público)
+    let moonTex = null;
+    if (typeof document !== 'undefined') {
+      moonTex = new THREE.TextureLoader().load('assets/tex/moon.jpg');
+      moonTex.colorSpace = THREE.SRGBColorSpace;
+      moonTex.anisotropy = 4;
+    }
     this.skyU = {
       uT: { value: 0 }, uAlpha: { value: 0 }, uFlash: { value: 0 }, uFlashDir: { value: new THREE.Vector3(0, 0.3, -1) },
       uFog: { value: new THREE.Color() },
+      uMoonDir: { value: new THREE.Vector3(...MOON).normalize() }, tMoon: { value: moonTex }, uMoonOn: { value: moonTex ? 1 : 0 },
     };
     const dome = new THREE.Mesh(new THREE.SphereGeometry(1400, 48, 24), new THREE.ShaderMaterial({
       uniforms: this.skyU, side: THREE.BackSide, transparent: true, depthWrite: false, fog: false,
@@ -112,7 +120,8 @@ export class Storm {
           gl_Position = p.xyww;
         }`,
       fragmentShader: /* glsl */ `
-        uniform float uT, uAlpha, uFlash; uniform vec3 uFlashDir, uFog;
+        uniform float uT, uAlpha, uFlash, uMoonOn; uniform vec3 uFlashDir, uFog, uMoonDir;
+        uniform sampler2D tMoon;
         varying vec3 vDir;
         ${NOISE}
         void main() {
@@ -124,6 +133,27 @@ export class Storm {
           float m = fbm(uv * 2.4 - flow * 1.7 + 5.0);
           float c = smoothstep(0.32, 0.78, n * 0.75 + m * 0.35);
           vec3 col = mix(vec3(0.010, 0.012, 0.018), vec3(0.042, 0.048, 0.062), c);
+          // luna: disco con relieve (textura), un poco gibosa y con el borde oscurecido; las nubes la tapan a ratos
+          // y las que pasan cerca se iluminan de atrás (borde plateado)
+          float ang = acos(clamp(dot(d, uMoonDir), -1.0, 1.0));
+          float cover = smoothstep(0.46, 0.86, n * 0.8 + m * 0.42);
+          const float MR = 0.042;
+          if (ang < MR * 1.05 && uMoonOn > 0.5) {
+            vec3 rt = normalize(cross(vec3(0.0, 1.0, 0.0), uMoonDir));
+            vec3 up = cross(uMoonDir, rt);
+            vec2 q = vec2(dot(d, rt), dot(d, up)) / sin(MR);
+            float r2 = dot(q, q);
+            if (r2 < 1.0) {
+              vec3 nn = vec3(q, sqrt(1.0 - r2));
+              vec2 muv = vec2(0.5 + atan(nn.x, nn.z) / 6.2832, 0.5 + asin(clamp(nn.y, -1.0, 1.0)) / 3.1416);
+              vec3 alb = texture2D(tMoon, muv).rgb;
+              float lit = 0.18 + 0.82 * max(0.0, dot(nn, normalize(vec3(-0.5, 0.18, 0.85))));
+              vec3 moon = alb * lit * pow(nn.z, 0.3) * vec3(1.0, 0.97, 0.9) * 3.4;
+              col = mix(col, moon, smoothstep(1.0, 0.94, r2) * (1.0 - 0.9 * cover));
+            }
+          }
+          float halo = exp(-ang / 0.045) * 0.5 + exp(-ang / 0.2) * 0.1 + exp(-ang / 0.7) * 0.025;
+          col += vec3(0.5, 0.58, 0.76) * halo * uMoonOn * (0.35 + 1.1 * c) * (1.0 - 0.55 * cover);
           float fd = pow(max(0.0, dot(d, normalize(uFlashDir))), 5.0);
           col += uFlash * (0.18 + 2.2 * fd) * vec3(0.55, 0.62, 0.85) * (0.35 + 0.9 * c);
           col = mix(uFog, col, smoothstep(-0.03, 0.22, h));
@@ -522,6 +552,7 @@ export class Storm {
       w.hemi.groundColor.copy(B.hemiGround).lerp(Nn.hemiGround, s);
     }
     w.sun.intensity = lerp(B.sun, Nn.sun, s);
+    w.sun.shadow.autoUpdate = s < 0.9;
     w.sun.color.copy(B.sunColor).lerp(Nn.sunColor, s);
     this.scene.environmentIntensity = lerp(B.env, Nn.env, s) * (1 - this.indoor * 0.6 * s);
     // una sola luz direccional con sombra: la luna fría y quieta; el relámpago la enciende (el cielo marca de dónde viene)

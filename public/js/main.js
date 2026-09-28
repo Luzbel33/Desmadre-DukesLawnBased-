@@ -49,7 +49,7 @@ import { AudioEngine } from './audio/audio.js';
 import { voiceOf, voiceRate, vocalName } from './audio/vocals.js';
 import { YouTubeScreenManager } from './media/screens.js';
 import { youtubeId, mediaPosition } from './media/youtube.js';
-import { ZONES, zoneAt, isPvpAt, INTERACT, SCREENS, SCREEN_BY_ID, FIELD } from './shared/mapdata.js';
+import { ZONES, zoneAt, isPvpAt, INTERACT, SCREENS, SCREEN_BY_ID, FIELD, STORM, CASTLE, MOON } from './shared/mapdata.js';
 
 const $ = (id) => document.getElementById(id);
 const loadingText = $('loading-text');
@@ -1482,6 +1482,12 @@ async function boot() {
     G.grass = new Grass(G.scene); G.grass.setMask(G.world.mask); G.grass.makeLawnGround(); G.grass.build(G.opts.grass);
     G.post = new Post(renderer, G.scene, G.camera, { bloom: G.opts.shadows !== 'baja', ao: G.opts.shadows !== 'baja' }); G.fx = new FX(G.scene); G.blood = new Decals(G.scene);
     G.post.vol?.setShafts(G.world.castle?.shafts || [], G.world.storm, { x0: -40, x1: 40, z0: -140, z1: -80 });
+    if (G.world.fires) G.post.vol?.setFires(G.world.fires, () => G.scene.fog?.density || 0);
+    G.post.vol?.setFog({
+      storm: STORM, fade: STORM.fade, keep: { x0: CASTLE.keep.x0, z0: CASTLE.keep.z0, x1: CASTLE.keep.x1, z1: CASTLE.keep.z1 }, keepY: CASTLE.keep.floor - 0.3,
+      crypt: { x0: 8.3, z0: CASTLE.keep.z0, x1: CASTLE.keep.x1, z1: CASTLE.keep.z1 }, moonDir: new THREE.Vector3(...MOON),
+      lights: () => [...G.world.pool.slots.map((s) => s.light), ...(G.world.pool.hero ? [G.world.pool.hero.light] : [])],
+    });
     G.gore = new Gore(G.scene, G.phys);
     G.football = new FootballView(G.scene);
     G.markers = new ActivityMarkers(G.scene);
@@ -1569,6 +1575,7 @@ async function boot() {
         G.poker?.update(G.camera, dt);
         updateNameTags(); updatePrompt(); updateHud(dt); updatePost();
         G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt);
+        { const hide = (G.world.storm?.indoor || 0) > 0.95; for (const m of G.grass.meshes) m.visible = !hide; }
         G.fx.update(dt); G.blood.update(dt); G.football?.update(dt); G.gore?.update(dt); state.graffiti?.flush();
         G.bag?.update(dt);
         G.hud?.flushHints(dt);

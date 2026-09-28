@@ -109,7 +109,9 @@ export function loadAssetsLater(entries) {
 export function assetModel(type) {
   const src = LIB.get(type);
   if (!src) return null;
-  return src.clone(true);
+  const m = src.clone(true);
+  m.userData.asset = type; // lo usa el descarte por distancia/zona (world/culler.js)
+  return m;
 }
 
 // Clon con materiales propios (para teñir o pintar sin afectar a los demás)

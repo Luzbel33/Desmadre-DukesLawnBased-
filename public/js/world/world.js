@@ -8,6 +8,8 @@ import { Forest } from './trees.js';
 import { FURNITURE, MAP_BOUNDS, LAWN, INTERACT, NO_GRASS, MEDKITS, STORM } from '../shared/mapdata.js';
 import { buildFurniture, WATER_T } from './furniture.js';
 import { makeFarSun } from './shadows.js';
+import { FireSet } from '../fx/fire.js';
+import { Culler } from './culler.js';
 import {
   buildBar, buildCinema, buildAlley, buildForecourt, buildGarage,
   buildTown, buildAutocine, buildStuntPark, buildPerimeter,
@@ -48,6 +50,11 @@ export class World {
     // luces puntuales repartidas (ver lightpool.js) y fuego por shader (velas, antorchas, el fogón)
     this.pool = new LightPool(scene, quality === 'baja' ? 8 : quality === 'ultra' ? 16 : 14, { shadow: quality !== 'baja' });
     this.flames = new Flames(scene, 700);
+    // fuego volumétrico (fogón, chimeneas, braseros, antorchas): lo dibuja el pase de volumen; en 'baja' no hay
+    // ese pase y el castillo usa las llamas planas de siempre
+    this.quality = quality;
+    this.fires = new FireSet();
+    this.culler = new Culler(scene);
     this.embers = new Embers(scene, 600);
     this.smoke = new Smoke(scene, 200);
     const b = new Builder(this.phys);
@@ -385,6 +392,7 @@ export class World {
       if (f.mesh) f.mesh.material.opacity = k > 0.5 ? 1 : 0.35;
     }
     if (cam3) this.pool?.update(dt, cam3);
+    if (cam3) this.culler?.update(cam3);
   }
 }
 

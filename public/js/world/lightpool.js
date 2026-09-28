@@ -5,11 +5,13 @@
 // Una luz virtual es cualquier objeto con { position, color, intensity, distance, decay, visible } (sirve un
 // THREE.PointLight fuera de la escena). Se leen cada cuadro: el parpadeo y el movimiento se ven solos.
 // Además hay UNA luz "heroica" con sombras reales (cubemap): la toma la luz marcada `shadow: true` que más
-// aporta (el fogón, el candelabro del salón, las chimeneas). Proyectan el mapa (capa 0: muros, para que la luz no
-// atraviese tabiques) y los objetos de la capa 1 (personajes, muebles, leños). La placa de nube (capa 3) no.
+// aporta (el fogón, el candelabro del salón, las chimeneas). Proyectan los objetos de la capa 1 (personajes, muebles,
+// leños, el galpón) y la capa 4: cajas simples de los muros del torreón con sus puertas (castle.js), para que la luz
+// no atraviese tabiques. Las mallas grandes del mapa (capa 0) no: renderizarlas seis veces costaba varios ms.
 import * as THREE from 'three';
 
 export const SHADOW_LAYER = 1;
+export const PROXY_LAYER = 4;
 const FADE = 3.2; // 1/s: velocidad del fundido al cambiar de dueña (lento: no se nota)
 const V = new THREE.Vector3();
 const SPH = new THREE.Sphere();
@@ -35,8 +37,8 @@ export class LightPool {
       light.shadow.normalBias = 0.05;
       light.shadow.radius = 3;
       light.shadow.camera.near = 0.15;
-      light.shadow.camera.layers.set(0);
-      light.shadow.camera.layers.enable(SHADOW_LAYER);
+      light.shadow.camera.layers.set(SHADOW_LAYER);
+      light.shadow.camera.layers.enable(PROXY_LAYER);
       // el mapa de sombra se rehace a ~20 Hz: el fuego no se mueve, solo la gente (a 60 Hz costaba 6 ms)
       light.shadow.autoUpdate = false;
       scene.add(light);

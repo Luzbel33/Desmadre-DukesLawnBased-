@@ -4,7 +4,8 @@
 // pase de oclusión ambiental) corta el haz contra el piso, las paredes y los muebles, y una caja por cuarto evita
 // que atraviese tabiques. El polvo es una nube de puntos alrededor de la cámara que solo brilla adentro de los haces.
 import * as THREE from 'three';
-import { Pass } from 'three/addons/postprocessing/Pass.js';
+import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
+import { FireMesh } from './fire.js';
 
 const MAXS = 12; // haces que ve el polvo
 const DUST = 3200;
@@ -34,6 +35,87 @@ const COMMON = /* glsl */ `
                mix(mix(h13(i + vec3(0, 0, 1)), h13(i + vec3(1, 0, 1)), f.x), mix(h13(i + vec3(0, 1, 1)), h13(i + vec3(1, 1, 1)), f.x), f.y), f.z);
   }
 `;
+
+// ---------------------------------------------------------------- bruma a ras del piso (volumétrica)
+// Se recorre el rayo de la cámara hasta lo que hay en el píxel: densidad que cae con la altura, manchones que
+// arrastra el viento, luz de luna (más fuerte mirando hacia ella), el relámpago y las llamas cercanas (se ve el
+// halo de las antorchas en la bruma). Adentro del torreón casi no hay (la cripta sí tiene la suya).
+const NL = 8;
+const fogFS = /* glsl */ `
+  ${COMMON}
+  #define NL ${NL}
+  uniform float uTime, uDens, uH, uFade, uKeepY;
+  uniform vec2 uWind;
+  uniform vec3 uAmb, uMoonDir, uMoonCol;
+  uniform vec4 uStorm, uKeep, uCrypt;
+  uniform vec4 uLP[NL];
+  uniform vec3 uLC[NL];
+  uniform int uNL;
+  float h12(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+  float vn2(vec2 p) {
+    vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(h12(i), h12(i + vec2(1, 0)), f.x), mix(h12(i + vec2(0, 1)), h12(i + vec2(1, 1)), f.x), f.y);
+  }
+  float stormW(vec2 p) {
+    vec2 d = max(max(uStorm.xy - p, 0.0), p - uStorm.zw);
+    float t = min(1.0, length(d) / uFade);
+    return 1.0 - t * t * (3.0 - 2.0 * t);
+  }
+  float dens(vec3 p) {
+    float base = exp(-max(p.y, 0.0) / uH);
+    vec2 q = p.xz * 0.05 + uWind * uTime * 0.014;
+    float n = vn2(q) * 0.55 + vn2(q * 3.1 + 3.1 - uWind * uTime * 0.025) * 0.3 + vn2(q * 7.3 - 1.7) * 0.15;
+    float d = base * (0.04 + 2.6 * n * n * n) * stormW(p.xz);
+    if (p.x > uKeep.x && p.x < uKeep.z && p.z > uKeep.y && p.z < uKeep.w && p.y > -0.5) {
+      bool crypt = p.x > uCrypt.x && p.x < uCrypt.z && p.z > uCrypt.y && p.z < uCrypt.w && p.y < uKeepY;
+      d *= crypt ? 1.4 : 0.02;
+    }
+    return d;
+  }
+  void main() {
+    vec3 ro = cameraPosition;
+    vec2 fc = gl_FragCoord.xy;
+    vec2 suv = fc / uRes;
+    float dz = texture2D(tDepth, suv).r;
+    vec4 v = uInvProj * vec4(suv * 2.0 - 1.0, dz * 2.0 - 1.0, 1.0);
+    v /= v.w;
+    vec3 rd = (uCamWorld * v).xyz - ro;
+    float L = length(rd);
+    rd /= L;
+    L = min(L, 95.0);
+    // la bruma vive abajo: solo el tramo del rayo por debajo de yMax
+    const float yMax = 7.0;
+    float t0 = 0.0, t1 = L;
+    if (ro.y > yMax) { if (rd.y >= -1e-4) discard; t0 = (ro.y - yMax) / -rd.y; }
+    if (rd.y > 1e-4) t1 = min(t1, (yMax - ro.y) / rd.y);
+    if (t1 <= t0) discard;
+    float j = fract(52.9829189 * fract(dot(fc, vec2(0.06711056, 0.00583715))));
+    const int N = 10;
+    float dt = (t1 - t0) / float(N);
+    float g = 0.4, ct = dot(rd, uMoonDir);
+    float phase = 0.3 + (1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * ct, 1.5) * 0.35;
+    float T = 1.0;
+    vec3 S = vec3(0.0);
+    for (int i = 0; i < N; i++) {
+      float t = t0 + (float(i) + j) * dt;
+      vec3 p = ro + rd * t;
+      float s = dens(p) * uDens;
+      if (s < 1e-5) continue;
+      vec3 lum = uAmb + uMoonCol * phase;
+      for (int k = 0; k < NL; k++) {
+        if (k >= uNL) break;
+        vec3 dl = uLP[k].xyz - p;
+        float d2 = dot(dl, dl), r = uLP[k].w;
+        lum += uLC[k] * max(0.0, 1.0 - d2 / (r * r)) / (1.0 + d2 * 1.6);
+      }
+      float a = exp(-s * dt);
+      S += T * (1.0 - a) * lum;
+      T *= a;
+      if (T < 0.02) break;
+    }
+    if (T > 0.998) discard;
+    gl_FragColor = vec4(S / max(1.0 - T, 1e-4), 1.0 - T);
+  }`;
 
 // ---------------------------------------------------------------- haz (prisma oblicuo)
 const shaftVS = /* glsl */ `
@@ -156,6 +238,46 @@ export class VolumePass extends Pass {
     };
     this.shaftMats = [];
     this._dust();
+    this._fog();
+  }
+
+  _fog() {
+    const arr = (n, f) => Array.from({ length: n }, f);
+    this.fogU = {
+      tDepth: this.common.tDepth, uRes: this.common.uRes, uInvProj: this.common.uInvProj, uCamWorld: this.common.uCamWorld,
+      uTime: this.common.uTime, uDens: { value: 0.09 }, uH: { value: 1.35 }, uFade: { value: 18 }, uKeepY: { value: 3.2 },
+      uWind: { value: new THREE.Vector2(2.2, 0.9) }, uAmb: { value: new THREE.Color() }, uMoonDir: { value: new THREE.Vector3(0, 1, 0) },
+      uMoonCol: { value: new THREE.Color() }, uStorm: { value: new THREE.Vector4() }, uKeep: { value: new THREE.Vector4(1e5, 1e5, -1e5, -1e5) },
+      uCrypt: { value: new THREE.Vector4() }, uLP: { value: arr(NL, () => new THREE.Vector4()) }, uLC: { value: arr(NL, () => new THREE.Color()) },
+      uNL: { value: 0 },
+    };
+    this.fogQuad = new FullScreenQuad(new THREE.ShaderMaterial({
+      uniforms: this.fogU, vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: fogFS,
+      transparent: true, depthTest: false, depthWrite: false, blending: THREE.NormalBlending,
+    }));
+    this.lightsFor = null; // () => [{ position, color, intensity, distance }]: las luces reales del pool
+  }
+
+  // fuegos volumétricos (FireSet del mundo)
+  setFires(set, fogDensity) {
+    this.fireSet = set;
+    this.fogDensityOf = fogDensity;
+    this.fireFog = { value: 0 };
+    this.fire = new FireMesh(this.common, this.fireFog);
+    this.fscene = new THREE.Scene();
+    this.fscene.add(this.fire.mesh);
+  }
+
+  // bruma: rectángulo de la tormenta, caja del torreón (sin bruma arriba del piso) y la cripta (con bruma)
+  setFog({ storm, fade, keep, keepY, crypt, moonDir, lights }) {
+    const u = this.fogU;
+    u.uStorm.value.set(storm.x0, storm.z0, storm.x1, storm.z1);
+    u.uFade.value = fade;
+    u.uKeep.value.set(keep.x0, keep.z0, keep.x1, keep.z1);
+    u.uKeepY.value = keepY;
+    u.uCrypt.value.set(crypt.x0, crypt.z0, crypt.x1, crypt.z1);
+    u.uMoonDir.value.copy(moonDir).normalize();
+    this.lightsFor = lights;
   }
 
   // haces: [{ c: Vector3, u, v, d (dirección de la luz), hw, hh, len, glass: [ga, gb], bars, bmin, bmax }]
@@ -236,12 +358,11 @@ export class VolumePass extends Pass {
 
   render(renderer, writeBuffer, readBuffer) {
     const st = this.storm, cam = this.camera, z = this.zone;
-    if (!st || !this.shafts.length || st.s < 0.02) return;
-    const p = cam.position;
-    if (z && (p.x < z.x0 || p.x > z.x1 || p.z < z.z0 || p.z > z.z1)) return;
+    if (!st || st.s < 0.02) return;
     const depth = this.getDepth();
     if (!depth) return;
     const c = this.common;
+    const p = cam.position;
     c.tDepth.value = depth;
     c.uRes.value.set(readBuffer.width, readBuffer.height);
     c.uInvProj.value.copy(cam.projectionMatrixInverse);
@@ -259,7 +380,37 @@ export class VolumePass extends Pass {
     const ac = renderer.autoClear;
     renderer.autoClear = false;
     renderer.setRenderTarget(readBuffer);
-    renderer.render(this.vscene, cam);
+    // bruma (primero: los haces y el polvo van encima)
+    if (this.lightsFor) {
+      const u = this.fogU;
+      const fx = st.flash || 0;
+      u.uDens.value = 0.085 * (0.35 + 0.65 * st.s);
+      u.uAmb.value.setRGB(0.009, 0.011, 0.015).addScalar(fx * 0.2);
+      u.uMoonCol.value.setRGB(0.5, 0.6, 0.85).multiplyScalar(0.03 * Math.min(3, st.flashLight.intensity) + fx * 0.5);
+      u.uWind.value.copy(st.wind);
+      let n = 0;
+      for (const l of this.lightsFor()) {
+        if (n >= NL) break;
+        if (!(l.intensity > 0.3)) continue;
+        const dx = l.position.x - p.x, dz = l.position.z - p.z;
+        if (dx * dx + dz * dz > 45 * 45) continue;
+        u.uLP.value[n].set(l.position.x, l.position.y, l.position.z, Math.max(3, (l.distance || 8) * 0.8));
+        u.uLC.value[n].copy(l.color).multiplyScalar(l.intensity * 0.05);
+        n++;
+      }
+      u.uNL.value = n;
+      this.fogQuad.render(renderer);
+    }
+    // fuego (encima de la bruma: la atraviesa con su luz)
+    if (this.fire && this.fireSet?.list.length) {
+      this.fire.sync(this.fireSet);
+      this.fireFog.value = this.fogDensityOf ? this.fogDensityOf() : 0;
+      this.fire.uniforms.uWind.value.copy(st.wind);
+      renderer.render(this.fscene, cam);
+    }
+    // haces y polvo: solo cerca del torreón
+    const near = !z || (p.x > z.x0 && p.x < z.x1 && p.z > z.z0 && p.z < z.z1);
+    if (near && this.shafts.length) renderer.render(this.vscene, cam);
     renderer.autoClear = ac;
   }
 }

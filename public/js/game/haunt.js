@@ -838,6 +838,7 @@ export class Haunt {
     if (fire && this.world.flames) {
       const k = 1 + this.fireBoost * 0.9;
       for (const f of fire.flames) this.world.flames.scale(f.i, f.w * (1 + this.fireBoost * 0.5), f.h * k);
+      if (fire.vol >= 0) this.world.fires?.scale(fire.vol, k);
       if (fire.embers) this.world.embers.set(fire.embers, 1 + this.fireBoost * 1.5, 5.5 + this.fireBoost * 3);
       fire.light.base = 16 * (1 + this.fireBoost * 0.8);
       const fb = this._fb || (this._fb = this.world.flicker.find((f) => f.light === fire.light));

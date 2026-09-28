@@ -183,7 +183,6 @@ export class Decor {
     this._skulls();
     this._props();
     this._scarecrow();
-    this._fog();
     this._bats();
     this._crows();
     this._deadTrees();
@@ -267,7 +266,7 @@ export class Decor {
     const cup = new THREE.CylinderGeometry(0.11, 0.05, 0.2, 8);
     cup.translate(x, y, z);
     b.geo('iron', cup);
-    this.c.flame(x, y + 0.07, z, 0.24, 0.55, {});
+    this.c.fire3d(x, y + 0.04, z, 0.13, 0.13, 0.6, { speed: 1.3, intensity: 0.9 });
     this.world.embers?.add(x, y + 0.22, z, 4, { radius: 0.1, height: 1.2, strength: 0.5 });
     return this.c.light(x + nx * 0.35, y + 0.35, z + nz * 0.35, 0xff8a3a, light, dist, { flicker: true, priority: 1.2 });
   }
@@ -464,8 +463,33 @@ export class Decor {
   }
 
   // ---------------------------------------------------------------- utilería procedural (tumbas de la cripta, cocina, patio)
+  // cama de brasas: carbón negro con vetas que laten (en vez de un rectángulo naranja parejo)
+  _emberBed() {
+    const em = getMat('ember');
+    if (em.userData.bed) return;
+    em.userData.bed = true;
+    const U = { uT: { value: 0 } };
+    em.onBeforeCompile = (sh) => {
+      sh.uniforms.uT = U.uT;
+      sh.vertexShader = 'varying vec3 vEmW;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vEmW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      sh.fragmentShader = `uniform float uT;
+        varying vec3 vEmW;
+        float hE(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+        float vE(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(hE(i), hE(i + vec2(1, 0)), f.x), mix(hE(i + vec2(0, 1)), hE(i + vec2(1, 1)), f.x), f.y); }
+        ` + sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+          float en = vE(vEmW.xz * 9.0 + vec2(uT * 0.13, -uT * 0.09)) * 0.6 + vE(vEmW.xz * 26.0 - uT * 0.25) * 0.4;
+          float hot = smoothstep(0.42, 0.78, en) * (0.7 + 0.3 * sin(uT * 2.7 + en * 14.0));
+          totalEmissiveRadiance *= hot * 1.8;
+          diffuseColor.rgb = mix(vec3(0.02, 0.018, 0.016), diffuseColor.rgb, hot);`);
+    };
+    em.customProgramCacheKey = () => 'ember-bed';
+    this.anim.push((t) => { U.uT.value = t; });
+  }
+
   _props() {
     const b = new Builder(this.phys);
+    this._emberBed();
     // cripta: sarcófagos en fila y el del Conde al medio
     for (const [x, z, big] of [[10.5, -109.5, 0], [10.5, -114.5, 0], [10.5, -119.5, 0], [14.2, -114.5, 1], [18.4, -110.2, 0], [18.4, -114.8, 0]]) {
       const w = big ? 1.3 : 1.0, l = big ? 2.6 : 2.2;
@@ -543,7 +567,8 @@ export class Decor {
     for (const s of [-1, 1]) b.box('woodDark', 16.5, 1.3, -85.2 + s * 0.8, 3.0, 0.6, 0.08, { collide: false });
     for (const [dx, dz] of [[-1.0, -0.95], [-1.0, 0.95]]) b.cylinder('woodDark', 16.5 + dx, 0.55, -85.2 + dz, 0.55, 0.55, 0.1, 14, { rx: Math.PI / 2 });
     b.box('woodDark', 18.6, 0.8, -85.2, 1.4, 0.08, 0.1, { rz: 0.4, collide: false });
-    b.finish(this.scene);
+    // mesas, sarcófagos, altar y demás: también hacen sombra con el fuego y el candelabro (luz heroica, capa 1)
+    for (const m of b.finish(this.scene) || []) m.layers.enable(1);
     // calabazas en el carro
     const cart = [];
     for (let i = 0; i < 6; i++) cart.push(this.mat4(15.5 + (i % 3) * 0.8, 1.01, -85.6 + Math.floor(i / 3) * 0.8, i * 1.3, 0.62));
@@ -551,17 +576,26 @@ export class Decor {
     // caldero con brebaje verde que burbujea (y la luz verde)
     const cauldron = new THREE.LatheGeometry([[0.05, 0], [0.4, 0.05], [0.5, 0.3], [0.46, 0.6], [0.4, 0.66]].map(([r2, y]) => new THREE.Vector2(r2, y)), 16);
     const cm = new THREE.Mesh(cauldron, getMat('iron'));
-    cm.position.set(-22.7, F0 + 0.15, -123.2);
+    cm.position.set(-22.7, F0 + 0.42, -123.2);
     this.scene.add(cm);
     const brew = new THREE.Mesh(new THREE.CircleGeometry(0.4, 20), new THREE.MeshStandardMaterial({ color: 0x0a2a08, emissive: 0x3aff40, emissiveIntensity: 1.3, roughness: 0.2 }));
     brew.rotation.x = -Math.PI / 2;
-    brew.position.set(-22.7, F0 + 0.72, -123.2);
+    brew.position.set(-22.7, F0 + 0.99, -123.2);
     this.scene.add(brew);
     this.c.light(-22.3, F0 + 1.3, -123.2, 0x5aff50, 3, 6, { flicker: true, priority: 1 });
     this.c.light(-21.4, F0 + 0.9, -123.2, 0xff7a30, 9, 11, { flicker: true, priority: 1.8, shadow: true, decay: 1.5 });
-    for (let k = 0; k < 4; k++) this.c.flame(-22.95 + (k % 2) * 0.3, F0 + 0.12, -123.75 + k * 0.36, 0.4, 0.6 + (k % 3) * 0.15, {});
+    this.c.fire3d(-22.8, F0 + 0.1, -123.2, 0.36, 0.7, 0.85, { intensity: 1.0 });
+    {
+      const cb = this.c.b;
+      cb.cylinder('iron', -22.7, F0 + 1.45, -123.2, 0.012, 0.012, 0.7, 5, { collide: false });
+      for (const s of [-1, 1]) cb.box('iron', -22.7, F0 + 1.13, -123.2 + s * 0.22, 0.02, 0.28, 0.02, { rx: s * 0.9, collide: false });
+      cb.box('ember', -22.8, F0 + 0.135, -123.2, 0.6, 0.03, 1.2, { collide: false, noShadow: true });
+      (this._hearthLogs = this._hearthLogs || []).push(
+        this.mat4(-22.95, F0 + 0.18, -123.45, 0.3, 1.6, 1.4), this.mat4(-22.6, F0 + 0.18, -122.95, -0.4, 1.6, 1.4),
+        this.mat4(-22.8, F0 + 0.29, -123.2, Math.PI / 2, 1.5, 1.3),
+      );
+    }
     this.world.embers?.add(-22.8, F0 + 0.3, -123.2, 10, { radius: 0.35, height: 1.2, strength: 0.7 });
-    for (let k = 0; k < 3; k++) this.c.flame(-22.7 + (k - 1) * 0.2, F0 + 0.12, -123.2 + ((k % 2) - 0.5) * 0.2, 0.3, 0.45, {});
     this.world.smoke?.add(-22.7, F0 + 0.8, -123.2, 8, { radius: 0.3, height: 1.2, opacity: 0.1, speed: 0.1 });
     this.anim.push((t) => { brew.material.emissiveIntensity = 1.1 + Math.sin(t * 3.1) * 0.25 + Math.sin(t * 7.3) * 0.1; });
   }
@@ -574,10 +608,16 @@ export class Decor {
     b.box('keepStone', px(0.25), F0 + 1.95, pz(0.25), 2.8, 0.35, 0.8, { yaw });
     b.box('black', px(0.02), F0 + 0.9, pz(0.02), 1.6, 1.7, 0.1, { yaw, collide: false, noShadow: true });
     b.box('keepStone', px(0.35), F0 + 0.06, pz(0.35), 2.6, 0.12, 1.0, { yaw, collide: false });
-    for (let k = 0; k < 3; k++) {
-      const [sx, sz] = side((k - 1) * 0.3);
-      this.c.flame(sx + fx * 0.3, F0 + 0.12, sz + fz * 0.3, 0.45, 0.75 + (k === 1 ? 0.25 : 0), {});
-    }
+    // leños cruzados y la cama de brasas (el fuego sale de algo)
+    b.box('ember', px(0.3), F0 + 0.135, pz(0.3), 1.3, 0.03, 0.55, { yaw, collide: false, noShadow: true });
+    (this._hearthLogs = this._hearthLogs || []).push(
+      this.mat4(px(0.25) + Math.cos(yaw) * 0.25, F0 + 0.18, pz(0.25) - Math.sin(yaw) * 0.25, yaw + 0.25, 1.6, 1.4),
+      this.mat4(px(0.35) - Math.cos(yaw) * 0.25, F0 + 0.18, pz(0.35) + Math.sin(yaw) * 0.25, yaw - 0.3, 1.6, 1.4),
+      this.mat4(px(0.3), F0 + 0.3, pz(0.3), yaw + Math.PI / 2 + 0.1, 1.5, 1.3),
+    );
+    // el fuego ocupa el hueco: más ancho que profundo
+    const along = Math.abs(fx) > 0.5;
+    this.c.fire3d(px(0.3), F0 + 0.1, pz(0.3), along ? 0.3 : 0.62, along ? 0.62 : 0.3, 1.05, { intensity: 1.05 });
     this.world.embers?.add(px(0.3), F0 + 0.3, pz(0.3), 10, { radius: 0.25, height: 1.3, strength: 0.7 });
     this.c.light(px(0.9), F0 + 0.8, pz(0.9), 0xff7a30, 6, 9, { flicker: true, priority: 1.6, shadow: true });
     // repisa con velas
@@ -989,6 +1029,7 @@ export class Decor {
     // --- aljibe: el balde colgando de la soga
     this.place('c_bucket', -21, 0.65, -66.5, 0.3, 1.1, { still: false, onReady: (m) => { this.models.bucket = m; } });
     this._flushCandles();
+    if (this._hearthLogs) this.instances('c_firewood', this._hearthLogs, { onReady: (ims) => { for (const im of ims) { im.material = im.material.clone(); im.material.color?.multiplyScalar(0.35); } } });
   }
 
   _openGate(m) {
