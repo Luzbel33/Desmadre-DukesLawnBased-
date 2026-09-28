@@ -5,6 +5,8 @@ import { vocalManifest } from './vocals.js';
 const A = 'assets/sfx/';
 const seq = (base, from, to, pad = 3) => Array.from({ length: to - from + 1 }, (_, i) => `${A}${base}${String(from + i).padStart(pad, '0')}.ogg`);
 const list = (...names) => names.map((n) => `${A}${n}.ogg`);
+// Castillo del terror (assets/sfx/castillo/CREDITOS.txt): lluvia, truenos, viento, fantasmas, campana, reloj...
+const castle = (...names) => names.map((n) => `${A}castillo/${n}.ogg`);
 
 export const SFX_MANIFEST = {
   hit: [...seq('impactPunch_heavy_', 0, 4), ...seq('impactPunch_medium_', 0, 4)],
@@ -36,4 +38,34 @@ export const SFX_MANIFEST = {
   'ui-select': list('select_001', 'select_002', 'select_003'),
   door: list('doorOpen_1', 'doorOpen_2'),
   ...vocalManifest(),
+  'rain': castle('lluvia'),
+  'rain-roof': castle('lluvia-techo'),
+  'fire': castle('fuego'),
+  'fire-flare': castle('fogonazo'),
+  'thunder-near': castle('trueno-cerca-1', 'trueno-cerca-2', 'trueno-cerca-3'),
+  'thunder-far': castle('trueno-lejos-1', 'trueno-lejos-2', 'trueno-lejos-3'),
+  'ghost-moan': castle('lamento-1', 'lamento-2', 'lamento-3', 'lamento-4', 'lamento-5'),
+  'ghost-scream': castle('grito-1', 'grito-2', 'grito-3', 'grito-4'),
+  'ghost-wail': castle('aullido-fantasma'),
+  'ghost-breath': castle('aliento', 'aliento-2'),
+  'whisper': castle('susurro-1', 'susurro-2', 'canto-cripta'),
+  'heartbeat': castle('latidos'),
+  'crow': castle('cuervo-1', 'cuervo-2', 'cuervo-3', 'cuervo-4', 'cuervo-5'),
+  'door-creak': castle('crujido-1', 'crujido-2', 'crujido-3'),
+  'gate-creak': castle('reja-1', 'reja-2'),
+  'coins': castle('monedas-1', 'monedas-2'),
+  'gust': castle('rafaga-1', 'rafaga-2'),
+  'bell': castle('campana-1', 'campana-2'),
+  'clock-chime': castle('carillon-1', 'carillon-2'),
+  'clock-tick': castle('tictac'),
+  'musicbox': castle('cajita-de-musica'),
+  'drone': castle('zumbido-torreon'),
+  'storm-wind': castle('viento-tormenta'),
+  'thunder-crack': castle('rayo-torre'),
+  'stinger': castle('susto-1', 'susto-2'),
+  'stone-grind': castle('piedra-1', 'piedra-2'),
+  'splash': castle('aljibe-gota'),
+  'door-slam': castle('portazo-1', 'portazo-2'),
+  creak: castle('crujido-1', 'crujido-2', 'crujido-3'),
+  knock: seq('impactWood_heavy_', 0, 4),
 };

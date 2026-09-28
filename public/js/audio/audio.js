@@ -1,7 +1,18 @@
 import { synthesize } from './synthesis.js';
 import { zoneAt } from '../shared/mapdata.js';
+import { ZoneMusic } from './music.js';
 const clamp=(x,a=0,b=1)=>Math.min(b,Math.max(a,Number.isFinite(+x)?+x:0));
-const DEFAULTS={vol:.8,volSfx:.8,volAmbient:.35,muted:false};
+const DEFAULTS={vol:.8,volSfx:.8,volAmbient:.35,volMusic:.7,muted:false};
+// Respuesta al impulso sintética (piedra): primeras reflexiones + cola que decae; estéreo decorrelado
+function makeIR(c,secs=2.6,decay=2.2){
+  const n=Math.floor(c.sampleRate*secs),b=c.createBuffer(2,n,c.sampleRate);
+  for(let ch=0;ch<2;ch++){
+    const d=b.getChannelData(ch);let s=(ch+1)*7919;
+    for(let i=0;i<n;i++){s=(Math.imul(s,1664525)+1013904223)|0;const t=i/c.sampleRate;d[i]=((s>>>0)/2147483648-1)*Math.pow(1-t/secs,decay)*Math.exp(-t*1.1);}
+    for(const [t,g] of [[.011,.6],[.023,.45],[.037,.35],[.052,.28],[.071,.2]]){const k=Math.floor((t+ch*.003)*c.sampleRate);if(k<n)d[k]+=g*(ch?-1:1);}
+  }
+  return b;
+}
 const ACTIONS={drink:'drink',smoke:'smoke',bong:'drink',eat:'drink',punchL:'swing',punchR:'swing',kick:'swing',swing:'swing',throw:'throw'};
 // variantes sintetizadas por sonido (cada semilla da otra; los pájaros son "especies" distintas)
 const VARIANTS={birds:8};
@@ -25,8 +36,12 @@ export class AudioEngine {
         this.ctx=this.contextFactory();
         if(!this.ctx){this.problem='Audio no disponible en este navegador';this.changed(this);return Promise.resolve(false);}
         const c=this.ctx;
-        this.master=c.createGain();this.sfxBus=c.createGain();this.ambientBus=c.createGain();
-        this.sfxBus.connect(this.master);this.ambientBus.connect(this.master);
+        this.master=c.createGain();this.sfxBus=c.createGain();this.ambientBus=c.createGain();this.musicBus=c.createGain();
+        this.sfxBus.connect(this.master);this.ambientBus.connect(this.master);this.musicBus.connect(this.master);
+        // reverberación por envío (adentro de piedra suena a piedra): la cantidad la decide reverbLevel
+        this.verb=c.createConvolver();this.verb.buffer=makeIR(c);this.verbSend=c.createGain();this.verbSend.gain.value=0;
+        this.sfxBus.connect(this.verbSend);this.ambientBus.connect(this.verbSend);this.verbSend.connect(this.verb);this.verb.connect(this.master);
+        this.music=new ZoneMusic(this);
         this.limiter=c.createDynamicsCompressor();this.limiter.threshold.value=-10;this.limiter.knee.value=16;this.limiter.ratio.value=7;
         this.limiter.attack.value=.004;this.limiter.release.value=.15;this.master.connect(this.limiter);this.limiter.connect(c.destination);
         c.onstatechange=()=>this.changed(this);this.refresh();this._loadSamples();
@@ -47,6 +62,8 @@ export class AudioEngine {
     const o={...DEFAULTS,...this.opts};
     this._gain(this.master?.gain,o.muted?0:clamp(o.vol));
     this._gain(this.sfxBus?.gain,clamp(o.volSfx));this._gain(this.ambientBus?.gain,clamp(o.volAmbient));
+    this._gain(this.musicBus?.gain,clamp(o.volMusic)*.8);
+    this._gain(this.verbSend?.gain,clamp(this.reverbLevel||0,0,.8),.25);
   }
   // Samples reales (CC0) cargados desde assets/sfx; si no hay, se usa el sintetizador procedural.
   setSamples(manifest){this.sampleManifest=manifest;if(this.ctx)this._loadSamples();}
@@ -129,10 +146,12 @@ export class AudioEngine {
     if(camera?.position){Object.assign(this.listener,{x:camera.position.x,y:camera.position.y,z:camera.position.z});const m=camera.matrixWorld?.elements;if(m)Object.assign(this.right,{x:m[0],y:m[1],z:m[2]});}
     for(const v of this.loops.values())v.touched=false;
     if(this.active && local && this.ctx.state==='running'){
-      const zone=zoneAt(local.pos.x,local.pos.z),inside=['bar','cine','mansion','galpon'].includes(zone);
+      const zone=zoneAt(local.pos.x,local.pos.z),inside=['bar','cine','torreon','galpon'].includes(zone);
       this._loop('wind','wind',inside?.06:.36,null,{bus:'ambient'});
-      this._birds(dt,inside);
-      this._loop('fountain','water',.2,{x:0,y:1,z:-65},{bus:'ambient',full:4,max:18});
+      // bajo la tormenta del castillo no cantan los pájaros (birdMute lo pone la tormenta)
+      if(Math.random()>=(this.birdMute||0))this._birds(dt,inside);
+      // ambientes de otros módulos (tormenta, castillo): se tocan acá para que sus loops no se apaguen solos
+      if(this.ambientHook){try{this.ambientHook(dt,this);}catch(e){console.warn('ambiente',e);}}
       const all=[{key:'me',p:local,isMe:true},...[...remotes].map(p=>({key:`p${p.id}`,p,isMe:false}))],seen=new Set();
       for(const {key,p,isMe} of all){
         seen.add(key);const st=isMe?null:p.stateData;if(!isMe&&!st)continue;
@@ -166,12 +185,12 @@ export class AudioEngine {
         this._loop(`engine-${v.id}`,'engine',(v.type==='cart'?.2:.34)*(own?1:.8),pos,{rate:(v.type==='tractor'?.73:.95)+Math.min(12,speed)*.055,full:2,max:34});
         if(v.blades&&v.type!=='cart')this._loop(`blades-${v.id}`,'blades',.2,pos,{rate:1+speed*.012,full:2,max:24});
       }
-    }else this.walkers.clear();
+    }else{this.walkers.clear();this.music?.update(dt,null,0);}
     for(const [key,v] of this.loops){
       if(!v.touched){this._gain(v.gain.gain,0,.06);if(v.gain.gain.value<.0005){v.dispose();this.loops.delete(key);}}
     }
   }
-  stop(){for(const v of this.loops.values())v.dispose();this.loops.clear();for(const v of [...this.shots])v.dispose();this.walkers.clear();this.active=false;}
+  stop(){for(const v of this.loops.values())v.dispose();this.loops.clear();for(const v of [...this.shots])v.dispose();this.walkers.clear();this.active=false;this.music?.stop();}
   dispose(){this.stop();this.disposed=true;if(this.ctx){this.ctx.onstatechange=null;this.ctx.close?.().catch?.(()=>{});}this.buffers.clear();}
   diagnostics(){return {state:this.ctx?.state||'not-created',status:this.status,played:this.played,loops:this.loops.size,shots:this.shots.size,cachedBuffers:this.buffers.size};}
 }

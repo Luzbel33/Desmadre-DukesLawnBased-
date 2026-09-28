@@ -1,7 +1,7 @@
 // Datos del mapa compartidos entre servidor y cliente (sin dependencias de three.js).
 // Convenciones: metros, Y arriba. yaw = 0 mira hacia +Z (sur). forward = (sin(yaw), 0, cos(yaw)).
 
-export const PROTOCOL = 4;
+export const PROTOCOL = 5;
 
 // ---------------------------------------------------------------- El Gran Pasto
 export const LAWN = { x0: -70, z0: -50, x1: 70, z1: 60, cell: 0.25 };
@@ -26,14 +26,33 @@ export const ZONES = {
   estacionamiento: { x0: 95, z0: 18, x1: 123, z1: 44, name: 'Estacionamiento' },
   galpon: { x0: -102, z0: -22, x1: -86, z1: -6, name: 'El Galpón' },
   saltos: { x0: -128, z0: 14, x1: -88, z1: 62, name: 'Pista de Saltos' },
-  terraza: { x0: -24, z0: -86, x1: 24, z1: -77, name: 'La Terraza' },
-  mansion: { x0: -36, z0: -113, x1: 36, z1: -86, name: 'Mansión' },
+  torreon: { x0: -25, z0: -127, x1: 25, z1: -103, name: 'Castillo del Terror' },
+  fogon: { x0: -40, z0: -101, x1: -14, z1: -84, name: 'El Fogón' },
+  cementerio: { x0: 25, z0: -130, x1: 43, z1: -103, name: 'Cementerio' },
+  huerta: { x0: -43, z0: -130, x1: -25, z1: -103, name: 'La Huerta Muerta' },
+  castillo: { x0: -46, z0: -132, x1: 46, z1: -75, name: 'Patio del Castillo' },
   cancha: { x0: -31, z0: 15, x1: 31, z1: 55, name: 'La Cancha' },
   pasto: { x0: LAWN.x0, z0: LAWN.z0, x1: LAWN.x1, z1: LAWN.z1, name: 'El Gran Pasto' },
   autocine: { x0: -20, z0: 60, x1: 20, z1: 78, name: 'Autocine' },
 };
 
 export const MAP_BOUNDS = { x0: -135, z0: -135, x1: 135, z1: 135 };
+
+// ---------------------------------------------------------------- Castillo del Terror (ex mansión)
+// Muralla con torres, portón al sur, patio con el fogón y un torreón elevado (la casa del terror) con cripta abajo.
+export const CASTLE = {
+  x0: -46, x1: 46, z0: -132, z1: -78, // cara exterior de la muralla
+  wallT: 2.4, wallH: 11,
+  keep: { x0: -25, x1: 25, z0: -127, z1: -103, floor: 3.5, top: 16.5 },
+  fire: [-27, -92.5], // fogón del patio (bajo el galpón de madera)
+};
+// Tormenta local: adentro del rectángulo es de noche, llueve y truena; hacia afuera se desvanece en `fade` metros.
+export const STORM = { x0: -62, z0: -142, x1: 62, z1: -74, fade: 18 };
+export function stormAt(x, z) {
+  const dx = Math.max(STORM.x0 - x, 0, x - STORM.x1), dz = Math.max(STORM.z0 - z, 0, z - STORM.z1);
+  const t = Math.min(1, Math.hypot(dx, dz) / STORM.fade);
+  return 1 - t * t * (3 - 2 * t);
+}
 
 // ---------------------------------------------------------------- Pasto cortable en todo el mapa
 // Una sola grilla (celdas de 30 cm) para todo el pasto: el Gran Pasto y todo lo verde de afuera.
@@ -43,7 +62,7 @@ GRASSMAP.h = Math.round((GRASSMAP.z1 - GRASSMAP.z0) / GRASSMAP.cell);
 // Piso duro sin pasto (x0, z0, x1, z1): calles, veredas, edificios, explanadas, estacionamiento, pista
 export const NO_GRASS = [
   [95, -42, 123, 16], [95, -20, 123, -12], [95, 18, 123, 44], [82, -125, 95, 125],
-  [-40, -77, 40, -52], [-24, -86, 24, -76], [-50, -113, 50, -84], [40, -56, 82, -52], [-82, -56, -40, -52],
+  [-40, -77, 40, -52], [-62, -135, 62, -74], [40, -56, 82, -52], [-82, -56, -40, -52],
   [-84, -56, -80, -4], [-102, -22, -86, -6], [-86, -25, -74, 7], [-128, 14, -88, 62], [-20, 60, 20, 78],
 ];
 // 1 = puede haber pasto, 0 = piso duro (se calcula una vez; lo usan servidor y cliente)
@@ -164,6 +183,10 @@ export const SCREENS = [
     id: 'autocine', name: 'Autocine', c: [0, 7.2, 71.6], yaw: Math.PI, w: 21, h: 11.8125,
     zone: null, hearFull: 35, hearMax: 110,
   },
+  {
+    id: 'fogon', name: 'Pantalla del Fogón', c: [-38.35, 3.2, -92.5], yaw: Math.PI / 2, w: 7, h: 3.9375,
+    zone: null, hearFull: 9, hearMax: 32, // se escucha alrededor del fuego (y un poco en el patio)
+  },
 ];
 export const SCREEN_BY_ID = Object.fromEntries(SCREENS.map((s) => [s.id, s]));
 
@@ -231,38 +254,22 @@ F('car', 99, 0, 26.5, Math.PI / 2, { color: 0xa33b3b });
 F('paredon', 109, 0, 40, 0, { len: 16, h: 3.4 });
 F('billboard', 122.6, 0, 31, -Math.PI / 2, { w: 14, h: 5 });
 
-// --- Terraza / mansión
-F('couch', -10, 0, -83.8, 0, { seats: 3 });
-F('couch', -4.4, 0, -82.2, -Math.PI / 2, { seats: 3 });
-F('couch', 6, 0, -83.8, 0, { seats: 3 });
-F('lowtable', -8.5, 0, -81.5);
-F('lowtable', 7.5, 0, -81.2);
-F('cooler', -1.4, 0, -84.4, 0, { id: 'cooler_terraza' });
-F('grill', 15, 0, -83.6, 0, { id: 'parrilla' });
-F('bong', 1.6, 0, -84.4, 0, { id: 'bong_terraza' });
-F('fountain', 0, 0, -65, 0, { r: 4.2 });
+// --- Explanada y fogón del castillo (el resto del castillo lo arma world/castle.js)
+F('grill', -17.2, 0, -98.4, 0, { id: 'parrilla' });
+F('cooler', -20.2, 0, -99.0, 0, { id: 'cooler_fogon' });
+F('bong', -16.4, 0, -86.4, 0, { id: 'bong_fogon' });
 F('bench', -12, 0, -60, 0, { len: 3, seats: 2 });
 F('bench', 12, 0, -60, 0, { len: 3, seats: 2 });
 
 // --- Decoración (modelos CC0 de Poly Haven; si no cargan, no se dibujan)
 // faroles en la vereda del pueblo, en la explanada y en los senderos
-for (const [x, z] of [[-36, -53.2], [-12, -53.2], [12, -53.2], [36, -53.2], [-30, -75.6], [30, -75.6],
+for (const [x, z] of [[-36, -53.2], [-12, -53.2], [12, -53.2], [36, -53.2],
   [50, -56.3], [66, -56.3], [80, -56.3], [-50, -56.3], [-66, -56.3], [-84.3, -40], [-84.3, -24]]) {
   F('decor', x, 0, z, 0, { m: 'd_streetlamp', col: { r: 0.12, h: 4 } });
-}
-// fogón con bancos en la explanada oeste
-F('decor', -28, 0, -65, 0, { m: 'd_firepit', col: { r: 0.8, h: 0.35 }, fire: 0.35, light: { at: [0, 1.1, 0], color: 0xff8a3a, i: 9, d: 11, flicker: true } });
-for (let i = 0; i < 4; i++) {
-  const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-  F('bench', -28 + Math.sin(a) * 2.9, 0, -65 + Math.cos(a) * 2.9, a + Math.PI, { len: 1.2, seats: 1 });
 }
 // mesas de picnic en la explanada este
 F('decor', 27, 0, -63, Math.PI / 2, { m: 'd_picnic', col: [1.1, 0.36, 1.45] });
 F('decor', 33.5, 0, -67, Math.PI / 2, { m: 'd_picnic', col: [1.1, 0.36, 1.45] });
-// terraza: plantas, juego de jardín y radio
-for (const [x, z] of [[-22.4, -85], [22.4, -85], [-5.2, -78], [5.2, -78]]) F('decor', x, 0.07, z, 0, { m: 'd_plant', col: { r: 0.25, h: 0.4 } });
-F('decor', -18.5, 0.07, -80.6, 0.3, { m: 'd_patio_set' });
-F('decor', 7.5, 0.45, -81.2, 0.4, { m: 'd_boombox' });
 // pueblo: hidrantes y barreras de hormigón
 F('decor', 93.3, 0.09, -47.5, -Math.PI / 2, { m: 'd_hydrant', col: { r: 0.14, h: 0.8 } });
 F('decor', 93.3, 0.09, 47.5, -Math.PI / 2, { m: 'd_hydrant', col: { r: 0.14, h: 0.8 } });
@@ -293,17 +300,18 @@ export const INTERACT = [
   { id: 'cine_cabina2', k: 'media', screen: 'cine', p: [103, 1.0, 2], r: 2.0, label: 'Elegir película / video' },
   { id: 'autocine_poste', k: 'media', screen: 'autocine', p: [0, 1.0, 64], r: 2.4, label: 'Elegir video del autocine' },
   { id: 'bong_bar', k: 'bong', p: [96.3, 1.0, -22], r: 1.6, label: 'Pegarle al bong' },
-  { id: 'bong_terraza', k: 'bong', p: [1.6, 1.0, -84.4], r: 1.6, label: 'Pegarle al bong' },
-  { id: 'cooler_terraza', k: 'cooler', p: [-1.4, 1.0, -84.4], r: 1.6, label: 'Sacar una birra de la heladerita' },
+  { id: 'bong_fogon', k: 'bong', p: [-16.4, 1.0, -86.4], r: 1.6, label: 'Pegarle al bong' },
+  { id: 'cooler_fogon', k: 'cooler', p: [-20.2, 1.0, -99.0], r: 1.6, label: 'Sacar una birra de la heladerita' },
   { id: 'barra', k: 'cooler', p: [104, 1.0, -39.2], r: 6.5, label: 'Pedir un trago en la barra' },
-  { id: 'parrilla', k: 'grill', p: [15, 1.0, -83.6], r: 2.0, label: 'Comerse un choripán' },
+  { id: 'parrilla', k: 'grill', p: [-17.2, 1.0, -98.4], r: 2.0, label: 'Comerse un choripán' },
+  { id: 'fogon_proyector', k: 'media', screen: 'fogon', p: [-17.4, 1.0, -91.3], r: 2.0, label: 'Elegir video o historia de terror' },
   { id: 'futbol', k: 'football', p: [0, 1.0, 15.4], r: 2.6, label: 'Iniciar / reiniciar el partido de fútbol' },
 ];
 
 // Botiquines: curan, cortan el sangrado y devuelven sangre (cada uno se repone solo). yaw: hacia dónde mira
 export const MEDKITS = [
   { id: 'medkit_bar', p: [114, 1.45, -20.35], yaw: Math.PI, wall: true },
-  { id: 'medkit_terraza', p: [3.5, 1.45, -85.85], yaw: 0, wall: true },
+  { id: 'medkit_fogon', p: [-14.4, 0, -92.5], yaw: Math.PI / 2, wall: false },
   { id: 'medkit_galpon', p: [-101.8, 1.45, -10], yaw: Math.PI / 2, wall: true },
   { id: 'medkit_cancha', p: [3.2, 0, 15.2], yaw: Math.PI, wall: false },
   { id: 'medkit_plaza', p: [-6, 0, -56.6], yaw: 0, wall: false },
@@ -363,16 +371,16 @@ P('bottle', 106.4, 0.55, -18.4);
 for (let i = 0; i < 6; i++) P('cone', 104 + i * 2.4, 0, 33);
 P('trashcan', 96.5, 0, 42.5);
 
-// Terraza
-P('bottle', -8.3, 0.52, -81.3);
-P('bottle', -8.8, 0.52, -81.7);
-P('bottle', 7.4, 0.52, -81.0);
-P('watermelon', 17.2, 1.02, -83.3);
-P('watermelon', 17.6, 1.02, -83.8);
-P('gnome', -18, 0, -78.2, 0.5);
-P('gnome', 18, 0, -78.2, -0.5);
-P('chair', 12, 0, -80.5, 2.5);
-P('chair', 13.5, 0, -80, -2.8);
+// Fogón del castillo (antes en la terraza de la mansión)
+P('bottle', -20.3, 0.9, -86.8);
+P('bottle', -20.7, 0.9, -87.1);
+P('bottle', -20.4, 0.9, -87.3);
+P('watermelon', -15.6, 0.4, -97.4);
+P('watermelon', -15.3, 0.4, -98.1);
+P('gnome', -18, 0, -71.5, 0.5);
+P('gnome', 18, 0, -71.5, -0.5);
+P('chair', -22.2, 0, -87.6, 1.9);
+P('chair', -18.8, 0, -87.8, -1.6);
 
 // Pasto: pelotas y enanitos de jardín (que se pueden picar con la cortadora...)
 P('gnome', -40, 0, -20, 1);

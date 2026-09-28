@@ -504,6 +504,7 @@ export class HumanCharacter {
     this.skinned.frustumCulled = false;
     this.skinned.castShadow = true;
     this.skinned.receiveShadow = true;
+    this.skinned.layers.enable(1); // también en la sombra de las luces "heroicas" (fogón, candelabro)
     this.bones = bonesByName(this.model);
     // textura de daño (por instancia)
     this.dmgData = new Uint8Array(DMG_SIZE * DMG_SIZE * 4);

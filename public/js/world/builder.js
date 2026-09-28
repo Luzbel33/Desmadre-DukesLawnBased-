@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { TEX } from './textures.js';
+import { patchSurface, setSurfaceDisp } from './surface.js';
 
 const MATS = new Map();
 
@@ -33,9 +34,21 @@ const PBR = {
   metal: { id: 'rusty_corrugated_iron', tint: 0xffffff, size: 2 },
   dirt: { id: 'dirt', tint: 0xffffff, size: 2 },
   stone: { id: 'stacked_stone_wall', tint: 0xffffff, size: 2 },
+  // castillo del terror (rough: multiplica el mapa de rugosidad; < 1 = mojado por la lluvia)
+  castleStone: { id: 'stone_wall_04', tint: 0xa4a7a2, size: 3.4, ao: 1, disp: 0.055, weather: [0.9, 0.8, 0.5, 0.8], wet: 0.5 },
+  keepStone: { id: 'castle_wall_varriation', tint: 0x9c9c94, size: 3.2, ao: 1, disp: 0.05, weather: [0.8, 0.9, 0.35, 0.8], wet: 0.45 },
+  slate: { id: 'roof_slates_03', tint: 0x9aa2ac, size: 2.4, rough: 0.7, ao: 1, disp: 0.025, weather: [0, 0.4, 0.35, 0.6], wet: 0.6 },
+  cobble: { id: 'mossy_cobblestone', tint: 0x9a9a92, size: 2.6, rough: 0.55, ao: 1, disp: 0.04, weather: [0.4, 0, 0.7, 0.7], wet: 0.9 },
+  mud: { id: 'brown_mud_leaves_01', tint: 0x8c7c6c, size: 3.2, rough: 0.75, ao: 1, disp: 0.035, weather: [0, 0, 0, 0.6], wet: 0.8 },
+  flagstone: { id: 'monastery_stone_floor', tint: 0xa8a298, size: 2.8, ao: 1, disp: 0.022, weather: [0.25, 0, 0.1, 0.5], wet: 0 },
+  oldWood: { id: 'old_wood_floor', tint: 0xa88c74, size: 2.4, ao: 1, disp: 0.008, weather: [0.2, 0, 0, 0.5], wet: 0 },
+  moldy: { id: 'worn_mossy_plasterwall', tint: 0x9c968a, size: 3.2, ao: 1, disp: 0.01, weather: [0.6, 0.6, 0.2, 0.7], wet: 0 },
+  doorWood: { id: 'medieval_wood', tint: 0x9a8472, size: 1.8, ao: 1, disp: 0.012, weather: [0.2, 0.3, 0, 0.3], wet: 0.2 },
+  velvet: { id: 'velour_velvet', tint: 0x9a1a24, size: 0.9 },
+  cryptBrick: { id: 'mossy_brick', tint: 0x8c8c82, size: 2.2, ao: 1, disp: 0.03, weather: [0.6, 0.4, 0.6, 0.6], wet: 0 },
 };
 const loader = new THREE.TextureLoader();
-export function pbrMaps(id, repeatFrom = null, cb = null) {
+export function pbrMaps(id, repeatFrom = null, cb = null, extra = {}) {
   if (typeof document === 'undefined') return Promise.resolve({}); // Node (tests): sin imágenes
   const load = (kind, srgb) => new Promise((resolve) => {
     loader.load(`assets/tex/${id}_${kind}.jpg`, (t) => {
@@ -46,8 +59,9 @@ export function pbrMaps(id, repeatFrom = null, cb = null) {
       resolve(t);
     }, undefined, () => resolve(null));
   });
-  return Promise.all([load('color', true), load('normal', false), load('rough', false)]).then(([map, normalMap, roughnessMap]) => {
-    const r = { map, normalMap, roughnessMap };
+  const none = () => Promise.resolve(null);
+  return Promise.all([load('color', true), load('normal', false), load('rough', false), extra.ao ? load('ao', false) : none(), extra.disp ? load('disp', false) : none()]).then(([map, normalMap, roughnessMap, aoMap, dispMap]) => {
+    const r = { map, normalMap, roughnessMap, aoMap, dispMap };
     cb && cb(r);
     return r;
   });
@@ -57,14 +71,18 @@ function upgrade(m, key) {
   if (!d) return;
   // las UV de las cajas están en "metros / tile": escalamos para que la textura cubra su tamaño real
   const rep = new THREE.Vector2(m.userData.tileU / d.size, m.userData.tileV / d.size);
-  pbrMaps(d.id, rep, ({ map, normalMap, roughnessMap }) => {
+  // relieve y desgaste desde el primer compilado (con la textura de relieve en blanco no corre nada)
+  if (d.disp || d.weather) patchSurface(m, { pom: (d.disp || 0) / d.size, weather: d.weather, wet: d.wet ?? 0 });
+  pbrMaps(d.id, rep, ({ map, normalMap, roughnessMap, aoMap, dispMap }) => {
     if (!map) return;
     m.map = map;
     if (normalMap) { m.normalMap = normalMap; m.normalScale.set(1, 1); }
-    if (roughnessMap) { m.roughnessMap = roughnessMap; m.roughness = 1; }
+    if (roughnessMap) { m.roughnessMap = roughnessMap; m.roughness = d.rough ?? 1; }
+    if (aoMap) { m.aoMap = aoMap; m.aoMapIntensity = 1; }
+    if (dispMap) setSurfaceDisp(m, dispMap);
     m.color.setHex(d.tint);
     m.needsUpdate = true;
-  });
+  }, { ao: d.ao, disp: !!d.disp });
 }
 
 // Materiales con textura: la escala de UV es "metros por repetición".
@@ -87,6 +105,17 @@ const TEXMATS = {
   gravel: { tex: 'gravel', rough: 1, tile: 4 },
   dirt: { tex: 'dirt', rough: 1, tile: 5 },
   facade: { tex: 'mansionFacade', rough: 0.9, tileU: 4, tileV: 14 },
+  castleStone: { tex: 'stone', rough: 0.9, tile: 3.4 },
+  keepStone: { tex: 'stone', rough: 0.9, tile: 3.2 },
+  slate: { tex: 'roof', rough: 0.8, tile: 2.4 },
+  cobble: { tex: 'paving', rough: 0.7, tile: 2.6 },
+  mud: { tex: 'dirt', rough: 0.9, tile: 3.2 },
+  flagstone: { tex: 'paving', rough: 0.85, tile: 2.8 },
+  oldWood: { tex: 'wood', rough: 0.75, tile: 2.4 },
+  moldy: { tex: 'plaster', rough: 0.95, tile: 3.2 },
+  doorWood: { tex: 'woodDark', rough: 0.7, tile: 1.8 },
+  velvet: { tex: 'carpet', rough: 1, tile: 0.9 },
+  cryptBrick: { tex: 'brick', rough: 0.95, tile: 2.2 },
 };
 const COLORMATS = {
   white: { color: 0xd8d4ca, rough: 0.8 },
@@ -118,6 +147,21 @@ const COLORMATS = {
   pink: { color: 0xd98ba0, rough: 0.8 },
   yellow: { color: 0xe0b020, rough: 0.6 },
   orange: { color: 0xe06a1b, rough: 0.6 },
+  // castillo del terror
+  iron: { color: 0x2a2b30, rough: 0.5, metal: 0.85 },
+  rust: { color: 0x4a3224, rough: 0.8, metal: 0.45 },
+  bone: { color: 0xd4cab2, rough: 0.6 },
+  wax: { color: 0xe8dcc0, rough: 0.5 },
+  darkGlass: { color: 0x0a0d13, rough: 0.1, metal: 0.35 },
+  winGlow: { color: 0x140a04, emissive: 0xff9a44, emissiveIntensity: 1.5 },
+  winCold: { color: 0x080b12, rough: 0.15, metal: 0.3, emissive: 0x2c4468, emissiveIntensity: 0.18 },
+  blackWood: { color: 0x221a14, rough: 0.8 },
+  banner: { color: 0x4a0c12, rough: 0.95 },
+  linen: { color: 0xb8b0a0, rough: 0.95 },
+  moss: { color: 0x34421e, rough: 1 },
+  ash: { color: 0x24201e, rough: 1 },
+  ember: { color: 0x2a0c06, emissive: 0xff4a10, emissiveIntensity: 2.4 },
+  hay: { color: 0x8a7440, rough: 1 },
 };
 
 export function getMat(key) {

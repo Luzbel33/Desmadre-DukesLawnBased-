@@ -14,6 +14,7 @@ import { LocalPlayer, RemotePlayer, predictHit } from './game/player.js';
 import { VehicleManager } from './game/entities.js';
 import { PropManager, defOf } from './game/props.js';
 import { preloadAssets, registerManifest } from './game/assets.js';
+import { Haunt } from './game/haunt.js';
 import { ASSET_MANIFEST } from './game/asset-manifest.js';
 import { SFX_MANIFEST } from './audio/sfx-manifest.js';
 import { VoiceChat } from './audio/voice.js';
@@ -536,6 +537,7 @@ function interact() {
       return;
     }
     if (it.k === 'football') { state.net.send({ t: 'fbctl', a: 'start' }); G.sfx?.trigger('ui-ok'); return; }
+    if (it.k === 'haunt') { G.haunt?.use(it); return; }
   }
 }
 
@@ -734,6 +736,9 @@ function doTap(side) {
 function handleEvent(m) {
   const rp = G.players.get(m.id);
   switch (m.k) {
+    case 'haunt': // algo del castillo que arrancó otro (puertas, campana, sustos en grupo)
+      G.haunt?.remote(m);
+      break;
     case 'horn':
       if (rp && performance.now() - (rp._lastHorn || 0) > 700) { rp._lastHorn = performance.now(); G.sfx?.trigger('horn', rp.pos, 0.8); }
       break;
@@ -1458,7 +1463,7 @@ async function boot() {
     await preloadAssets((n, total) => status(`Cargando objetos... ${n}/${total}`));
     status('Construyendo el mundo...'); G.world = new World(G.scene, G.phys); G.world.build(renderer, G.opts.shadows);
     G.grass = new Grass(G.scene); G.grass.setMask(G.world.mask); G.grass.makeLawnGround(); G.grass.build(G.opts.grass);
-    G.post = new Post(renderer, G.scene, G.camera, { bloom: G.opts.shadows !== 'baja' }); G.fx = new FX(G.scene); G.blood = new Decals(G.scene);
+    G.post = new Post(renderer, G.scene, G.camera, { bloom: G.opts.shadows !== 'baja', ao: G.opts.shadows !== 'baja' }); G.fx = new FX(G.scene); G.blood = new Decals(G.scene);
     G.gore = new Gore(G.scene, G.phys);
     G.football = new FootballView(G.scene);
     G.markers = new ActivityMarkers(G.scene);
@@ -1476,6 +1481,14 @@ async function boot() {
 
     G.sfx = new AudioEngine({ opts: G.opts, changed: updateAudioUI });
     G.sfx.setSamples(SFX_MANIFEST);
+    // castillo del terror: sustos, apariciones y cosas para usar; la tormenta y el castillo suenan por el motor
+    G.hudMessage = (title, text) => bigMessage(title, text, 2600);
+    try { G.haunt = new Haunt(G.world, { onScare: (k) => { state.shake = Math.max(state.shake || 0, 0.9 * k); } }); } catch (e) { console.warn('castillo: sustos', e); }
+    G.sfx.ambientHook = (dt, sfx) => {
+      const st = G.world?.storm;
+      if (st) { sfx.birdMute = st.s; st.ambience(dt, sfx); }
+      G.haunt?.ambience(dt, sfx);
+    };
     populateSwatches(); setupModelPicker(); setupMenuDefaults(); setupHotbar(); setupUIEvents();
     addEventListener('pagehide', () => { G.sfx?.stop(); G.media?.stop(); });
     document.addEventListener('visibilitychange', () => { if (document.hidden) { G.sfx?.stop(); G.media?.stop(); } });
@@ -1532,7 +1545,7 @@ async function boot() {
         else updateCamera(dt);
         G.poker?.update(G.camera, dt);
         updateNameTags(); updatePrompt(); updateHud(dt); updatePost();
-        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders());
+        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt);
         G.fx.update(dt); G.blood.update(dt); G.football?.update(dt); G.gore?.update(dt); state.graffiti?.flush();
         G.bag?.update(dt);
         G.hud?.flushHints(dt);
@@ -1542,7 +1555,7 @@ async function boot() {
         show($('players'), G.input.key('Tab') && state.mode === 'game');
       } else {
         // mantener el mundo vivo detrás del menú
-        G.world.update(dt, { x: 0, z: -60 }); G.grass.update(dt, G.camera, []); G.fx.update(dt); G.blood.update(dt);
+        G.world.update(dt, { x: 0, z: -60 }); G.grass.update(dt, G.camera, []); G.haunt?.update(dt); G.fx.update(dt); G.blood.update(dt);
         const t = now * 0.00008; G.camera.position.set(Math.sin(t) * 7, 3.4, -60 + Math.cos(t) * 7); G.camera.lookAt(0, 1.2, -60);
       }
       G.sfx?.update(dt, { active: G.inGame, local: state.local, remotes: G.players.values(), vehicles: state.vehicles?.items.values() || [], camera: G.camera, spraying: state.mode === 'game' && state.selected === 3 && G.input.locked && G.input.btn(0) });
@@ -1552,6 +1565,7 @@ async function boot() {
         if (state.local) state.local.talk = Math.min(1, G.voice.level);
         if ((G.frame % 15) === 0) updateMicUI();
       }
+      { const st = G.world?.storm; G.post.setZone(st ? st.s : 0, st ? st.indoor : 0, st ? st.flash * (1 - st.indoor * 0.8) : 0, G.time); }
       G.post.render(dt);
       if (state.mode === 'menu') state.preview?.update(dt, readLook());
       } catch (err) {

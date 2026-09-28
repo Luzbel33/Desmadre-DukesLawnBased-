@@ -5,13 +5,20 @@ import { G, rng } from '../core/G.js';
 import { Builder, pbrMaps } from './builder.js';
 import { TEX } from './textures.js';
 import { Forest } from './trees.js';
-import { FURNITURE, MAP_BOUNDS, LAWN, INTERACT, NO_GRASS, MEDKITS } from '../shared/mapdata.js';
+import { FURNITURE, MAP_BOUNDS, LAWN, INTERACT, NO_GRASS, MEDKITS, STORM } from '../shared/mapdata.js';
 import { buildFurniture, WATER_T } from './furniture.js';
 import { makeFarSun } from './shadows.js';
 import {
-  buildBar, buildCinema, buildAlley, buildMansion, buildTerrace, buildForecourt, buildGarage,
+  buildBar, buildCinema, buildAlley, buildForecourt, buildGarage,
   buildTown, buildAutocine, buildStuntPark, buildPerimeter,
 } from './buildings.js';
+import { LightPool } from './lightpool.js';
+import { Castle } from './castle.js';
+import { decorateCastle } from './castle-decor.js';
+import { Storm } from './storm.js';
+import { Flames, Embers, Smoke } from '../fx/flame.js';
+import { loadAssetsLater } from '../game/assets.js';
+import { CASTLE_MANIFEST } from '../game/asset-manifest.js';
 
 const E1 = new THREE.Vector3();
 const E2 = new THREE.Vector3();
@@ -38,11 +45,14 @@ export class World {
     this._sky(renderer);
     this._lights(quality);
     this._ground();
+    // luces puntuales repartidas (ver lightpool.js) y fuego por shader (velas, antorchas, el fogón)
+    this.pool = new LightPool(scene, quality === 'baja' ? 8 : quality === 'ultra' ? 16 : 14, { shadow: quality !== 'baja' });
+    this.flames = new Flames(scene, 700);
+    this.embers = new Embers(scene, 600);
+    this.smoke = new Smoke(scene, 200);
     const b = new Builder(this.phys);
     const out = { seats: this.seats, lights: this.lights, flicker: this.flicker, emitters: this.emitters, pokerTables: [], anim: this.anim };
     this.pokerTables = out.pokerTables;
-    buildMansion(b, scene);
-    buildTerrace(b);
     buildForecourt(b);
     buildBar(b, scene, this.lights);
     buildCinema(b, scene, this.lights);
@@ -56,6 +66,19 @@ export class World {
     this._hedges(b);
     b.finish(scene);
     this._medkits();
+    // Castillo del terror + tormenta local (el castillo registra sus luces, asientos y puntos de uso)
+    this.castle = new Castle(this).build();
+    decorateCastle(this.castle);
+    for (const s of this.castle.seats) this.seats.push({ ...s, id: this.seats.length });
+    for (const it of this.castle.interact) INTERACT.push(it);
+    this.storm = new Storm(this, { quality });
+    this.storm.setRainMask(this.castle.rainMask());
+    this.storm.indoorAt = (x, y, z) => this.castle.indoorAt(x, y, z);
+    this.storm.tower = this.castle.spire;
+    this.pool.roomAt = (x, y, z) => this.castle.roomOf(x, y, z);
+    // las luces de los edificios y muebles también pasan al pool (la escena siempre tiene las mismas luces)
+    this.pool.adopt(scene);
+    loadAssetsLater(CASTLE_MANIFEST);
     // todo lo construido hasta acá es quieto: entra en la sombra lejana horneada
     scene.traverse((o) => { if (o.isMesh) o.userData.static = true; });
     this._trees();
@@ -110,6 +133,7 @@ export class World {
   _lights(quality) {
     const hemi = new THREE.HemisphereLight(0xd6e7ff, 0x5b6b38, 0.42);
     this.scene.add(hemi);
+    this.hemi = hemi;
     const sun = new THREE.DirectionalLight(0xffdcae, 2.4);
     sun.castShadow = true;
     const size = quality === 'baja' ? 1024 : quality === 'ultra' ? 4096 : 2048;
@@ -166,12 +190,30 @@ export class World {
       mat.needsUpdate = true;
     });
     // anti-repetición: variación de tono a gran escala (evita el "patrón de baldosa" a lo lejos)
+    // y bajo la tormenta del castillo el pasto se vuelve barro con hojas, mojado (borde irregular)
+    const mud = { value: typeof document !== 'undefined' ? TEX.dirt() : null };
+    pbrMaps('brown_mud_leaves_01', null, ({ map }) => { if (map) mud.value = map; });
     mat.onBeforeCompile = (sh) => {
-      sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+      sh.uniforms.uMud = mud;
+      sh.uniforms.uStorm = { value: new THREE.Vector4(STORM.x0, STORM.z0, STORM.x1, STORM.z1) };
+      sh.uniforms.uFade = { value: STORM.fade };
+      sh.vertexShader = 'varying vec3 vGW;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
+        vGW = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
+      sh.fragmentShader = 'uniform sampler2D uMud; uniform vec4 uStorm; uniform float uFade; varying vec3 vGW;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+        float gWet = 0.0;
         #ifdef USE_MAP
           float macro = texture2D(map, vMapUv * 0.043).g * 0.6 + texture2D(map, vMapUv * 0.011 + 0.37).g * 0.4;
           diffuseColor.rgb *= mix(0.78, 1.2, smoothstep(0.15, 0.6, macro));
-        #endif`);
+          vec2 sd = max(max(uStorm.xy - vGW.xz, 0.0), vGW.xz - uStorm.zw);
+          float st = 1.0 - smoothstep(0.0, uFade, length(sd));
+          if (st > 0.001) {
+            vec3 m = texture2D(uMud, vGW.xz / 3.2).rgb * vec3(0.5, 0.45, 0.4);
+            float k = clamp(st * 1.5 - 0.35 + (macro - 0.4) * 0.9, 0.0, 1.0);
+            diffuseColor.rgb = mix(diffuseColor.rgb, m, k);
+            gWet = k;
+          }
+        #endif`).replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        roughnessFactor = mix(roughnessFactor, 0.5, gWet);`);
     };
     const g = new THREE.PlaneGeometry(size, size, 1, 1);
     g.rotateX(-Math.PI / 2);
@@ -280,6 +322,17 @@ export class World {
   }
 
   update(dt, focus) {
+    // tormenta (luz, niebla, lluvia, relámpagos), fuego y reparto de luces
+    const cam3 = G.camera;
+    if (this.storm && cam3) this.storm.update(dt, cam3);
+    const fd = this.scene.fog ? this.scene.fog.density : 0;
+    this.flames?.update(G.time, fd);
+    this.embers?.update(G.time, fd);
+    this.smoke?.update(G.time, fd);
+    if (this.storm) {
+      for (const u of [this.flames?.uniforms, this.embers?.uniforms, this.smoke?.uniforms]) if (u) u.uWind.value.copy(this.storm.wind).multiplyScalar(0.12);
+    }
+    this.castle?.update?.(dt);
     // la sombra del sol sigue al jugador, corrida hacia donde mira la cámara (más sombra en pantalla),
     // encajada a la grilla de texels para que no titile
     const sun = this.sun;
@@ -321,12 +374,14 @@ export class World {
     }
     for (const f of this.flicker) {
       const t = G.time + f.seed;
+      // fuego: suma de ondas lentas y rápidas (sin ruido cuadro a cuadro: eso se veía como un parpadeo roto)
       const k = f.fire
-        ? 0.75 + Math.sin(t * 13) * 0.12 + Math.sin(t * 29) * 0.08 + Math.random() * 0.08
+        ? 0.84 + Math.sin(t * 2.3) * 0.06 + Math.sin(t * 5.7 + 1.3) * 0.05 + Math.sin(t * 11.1 + 0.7) * 0.035 + Math.sin(t * 17.9 + 2.1) * 0.02
         : Math.random() < 0.004 ? 0.15 : 1;
-      if (f.light) f.light.intensity = f.base * k;
+      if (f.light) f.light.intensity = f.base * k * (f.light.dim ?? 1);
       if (f.mesh) f.mesh.material.opacity = k > 0.5 ? 1 : 0.35;
     }
+    if (cam3) this.pool?.update(dt, cam3);
   }
 }
 

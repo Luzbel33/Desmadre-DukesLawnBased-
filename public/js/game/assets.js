@@ -80,6 +80,31 @@ export async function preloadAssets(onProgress) {
 
 export function hasAsset(type) { return LIB.has(type); }
 
+// Modelos que no hacen falta para arrancar (los del castillo): se cargan en segundo plano después de construir
+// el mundo; whenAsset(tipo, fn) corre fn apenas el modelo está (o enseguida si ya estaba).
+const WAIT = new Map();
+export function whenAsset(type, fn) {
+  if (LIB.has(type)) { fn(); return; }
+  if (!WAIT.has(type)) WAIT.set(type, []);
+  WAIT.get(type).push(fn);
+}
+export function loadAssetsLater(entries) {
+  registerManifest(entries);
+  if (typeof document === 'undefined') return Promise.resolve(); // Node (tests): sin modelos
+  const loader = new GLTFLoader();
+  return Promise.all(Object.keys(entries).map(async (k) => {
+    try {
+      const gltf = await loader.loadAsync(entries[k].url);
+      LIB.set(k, normalize(gltf.scene, entries[k]));
+    } catch (err) {
+      console.warn('No se pudo cargar el modelo', k, entries[k].url, err?.message || err);
+    }
+    const w = WAIT.get(k);
+    WAIT.delete(k);
+    if (w && LIB.has(k)) for (const fn of w) { try { fn(); } catch (e) { console.warn('modelo', k, e); } }
+  }));
+}
+
 // Clon del modelo (comparte geometría y materiales)
 export function assetModel(type) {
   const src = LIB.get(type);
@@ -98,7 +123,7 @@ export function assetModelUnique(type) {
 }
 
 // Muchas copias de un modelo con pocas llamadas de dibujo (una por sub-malla). matrices: Matrix4[]
-export function instanceModel(scene, type, matrices, glassTints = null) {
+export function instanceModel(scene, type, matrices, glassTints = null, filter = null) {
   const src = LIB.get(type);
   if (!src || !matrices.length) return null;
   src.updateMatrixWorld(true);
@@ -106,6 +131,7 @@ export function instanceModel(scene, type, matrices, glassTints = null) {
   const M = new THREE.Matrix4();
   src.traverse((o) => {
     if (!o.isMesh) return;
+    if (filter && !filter(o)) return;
     const im = new THREE.InstancedMesh(o.geometry, o.material, matrices.length);
     for (let i = 0; i < matrices.length; i++) im.setMatrixAt(i, M.multiplyMatrices(matrices[i], o.matrixWorld));
     // variedad de colores solo en el vidrio (etiquetas y corchos quedan igual)

@@ -5,6 +5,92 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
+import { N8AOPass } from '../../vendor/n8ao/N8AO.js';
+
+// ---------------------------------------------------------------- pase final "de cine"
+// Reemplaza al OutputPass: exposición, tone mapping ACES, gradación de color por zona (día / tormenta / adentro),
+// contraste en curva, tinte de sombras y luces, viñeta, grano de película, aberración cromática suave en los bordes
+// y dithering (en las escenas oscuras con niebla, sin esto se ven escalones de color).
+export const GRADES = {
+  day: { exposure: 0.9, white: [1.0, 0.99, 0.97], sat: 1.1, contrast: 0.22, lift: [0.0, 0.004, 0.012], gamma: 1.0, gain: [1.02, 1.0, 0.97], shadow: [-0.01, 0.02, 0.05], high: [0.05, 0.025, -0.01], vignette: 0.26, grain: 0.022, ca: 0.55 },
+  storm: { exposure: 1.7, white: [0.9, 0.97, 1.08], sat: 0.74, contrast: 0.3, lift: [0.006, 0.012, 0.024], gamma: 1.04, gain: [0.95, 0.99, 1.06], shadow: [-0.02, 0.02, 0.07], high: [0.1, 0.045, -0.02], vignette: 0.5, grain: 0.05, ca: 1.0 },
+  indoor: { exposure: 1.85, white: [1.06, 0.99, 0.9], sat: 0.84, contrast: 0.32, lift: [0.004, 0.004, 0.009], gamma: 1.0, gain: [1.05, 0.98, 0.9], shadow: [0.0, 0.0, 0.05], high: [0.12, 0.05, -0.03], vignette: 0.6, grain: 0.06, ca: 1.1 },
+};
+const GradeShader = {
+  uniforms: {
+    tDiffuse: { value: null }, uTime: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) },
+    uExposure: { value: 0.9 }, uWhite: { value: new THREE.Vector3(1, 1, 1) }, uSat: { value: 1 }, uContrast: { value: 0.2 },
+    uLift: { value: new THREE.Vector3() }, uGamma: { value: 1 }, uGain: { value: new THREE.Vector3(1, 1, 1) },
+    uShadow: { value: new THREE.Vector3() }, uHigh: { value: new THREE.Vector3() },
+    uVignette: { value: 0.25 }, uGrain: { value: 0.02 }, uCA: { value: 0.5 }, uFlash: { value: 0 },
+  },
+  vertexShader: /* glsl */ `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float uTime, uExposure, uSat, uContrast, uGamma, uVignette, uGrain, uCA, uFlash;
+    uniform vec2 uRes;
+    uniform vec3 uWhite, uLift, uGain, uShadow, uHigh;
+    varying vec2 vUv;
+    // ACES ajustado (Stephen Hill)
+    const mat3 gACESIn = mat3(0.59719, 0.07600, 0.02840, 0.35458, 0.90834, 0.13383, 0.04823, 0.01566, 0.83777);
+    const mat3 gACESOut = mat3(1.60475, -0.10208, -0.00327, -0.53108, 1.10813, -0.07276, -0.07367, -0.00605, 1.07602);
+    vec3 gRRT(vec3 v) { vec3 a = v * (v + 0.0245786) - 0.000090537; vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081; return a / b; }
+    vec3 gAces(vec3 c) { c = gACESIn * c; c = gRRT(c); return clamp(gACESOut * c, 0.0, 1.0); }
+    vec3 gSRGB(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
+    float gH12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+    void main() {
+      vec2 d = vUv - 0.5;
+      float r2 = dot(d, d);
+      vec4 base = texture2D(tDiffuse, vUv);
+      vec3 col = base.rgb;
+      if (uCA > 0.0) {
+        vec2 off = d * r2 * 0.012 * uCA;
+        col.r = texture2D(tDiffuse, vUv - off).r;
+        col.b = texture2D(tDiffuse, vUv + off).b;
+      }
+      col *= uExposure * uWhite;
+      col = gSRGB(gAces(col));
+      // lift / gamma / gain
+      col = max(col * uGain + uLift * (1.0 - col), 0.0);
+      col = pow(col, vec3(1.0 / uGamma));
+      // contraste en curva S (no quema: mezcla con smoothstep)
+      col = mix(col, col * col * (3.0 - 2.0 * col), uContrast);
+      float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
+      col = mix(vec3(l), col, uSat);
+      // tinte de sombras (frío) y de luces (cálido)
+      col += uShadow * (1.0 - smoothstep(0.0, 0.45, l)) + uHigh * smoothstep(0.45, 1.0, l);
+      // relámpago: la pantalla se lava de blanco azulado un instante
+      col = mix(col, vec3(0.82, 0.88, 1.0) * max(l, 0.35) * 1.4, clamp(uFlash, 0.0, 1.0) * 0.35);
+      // viñeta
+      col *= 1.0 - uVignette * smoothstep(0.08, 0.62, r2 * 1.9);
+      // grano (más en las sombras, como en película) + dithering
+      vec2 px = vUv * uRes;
+      float g = gH12(px + fract(uTime * 13.7) * 1000.0) - 0.5;
+      col += g * uGrain * (1.1 - l * 0.7);
+      col += (gH12(px * 1.37 + 17.0) - 0.5) / 255.0;
+      gl_FragColor = vec4(clamp(col, 0.0, 1.0), base.a);
+    }`,
+};
+class GradePass extends Pass {
+  constructor() {
+    super();
+    this.uniforms = THREE.UniformsUtils.clone(GradeShader.uniforms);
+    this.material = new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader: GradeShader.vertexShader, fragmentShader: GradeShader.fragmentShader, depthTest: false, depthWrite: false });
+    this.fsQuad = new FullScreenQuad(this.material);
+  }
+  setSize(w, h) { this.uniforms.uRes.value.set(w, h); }
+  render(renderer, writeBuffer, readBuffer) {
+    this.uniforms.tDiffuse.value = readBuffer.texture;
+    renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
+    this.fsQuad.render(renderer);
+  }
+}
+const lerp3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+function mixGrade(a, b, t) {
+  const o = {};
+  for (const k of Object.keys(a)) o[k] = Array.isArray(a[k]) ? lerp3(a[k], b[k], t) : a[k] + (b[k] - a[k]) * t;
+  return o;
+}
 
 const IntoxShader = {
   uniforms: {
@@ -132,13 +218,39 @@ export class Post {
   constructor(renderer, scene, camera, opts = {}) {
     const size = renderer.getSize(new THREE.Vector2());
     const pr = renderer.getPixelRatio();
-    const rt = new THREE.WebGLRenderTarget(size.x * pr, size.y * pr, { type: THREE.HalfFloatType, samples: 4 });
+    const useAO = opts.ao !== false;
+    // con oclusión ambiental, la escena se dibuja (con MSAA) adentro del pase de AO: el compositor solo pasa filtros
+    const rt = new THREE.WebGLRenderTarget(size.x * pr, size.y * pr, { type: THREE.HalfFloatType, samples: useAO ? 0 : 4 });
     this.composer = new EffectComposer(renderer, rt);
     this.renderPass = new RenderPass(scene, camera);
     this.renderPass.clearAlpha = 0;
     this.intox = new IntoxPass();
-    this.output = new OutputPass();
-    this.composer.addPass(this.renderPass);
+    this.grade = new GradePass();
+    this.gradeState = { ...GRADES.day };
+    if (useAO) {
+      // N8AO: sombra de contacto en rincones, pies de muebles y paredes (lo que más "asienta" la escena)
+      const w = size.x * pr, h = size.y * pr;
+      const ao = new N8AOPass(scene, camera, w, h);
+      const bt = new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.LinearFilter, magFilter: THREE.NearestFilter, type: THREE.HalfFloatType, format: THREE.RGBAFormat, stencilBuffer: false, samples: 4 });
+      bt.depthTexture = new THREE.DepthTexture(w, h, THREE.UnsignedIntType);
+      bt.depthTexture.format = THREE.DepthFormat;
+      ao.beautyRenderTarget.dispose();
+      ao.beautyRenderTarget = bt;
+      const c = ao.configuration;
+      c.gammaCorrection = false;
+      c.halfRes = true;
+      c.depthAwareUpsampling = true;
+      c.aoSamples = 8;
+      c.denoiseSamples = 4;
+      c.denoiseRadius = 8;
+      c.aoRadius = 1.4;
+      c.distanceFalloff = 1.0;
+      c.intensity = 2.2;
+      c.color = new THREE.Color(0, 0, 0);
+      c.screenSpaceRadius = false;
+      this.ao = ao;
+      this.composer.addPass(ao);
+    } else this.composer.addPass(this.renderPass);
     // brillo suave en lo que emite luz (neones, lamparitas, fuego, el sol): solo pasa lo que supera el umbral HDR
     if (opts.bloom !== false) {
       // umbral alto: brillan los neones, las lamparitas, el fuego y el sol, no una silla blanca bajo una lámpara
@@ -158,8 +270,31 @@ export class Post {
       this.composer.addPass(this.bloom);
     }
     this.composer.addPass(this.intox);
-    this.composer.addPass(this.output);
+    this.composer.addPass(this.grade);
     this.u = this.intox.uniforms;
+    this.exposure = renderer.toneMappingExposure || 1;
+  }
+  // gradación: se mezcla entre día, tormenta y adentro (0..1 cada factor)
+  setZone(storm = 0, indoor = 0, flash = 0, time = 0) {
+    let g = mixGrade(GRADES.day, GRADES.storm, storm);
+    if (indoor > 0.001) g = mixGrade(g, GRADES.indoor, indoor * storm);
+    const u = this.grade.uniforms;
+    u.uExposure.value = g.exposure * (this.exposure / 0.86);
+    u.uWhite.value.set(...g.white);
+    u.uSat.value = g.sat;
+    u.uContrast.value = g.contrast;
+    u.uLift.value.set(...g.lift);
+    u.uGamma.value = g.gamma;
+    u.uGain.value.set(...g.gain);
+    u.uShadow.value.set(...g.shadow);
+    u.uHigh.value.set(...g.high);
+    u.uVignette.value = g.vignette;
+    u.uGrain.value = g.grain;
+    u.uCA.value = g.ca;
+    u.uFlash.value = flash;
+    u.uTime.value = time;
+    // la oclusión ambiental pesa más de noche y adentro (rincones oscuros)
+    if (this.ao) this.ao.configuration.intensity = 2.2 + storm * 0.3;
   }
   setSize(w, h) {
     this.composer.setSize(w, h);

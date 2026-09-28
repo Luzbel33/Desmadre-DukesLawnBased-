@@ -1,0 +1,32 @@
+Sonidos del Castillo del Terror (DESMADRE). Recortados, normalizados, hechos loop y pasados a OGG.
+Todas las grabaciones son de dominio público (CC0). Los sintetizados los hizo el juego (CC0).
+
+GRABACIONES (OpenGameArt.org, licencia CC0)
+lluvia               "Rain (loopable)" — Ylmir — https://opengameart.org/content/rain-loopable
+lluvia-techo         "Rain in the Gutter Loop" — Ogrebane — https://opengameart.org/content/rain-gutter-loop
+fuego                "Fireplace Sound loop" — PagDev — https://opengameart.org/content/fireplace-sound-loop
+fogonazo             "Fire Crackling" — AntumDeluge — https://opengameart.org/content/fire-crackling
+trueno-cerca-1       "Rain + Long Thunder" — WuxiaScrub — https://opengameart.org/content/rain-long-thunder
+trueno-lejos-1       (el mismo trueno, filtrado como si estuviera lejos)
+trueno-cerca-2       "100 CC0 SFX #2" — rubberduck — https://opengameart.org/content/100-cc0-sfx-2
+lamento-1..5         "Ghost Monster Voice Moaning & Growling" — qubodup — https://opengameart.org/content/ghost-monster-voice-moaning-growling
+grito-1              "Horror scream1" — Vinrax — https://opengameart.org/content/horror-scream1
+grito-2, aullido     "Scary High-pitched Ghost" — Fupi — https://opengameart.org/content/scary-high-pitched-ghost
+grito-3, grito-4     "80 CC0 creature SFX" — rubberduck — https://opengameart.org/content/80-cc0-creature-sfx
+aliento              "Ghost breath" — qubodup — https://opengameart.org/content/ghost-breath
+aliento-2            "Ghost" — Ogrebane — https://opengameart.org/content/ghost
+susurro-1, -2        "I see you Voice" — Vinrax — https://opengameart.org/content/i-see-you-voice (el 2 va al revés, con eco)
+canto-cripta         "weird chanting sound" — primbal — https://opengameart.org/content/weird-chanting-sound
+latidos              "Heartbeat sounds" — bart — https://opengameart.org/content/heartbeat-sounds
+cuervo-1..3          "Crows singing" — IgnasD — https://opengameart.org/content/crows-singing
+cuervo-4             "Crow caw" — zeroisnotnull — https://opengameart.org/content/crow-caw
+cuervo-5             "Crow" — fvcalderan — https://opengameart.org/content/crow
+reja-1, -2           "Tree Creaking" — AntumDeluge — https://opengameart.org/content/tree-creaking
+rafaga-1, -2         "Wind" — IgnasD — https://opengameart.org/content/wind
+crujido-1..3         "RPG Audio" (creak1-3) — Kenney — https://kenney.nl (CC0)
+monedas-1, -2        "RPG Audio" (handleCoins) — Kenney — https://kenney.nl (CC0)
+portazo-1, -2        "RPG Audio" (doorClose_3/4) — Kenney, con un golpe grave sintetizado encima
+
+SINTETIZADOS (propios, CC0)
+campana-1, -2, carillon-1, -2, tictac, cajita-de-musica (melodía original), zumbido-torreon, viento-tormenta,
+trueno-cerca-3, trueno-lejos-2, -3, rayo-torre, susto-1, -2, piedra-1, -2, aljibe-gota

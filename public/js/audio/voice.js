@@ -8,7 +8,7 @@ const ICE = [
   // TURN público de respaldo (para redes muy cerradas; si no responde, se ignora)
   { urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443'], username: 'openrelayproject', credential: 'openrelayproject' },
 ];
-const INTERIOR = new Set(['bar', 'cine', 'mansion', 'galpon']);
+const INTERIOR = new Set(['bar', 'cine', 'torreon', 'galpon']);
 
 export class VoiceChat {
   constructor({ net, opts, getCtx, onState }) {
