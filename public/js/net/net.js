@@ -19,7 +19,7 @@ export class Net {
   on(type, fn) { this.handlers.set(type, fn); }
   onBin(type, fn) { this.binHandlers.set(type, fn); }
 
-  connect(room, name, look) {
+  connect(room, name, look, key) {
     return new Promise((resolve, reject) => {
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const url = proto + '//' + location.host + '/ws?sala=' + encodeURIComponent(room || 'principal');
@@ -29,7 +29,7 @@ export class Net {
       let settled = false;
       ws.onopen = () => {
         this.connected = true;
-        this.send({ t: 'join', v: PROTOCOL, name, look });
+        this.send(key ? { t: 'join', v: PROTOCOL, name, look, key } : { t: 'join', v: PROTOCOL, name, look });
         this._pingTimer = setInterval(() => this.send({ t: 'ping', c: performance.now() }), 2000);
         this.send({ t: 'ping', c: performance.now() });
       };

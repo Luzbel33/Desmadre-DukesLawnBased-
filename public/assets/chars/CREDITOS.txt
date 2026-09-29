@@ -1,0 +1,13 @@
+El Diablo (diablo.glb)
+Modelo original: "Demon" de VidovicArts.
+Autor: https://sketchfab.com/oshjavid
+Fuente: https://sketchfab.com/3d-models/demon-9e6cba1ba85d499db050ecd5be899fe2
+Licencia: Creative Commons Attribution 4.0
+https://creativecommons.org/licenses/by/4.0/
+Cambios para este juego: escala, pose, proporciones de brazos, esqueleto,
+pesos de piel, mandibula articulada (hueso jaw) y puntos de ojos/boca.
+Texturas originales conservadas.
+
+Galleta (cookie.glb)
+Malla, rig y texturas procedurales creados para este proyecto con Blender
+(assets/blender/build_cookie2.py). Referencia visual: hoja de personaje aportada por el usuario.

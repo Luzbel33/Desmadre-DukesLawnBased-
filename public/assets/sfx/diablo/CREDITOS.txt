@@ -1,0 +1,7 @@
+Risas del Diablo (poder del dueño, tecla L). Todas CC0 (dominio público), de OpenGameArt:
+
+- risa-1.ogg: "Demon Voice" de tim-rockk (dl_demon_moohaaa_laugh.wav) — https://opengameart.org/content/demon-voice
+- risa-2.ogg: "Evil Laugh" (laugh-evil-1.ogg), con tono más grave y eco — https://opengameart.org/content/evil-laugh
+- risa-3.ogg: "Evil Laugh 2" (evil_laugh_02.ogg), con tono más grave y eco — https://opengameart.org/content/evil-laugh-2
+
+Procesadas con ffmpeg (mono, volumen normalizado; 2 y 3 con el tono bajado).

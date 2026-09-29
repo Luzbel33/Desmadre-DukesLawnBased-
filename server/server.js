@@ -7,6 +7,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { handleUpgrade } from './ws.js';
 import { Room } from './room.js';
+import { isOwnerName, checkOwnerKey, allowTry } from './owner.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = path.join(ROOT, 'public');
@@ -114,6 +115,22 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({ ok: true, rooms: [...rooms.values()].map((r) => ({ name: r.name, players: r.count })) }));
     return;
   }
+  // ¿Es el dueño? (el menú lo pregunta para mostrar el personaje del Diablo; al entrar se vuelve a verificar)
+  if (req.url === '/api/owner' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (c) => { body += c; if (body.length > 2048) req.destroy(); });
+    req.on('end', () => {
+      const ip = req.socket.remoteAddress || '';
+      if (!allowTry(ip)) {
+        res.writeHead(429, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: false, err: 'Demasiados intentos: esperá unos minutos.' }));
+        return;
+      }
+      let ok = false;
+      try { const m = JSON.parse(body); ok = isOwnerName(m.name) && checkOwnerKey(m.key); } catch { /* */ }
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ ok }));
+    });
+    return;
+  }
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405).end();
     return;
@@ -128,6 +145,7 @@ server.on('upgrade', (req, socket, head) => {
     return;
   }
   handleUpgrade(req, socket, head, (ws) => {
+    ws.ip = req.socket.remoteAddress || '';
     getRoom(roomName(req)).accept(ws);
   });
 });

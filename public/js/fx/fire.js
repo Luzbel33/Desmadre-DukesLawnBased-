@@ -20,6 +20,7 @@ export class FireSet {
   // agrandar/achicar (la llamarada al tirar un leño) o apagar
   scale(i, k) { const f = this.list[i]; if (f && f.k !== k) { f.k = k; this.dirty = true; } }
   set(i, intensity) { const f = this.list[i]; if (f && f.intensity !== intensity) { f.intensity = intensity; this.dirty = true; } }
+  move(i, x, y, z) { const f = this.list[i]; if (f) { f.x = x; f.y = y; f.z = z; this.dirty = true; } }
 }
 
 // ---------------------------------------------------------------- ruido 3D en textura (valor, suavizado por hardware)

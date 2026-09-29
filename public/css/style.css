@@ -30,6 +30,19 @@ html, body {
   user-select: none; -webkit-user-select: none;
 }
 .hidden { display: none !important; }
+/* dueño: clave del Diablo e insignias de poderes */
+#owner-modal { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(0, 0, 0, 0.62); backdrop-filter: blur(3px); }
+.owner-card { width: min(380px, 92vw); padding: 22px 22px 16px; border-radius: 14px; background: linear-gradient(180deg, #2a0a08, #140504); border: 1px solid #7a1a10;
+  box-shadow: 0 0 40px rgba(255, 60, 20, 0.35), inset 0 0 30px rgba(0, 0, 0, 0.6); text-align: center; }
+.owner-card h2 { margin: 0 0 6px; font-family: var(--title); font-size: 34px; letter-spacing: 1px; color: #ff6a2a; text-shadow: 0 0 18px rgba(255, 90, 30, 0.7); }
+.owner-card p { margin: 6px 0 12px; color: #f2d6c8; font-size: 14px; }
+.owner-card input { width: 100%; box-sizing: border-box; text-align: center; font-size: 18px; letter-spacing: 3px; }
+.owner-row { display: flex; gap: 10px; justify-content: center; margin-top: 8px; }
+.owner-row button { flex: 1; }
+.devil-pick { border-color: #a32312 !important; background: linear-gradient(180deg, #3a0c08, #1a0504) !important; }
+.devil-pick b { color: #ff6a2a; }
+#owner-badges { position: fixed; top: 10px; right: 12px; z-index: 30; pointer-events: none; display: flex; gap: 6px; font: 800 12px var(--ui, sans-serif); }
+#owner-badges span { padding: 4px 8px; border-radius: 8px; background: rgba(30, 6, 4, 0.8); border: 1px solid #a32312; color: #ffb08a; text-shadow: 0 0 8px rgba(255, 80, 20, 0.6); }
 #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 1; outline: none; }
 #css3d { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
 #css3d iframe { border: 0; pointer-events: none; }

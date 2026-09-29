@@ -13,6 +13,19 @@ Sobre la foto publicada `331902a` trabajaron dos agentes a la vez:
   envoltorios, CI en `.github/workflows/qa.yml`, póker con teclado en una UI propia). Las dos resuelven lo mismo
   de formas distintas: antes de mezclar, decidir con Luz cuál sigue.
 
+## Estado 29/09 (después del castillo AAA)
+
+- **Castillo (commits 78500d7 y anteriores)**: luna en el cielo con sombra, bruma y fuego volumétricos (`fx/volume.js`, `fx/fire.js`), haces de luna y polvo, manchas y decals, pool de luces por cuarto, culling. Falta la expansión: decorado denso y variado (los modelos de Poly Haven ya bajados están en el scratchpad de la sesión, hay que convertirlos con `assets/blender/ph_to_glb.py`), telarañas, insectos, cadáveres/colgados, sustos, calabozo/sótano, puente levadizo con foso, pasadizos. Calavas de la sala secreta flotando: mover `[18.2, F0 + 0.95, -125.2, 3]` de `_skulls()` a `[13.9, F0 + 1.14, -125.05, 3]`.
+- **El Diablo (solo el dueño)**: nombre reservado SmokePyro + clave (hash scrypt en `server/owner.js`, `OWNER_KEY` la reemplaza; ruta `POST /api/owner`, el servidor viejo no la tiene: hay que reiniciar JUGAR.bat). Poderes en `game/owner.js`: K o botón del medio = aliento de fuego (`fx/breath.js`), N = bola de fuego, I = invisible, O = inmortal, L = risa; el servidor valida todo (`server/room.js`, `shared/demon-fire.js`). Modelo: "Demon" de VidovicArts (CC-BY): `assets/blender/rig_demon.py` + `repair_demon.py` (rig reparado por la otra línea) + `add_demon_jaw.py` (hueso `jaw`: abre la boca al hablar, reírse y escupir fuego). NO reemplazar `diablo.glb` sin respaldo y prueba A/B.
+- **Galleta v2** (`assets/blender/build_cookie2.py`, hoja de personaje de Luz): miembros continuos, mitones con pulgar, botas, masa dorada con AO y bordes tostados por color de vértice, chocolate brillante por mapa de rugosidad. La v1 sigue en `build_cookie.py`.
+- **Bug grave arreglado**: la luz del relámpago/luna (`storm.flashLight`) tenía `castShadow` pero su mapa solo se creaba con tormenta o noche; con día despejado three usaba un muestreador vacío (bug del setter de arrays de r186) y **no se dibujaba nada iluminado** (sin suelo ni castillo). Arreglos: `msh.needsUpdate = true` al crearla y `emptyShadowTexture.compareFunction` en el setter de arrays de `public/vendor/three/three.module.js` (marcado "DESMADRE"; si se vuelve a vendorizar three hay que repetir este parche y el de capas de la cámara de sombra).
+- Pruebas: `npm test` (81), `npm run test:fire` (4 clientes por WebSocket), `node scripts/check.mjs`. `public/qa/characters.html` (ignorada por git) muestra a la Galleta y al Diablo en poses.
+
+## Sigue (personajes y castillo)
+
+- Más playermodels profesionales de la web: Sketchfab pide login para bajar los GLB (Luz los baja a Descargas; yo los riggeo con `retarget_human.py` y armo un script por modelo en `assets/blender/`).
+- Póker estilo RDR2 (cartas mejores, turnos claros, cuánto apostás/perdés, apuestas ilegales, tecla para acercar las cartas y otra para las comunitarias, animaciones de mirar cartas/festejar/putear, poder chatear y hablar sentado), susurros (texto y voz solo para elegidos), linterna/lámpara/vela.
+
 ## Qué quiere Luz (prioridad)
 
 Lobby interactivo "tipo Discord divertido" que crece con el tiempo. NADA de historia, misiones, NPC que dan encargos,

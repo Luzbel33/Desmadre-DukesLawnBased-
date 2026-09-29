@@ -68,4 +68,6 @@ export const SFX_MANIFEST = {
   'door-slam': castle('portazo-1', 'portazo-2'),
   creak: castle('crujido-1', 'crujido-2', 'crujido-3'),
   knock: seq('impactWood_heavy_', 0, 4),
+  // el Diablo (poder del dueño): risas CC0 (assets/sfx/diablo/CREDITOS.txt)
+  'devil-laugh': [`${A}diablo/risa-1.ogg`, `${A}diablo/risa-2.ogg`, `${A}diablo/risa-3.ogg`],
 };

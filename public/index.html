@@ -72,6 +72,18 @@
     <p class="hint">En la pausa (Esc) podés silenciar a alguien.</p>
   </div>
 
+  <!-- Clave del dueño (SmokePyro): la verifica el servidor -->
+  <div id="owner-modal" class="hidden">
+    <div class="owner-card">
+      <h2>🔥 SmokePyro</h2>
+      <p>Ese nombre es del dueño. Poné la clave para entrar como <b>El Diablo</b>.</p>
+      <input id="owner-key" type="password" maxlength="64" autocomplete="off" spellcheck="false" placeholder="Clave">
+      <p id="owner-err" class="err"></p>
+      <div class="owner-row"><button id="owner-cancel" type="button">Cancelar</button><button id="owner-ok" type="button" class="big">DESBLOQUEAR</button></div>
+    </div>
+  </div>
+  <div id="owner-badges" class="hidden"></div>
+
   <!-- Menú de inicio -->
   <div id="menu" class="hidden">
     <div class="menu-card lobby-card">
@@ -90,6 +102,8 @@
           <button type="button" data-model="eric"><b>Eric</b><small>de traje</small></button>
           <button type="button" data-model="carla"><b>Carla</b><small>de negro</small></button>
           <button type="button" data-model="claudia"><b>Claudia</b><small>casual</small></button>
+          <button type="button" data-model="galleta"><b>Galleta</b><small>recién horneada</small></button>
+          <button type="button" data-model="diablo" class="hidden devil-pick"><b>El Diablo</b><small>solo el dueño</small></button>
         </div>
       </div>
       <button id="m-play" class="big">¡A JUGAR!</button>

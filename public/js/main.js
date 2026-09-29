@@ -43,6 +43,7 @@ import { GraffitiManager } from './game/graffiti.js';
 import { Gore } from './game/gore.js';
 import { ACTIVITIES, ActivityMarkers } from './ui/activities.js';
 import { AvatarPreview } from './ui/avatar-preview.js';
+import { OwnerPowers } from './game/owner.js';
 import { Hud } from './ui/hud.js';
 import { preloadHumans, MODELS, DEFAULT_MODEL } from './char/human.js';
 import { AudioEngine } from './audio/audio.js';
@@ -169,6 +170,44 @@ function setupModelPicker() {
   });
 }
 
+// ---------------------------------------------------------------- el dueño (SmokePyro): clave y el Diablo
+const isOwnerName = (n) => String(n || '').trim().toLowerCase() === 'smokepyro';
+function selectModel(model) {
+  selectedLook.model = model;
+  document.querySelectorAll('#m-models button[data-model]').forEach((x) => x.classList.toggle('sel', x.dataset.model === model));
+}
+// el botón del Diablo aparece solo con el nombre del dueño y la clave ya verificada
+function ownerUI() {
+  const unlocked = !!state.ownerKey && isOwnerName($('m-name').value);
+  document.querySelector('#m-models .devil-pick')?.classList.toggle('hidden', !unlocked);
+  if (!unlocked && selectedLook.model === 'diablo') selectModel('eric');
+}
+function openOwnerModal() {
+  if (!$('owner-modal').classList.contains('hidden')) return;
+  $('owner-modal').classList.remove('hidden');
+  $('owner-err').textContent = '';
+  $('owner-key').value = '';
+  setTimeout(() => $('owner-key').focus(), 30);
+}
+function closeOwnerModal() { $('owner-modal').classList.add('hidden'); }
+async function verifyOwnerKey() {
+  const key = $('owner-key').value;
+  if (!key) return;
+  $('owner-err').textContent = 'Verificando...';
+  try {
+    const r = await fetch('/api/owner', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('m-name').value.trim(), key }) });
+    if (r.status === 404 || r.status === 405) { $('owner-err').textContent = 'El servidor todavía no conoce la clave: reinicialo (cerrá y abrí JUGAR.bat).'; return; }
+    const j = await r.json().catch(() => ({}));
+    if (!j.ok) { $('owner-err').textContent = j.err || 'Clave incorrecta.'; G.sfx?.trigger('ui-err', null, 0.6); return; }
+    state.ownerKey = key;
+    try { sessionStorage.setItem('dukes.ownerKey', key); } catch {}
+    closeOwnerModal();
+    ownerUI();
+    selectModel('diablo');
+    G.sfx?.trigger('devil-laugh', null, 0.8, { variant: 0, rate: 1 });
+  } catch { $('owner-err').textContent = 'No se pudo verificar la clave.'; }
+}
+
 function setupMenuDefaults() {
   try {
     const saved = JSON.parse(localStorage.getItem('dukes.audio') || '{}');
@@ -176,6 +215,8 @@ function setupMenuDefaults() {
     G.opts.muted = saved.muted === true;
   } catch {}
   $('m-name').value = localStorage.getItem('dukes.name') || '';
+  try { state.ownerKey = isOwnerName($('m-name').value) ? sessionStorage.getItem('dukes.ownerKey') || '' : ''; } catch { state.ownerKey = ''; }
+  ownerUI();
   const q = new URLSearchParams(location.search).get('sala');
   $('m-room').value = q || localStorage.getItem('dukes.room') || 'principal';
   try {
@@ -372,7 +413,7 @@ function updateNameTags() {
     p.headPosition(tmpV2); tmpV2.y += 0.32;
     const dist = G.camera.position.distanceTo(tmpV2);
     tmpV2.project(G.camera);
-    const visible = tmpV2.z > -1 && tmpV2.z < 1 && Math.abs(tmpV2.x) < 1.12 && Math.abs(tmpV2.y) < 1.12 && dist < 65;
+    const visible = tmpV2.z > -1 && tmpV2.z < 1 && Math.abs(tmpV2.x) < 1.12 && Math.abs(tmpV2.y) < 1.12 && dist < 65 && !p.inv;
     el.style.display = visible ? '' : 'none';
     if (!visible) continue;
     const x = (tmpV2.x * 0.5 + 0.5) * W;
@@ -756,6 +797,12 @@ function handleEvent(m) {
     case 'haunt': // algo del castillo que arrancó otro (puertas, campana, sustos en grupo)
       G.haunt?.remote(m);
       break;
+    case 'burn': // el Diablo me quemó (lo valido yo, como un golpe)
+      if (m.to === G.myId) G.owner?.onBurn(m);
+      break;
+    case 'onfire': // otro se prendió fuego
+      G.owner?.onFire(m);
+      break;
     case 'horn':
       if (rp && performance.now() - (rp._lastHorn || 0) > 700) { rp._lastHorn = performance.now(); G.sfx?.trigger('horn', rp.pos, 0.8); }
       break;
@@ -961,24 +1008,32 @@ function onCrash(v, speed, other) {
 
 function setupNetHandlers(net) {
   net.on('welcome', (m) => {
+    G.owner?.reset();
     G.myId = m.id; G.settings = { ...G.settings, ...(m.settings || {}) };
     state.welcome = m; state.media = m.media || {}; G.media?.applyAll(state.media);
     for (const old of G.players.values()) old.dispose(); G.players.clear(); clearNameTags();
-    for (const p of m.players || []) { const rp = new RemotePlayer(p); G.players.set(rp.id, rp); }
+    state.isOwner = !!m.owner;
+    for (const p of m.players || []) {
+      const rp = new RemotePlayer(p); G.players.set(rp.id, rp);
+      rp.owner = !!p.owner;
+      if (p.inv) { rp.inv = true; rp.char.root.visible = false; }
+    }
     G.voice?.connectAll((m.players || []).map((p) => p.id));
     if (m.poker) G.poker?.applyState(m.poker);
     if (m.fb) G.football?.applyState(m.fb);
     state.props.load(m.props || []);
     state.vehicles.load(m.vehicles || []);
+    for(const f of m.fires||[])G.owner?.onPow({...f,a:'patch'});
     renderPlayerList();
     updateDesmadreUI();
   });
   net.on('pjoin', (m) => {
     if (!m.p || m.p.id === G.myId) return;
     G.players.get(m.p.id)?.dispose();
-    const rp = new RemotePlayer(m.p); G.players.set(rp.id, rp); ensureNameTag(rp); renderPlayerList();
+    const rp = new RemotePlayer(m.p); G.players.set(rp.id, rp); rp.owner = !!m.p.owner; ensureNameTag(rp); renderPlayerList();
   });
-  net.on('pleave', (m) => { const p = G.players.get(m.id); p?.dispose(); G.players.delete(m.id); removeNameTag(m.id); G.voice?.remove(m.id); renderPlayerList(); });
+  net.on('pow', (m) => G.owner?.onPow(m));
+  net.on('pleave', (m) => { G.owner?.remove(m.id); const p = G.players.get(m.id); p?.dispose(); G.players.delete(m.id); removeNameTag(m.id); G.voice?.remove(m.id); renderPlayerList(); });
   net.on('rtc', (m) => G.voice?.onSignal(m.from, m.d));
   net.on('pk', (m) => G.poker?.applyState(m.st));
   net.on('fbs', (m) => G.football?.applyState(m.st));
@@ -1047,6 +1102,7 @@ async function joinGame() {
   const name = $('m-name').value.trim() || 'Anónimo';
   const room = ($('m-room').value.trim() || 'principal').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 24) || 'principal';
   const look = readLook();
+  if (isOwnerName(name) && !state.ownerKey) { openOwnerModal(); $('m-err').textContent = 'Ese nombre es del dueño: poné la clave.'; return; }
   $('m-err').textContent = 'Conectando...';
   localStorage.setItem('dukes.look', JSON.stringify(look));
   localStorage.setItem('dukes.name', name); localStorage.setItem('dukes.room', room);
@@ -1088,7 +1144,7 @@ async function joinGame() {
       onAct: (act) => state.local?.pokerGesture(act),
     });
     setupNetHandlers(state.net);
-    await state.net.connect(room, name, look);
+    await state.net.connect(room, name, look, isOwnerName(name) ? state.ownerKey : undefined);
     G.inGame = true; G.sfx?.trigger('ui', null, .35); state.eyeOffset = undefined; state.room = room; state.joinedName = name;
     $('m-err').textContent = '';
     state.viewYaw = state.local.yaw;
@@ -1105,6 +1161,18 @@ async function joinGame() {
 
 function setupUIEvents() {
   $('m-play').addEventListener('click', joinGame);
+  // el nombre del dueño pide la clave (y sin clave no se puede entrar con ese nombre: lo reserva el servidor)
+  $('m-name').addEventListener('input', () => {
+    if (!isOwnerName($('m-name').value)) state.ownerKey = '';
+    else if (!state.ownerKey) openOwnerModal();
+    ownerUI();
+  });
+  $('owner-ok').addEventListener('click', verifyOwnerKey);
+  $('owner-cancel').addEventListener('click', closeOwnerModal);
+  $('owner-key').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); verifyOwnerKey(); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeOwnerModal(); }
+  });
   $('p-resume').addEventListener('click', resumeGame);
   $('p-respawn').addEventListener('click', () => { state.local?.respawn(); resumeGame(); });
   $('p-char').addEventListener('click', () => { setMode('menu'); G.input.unlock(); $('m-play').textContent = 'APLICAR Y VOLVER'; });
@@ -1247,6 +1315,7 @@ function updateInput(dt) {
   if (inp.hit('KeyT') || inp.hit('Enter')) openChat();
   if (inp.hit('Tab')) renderPlayerList();
   if (inp.hit('KeyC')) state.cameraMode = (state.cameraMode + 1) % 3;
+  G.owner?.input(inp); // Diablo: K/rueda aliento · N bola · I invisible · O inmortal · L risa
   const items = [null, 'beer', 'smoke', 'spray', null];
   for (let i = 1; i <= 4; i++) {
     if (inp.hit(`Digit${i}`) && !down && !(driving && i === 3)) {
@@ -1360,7 +1429,7 @@ function updateCamera(dt) {
   if (down) {
     const pt = L.rag.pelvis().translation();
     pivot = new THREE.Vector3(pt.x, pt.y + 0.6, pt.z);
-  } else pivot = L.renderPos.clone().add(new THREE.Vector3(0, L.seat || L.vehicle ? 1.3 : 1.62, 0));
+  } else pivot = L.renderPos.clone().add(new THREE.Vector3(0, L.seat || L.vehicle ? 1.3 : 1.62*(L.char.meta?.height||1.8)/1.8, 0));
   let dist = mode === 0 ? 4.2 : 2.4;
   if (L.vehicle) dist += 1.8;
   if (down) dist = 3.6;
@@ -1512,7 +1581,12 @@ async function boot() {
       const st = G.world?.storm;
       if (st) { sfx.birdMute = st.s; st.ambience(dt, sfx); }
       G.haunt?.ambience(dt, sfx);
+      G.owner?.sound(sfx);
     };
+    G.owner = new OwnerPowers({
+      getNet: () => state.net, getLocal: () => state.local, isOwner: () => !!state.isOwner,
+      notify: (h) => G.hud?.notify(h, 3500), onHurt: (k) => { state.hurt = Math.min(1, (state.hurt || 0) + k); },
+    });
     populateSwatches(); setupModelPicker(); setupMenuDefaults(); setupHotbar(); setupUIEvents();
     addEventListener('pagehide', () => { G.sfx?.stop(); G.media?.stop(); });
     document.addEventListener('visibilitychange', () => { if (document.hidden) { G.sfx?.stop(); G.media?.stop(); } });
@@ -1574,7 +1648,7 @@ async function boot() {
         else updateCamera(dt);
         G.poker?.update(G.camera, dt);
         updateNameTags(); updatePrompt(); updateHud(dt); updatePost();
-        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt);
+        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.owner?.update(dt);
         { const hide = (G.world.storm?.indoor || 0) > 0.95; for (const m of G.grass.meshes) m.visible = !hide; }
         G.fx.update(dt); G.blood.update(dt); G.football?.update(dt); G.gore?.update(dt); state.graffiti?.flush();
         G.bag?.update(dt);

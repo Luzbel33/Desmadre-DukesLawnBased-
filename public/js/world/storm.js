@@ -336,6 +336,7 @@ export class Storm {
     msh.camera.near = 1; msh.camera.far = 420;
     msh.bias = -0.0009; msh.normalBias = 0.06; msh.radius = 2.2;
     msh.autoUpdate = false;
+    msh.needsUpdate = true; // un primer mapa desde el arranque: con el día despejado nadie lo pediría y three usaría uno vacío
     this.moonS = MS;
     this.moonT = 0;
     this.moonC = new THREE.Vector2(1e9, 1e9);

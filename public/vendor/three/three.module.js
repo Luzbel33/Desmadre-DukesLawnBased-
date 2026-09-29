@@ -5781,6 +5781,8 @@ function setValueT1Array( gl, v, textures ) {
 
 	if ( this.type === gl.SAMPLER_2D_SHADOW ) {
 
+		// DESMADRE: igual que en setValueT1 (sin esto, una luz con sombra sin mapa rompe todo lo iluminado)
+		emptyShadowTexture.compareFunction = textures.isReversedDepthBuffer() ? GreaterEqualCompare : LessEqualCompare;
 		emptyTexture2D = emptyShadowTexture;
 
 	} else {

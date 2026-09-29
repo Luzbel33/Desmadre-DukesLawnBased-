@@ -25,7 +25,7 @@ const tQ4 = new THREE.Quaternion();
 
 export class PoseRig {
   // clavPivot: { l, r } base de cada clavícula en el marco del torso (del modelo); si no hay, al medio del pecho
-  constructor(jointRest, clavPivot = null) {
+  constructor(jointRest, clavPivot = null, gripLocal = null) {
     this.root = new THREE.Object3D();
     this.jointRest = jointRest.map((v) => v.clone());
     this.clavPivot = {
@@ -46,7 +46,7 @@ export class PoseRig {
     for (let i = 0; i < 11; i++) this.targets.push({ p: new THREE.Vector3(), q: new THREE.Quaternion() });
     // longitudes de brazo desde el reposo
     this.upperLen = [this.jointRest[4].length(), this.jointRest[6].length()];
-    this.foreLen = [this.upperLen[0] * 0.95, this.upperLen[1] * 0.95];
+    this.foreLen = ['l','r'].map((s,i)=>gripLocal?.[s]?.length() || this.upperLen[i]*.95);
   }
 
   animate(st, dt) { Character.prototype.animate.call(this, st, dt); }

@@ -7,11 +7,16 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { G, clamp, rng } from '../core/G.js';
 import { Character, JOINT_NAMES, PARENT, P } from './character.js';
+import { makeDevil } from './devil.js';
 
 export const MODELS = {
   eric: { file: 'assets/chars/eric.glb', label: 'Eric', gender: 'm' },
   carla: { file: 'assets/chars/carla.glb', label: 'Carla', gender: 'f' },
   claudia: { file: 'assets/chars/claudia.glb', label: 'Claudia', gender: 'f' },
+  galleta: { file: 'assets/chars/cookie.glb', label: 'Galleta', gender: 'm' },
+  // exclusivo del dueño (el servidor solo se lo deja a SmokePyro con su clave): "Demon" de VidovicArts (Sketchfab,
+  // CC-BY 4.0), rig reparado en Blender (assets/blender/repair_demon.py + retarget_human.py)
+  diablo: { file: 'assets/chars/diablo.glb', label: 'El Diablo', gender: 'm', devil: true, owner: true },
 };
 export const DEFAULT_MODEL = 'eric';
 const CACHE = new Map(); // modelo -> { scene, meta }
@@ -85,7 +90,8 @@ const FINGERS = ['thumb', 'index', 'middle', 'ring', 'pinky'];
 // ---------------------------------------------------------------- carga + metadatos por modelo
 export async function preloadHumans(onProgress) {
   const loader = new GLTFLoader();
-  const keys = Object.keys(MODELS);
+  // Los alias, si los hay, comparten la descarga y los metadatos de su modelo base.
+  const keys = Object.keys(MODELS).filter((k) => !MODELS[k].base);
   let done = 0;
   await Promise.all(keys.map(async (key) => {
     if (CACHE.has(key)) return;
@@ -94,6 +100,7 @@ export async function preloadHumans(onProgress) {
     done++;
     onProgress && onProgress(done, keys.length);
   }));
+  for (const [k, m] of Object.entries(MODELS)) if (m.base && CACHE.has(m.base)) CACHE.set(k, CACHE.get(m.base));
 }
 export function humansReady() { return CACHE.size > 0; }
 
@@ -554,6 +561,8 @@ export class HumanCharacter {
     this.root.traverse((o) => { o.frustumCulled = false; });
     this._jaw = 0;
     this._lid = 0;
+    // el Diablo: ojos de brasa y el modo fantasma para el invisible (ver devil.js)
+    this.devil = MODELS[this.modelKey].devil ? makeDevil(this) : null;
     this.setVisibleHead(this.headVisible);
   }
 
@@ -648,11 +657,15 @@ export class HumanCharacter {
 
   headWorld(out = new THREE.Vector3()) {
     this.root.updateWorldMatrix(true, true);
-    return this.bones.head.localToWorld(out.copy(this.meta.headInfo.center));
+    // Hiding the head collapses its skin, not the camera's anatomical anchor.
+    // Otherwise first person drops to the neck and intersects the shoulders.
+    const h=this.bones.head;
+    return h.localToWorld(out.copy(this.meta.headInfo.center).divide(h.scale));
   }
   mouthWorld(out = new THREE.Vector3()) {
     this.root.updateWorldMatrix(true, true);
-    return this.bones.head.localToWorld(out.copy(this.meta.headInfo.mouth));
+    const h=this.bones.head;
+    return h.localToWorld(out.copy(this.meta.headInfo.mouth).divide(h.scale));
   }
 
   // cápsulas en mundo para detectar golpes [{a, b, r, i}]
@@ -750,7 +763,8 @@ export class HumanCharacter {
     }
     // cara: mandíbula al hablar, párpados caídos
     const face = this.meta.face;
-    const jawT = clamp(this.talk * 0.32 + (this.expr.dead ? 0.18 : 0), 0, 0.4);
+    // (el Diablo la abre de par en par al tirar fuego o al reírse: owner.js le da `roar`)
+    const jawT = clamp(this.talk * 0.32 + (this.expr.dead ? 0.18 : 0) + (this.roar || 0) * 0.42, 0, 0.6);
     this._jaw += (jawT - this._jaw) * Math.min(1, dt * 20);
     if (face.jaw.axis && B.jaw) {
       Q2.setFromAxisAngle(face.jaw.axis, this._jaw);
@@ -770,6 +784,7 @@ export class HumanCharacter {
   update(dt) {
     this._dripStep(dt);
     this._retarget(dt);
+    this.devil?.update(dt);
   }
 
   // ---------------------------------------------------------------- daño visual
@@ -917,6 +932,8 @@ export class HumanCharacter {
 
   _disposeModel() {
     if (!this.model) return;
+    this.devil?.dispose();
+    this.devil = null;
     this.dmgTex?.dispose();
     this.material?.dispose();
     this.hat?.traverse?.((o) => { o.geometry?.dispose(); o.material?.dispose(); });

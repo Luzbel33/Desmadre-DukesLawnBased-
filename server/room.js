@@ -2,12 +2,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
+import { isOwnerName, checkOwnerKey, allowTry } from './owner.js';
 import {
   PROTOCOL, GRASSMAP, GRASS, SURFACES, SURFACE_BY_ID, SCREENS, VEHICLES, PROPS, FIELD, PAINT, parsePatch, grassAllowed,
 } from '../public/js/shared/mapdata.js';
 import { applyDots, cutRect, growAll, fieldMask, mowField, DOT_BYTES } from '../public/js/shared/raster.js';
 import { Football } from './football.js';
 import { PokerTable } from './poker.js';
+import { DEMON_FIRE as FIRE, fireVector, fireShot } from '../public/js/shared/demon-fire.js';
 
 const MAX_PLAYERS = 24;
 const SNAP_MS = 50;
@@ -29,6 +31,7 @@ export class Room {
     this.dir = path.join(dataRoot, name);
     this.players = new Map();
     this.nextId = 1;
+    this.firePatches = []; // temporary; never persisted with the world
     this.settings = { desmadre: false };
     this.props = new Map();
     this.dirtyProps = new Set();
@@ -205,12 +208,21 @@ export class Room {
       return;
     }
     p.name = clampStr(msg.name, 20) || 'Anónimo';
-    p.look = sanitizeLook(msg.look);
+    // SmokePyro es el dueño: el nombre está reservado y solo entra con la clave (y ahí tiene al Diablo y sus poderes)
+    if (isOwnerName(p.name)) {
+      if (!allowTry(p.ws.ip || '') || !checkOwnerKey(msg.key)) {
+        this.send(p, { t: 'err', m: 'El nombre SmokePyro está reservado.' });
+        p.ws.close(1008);
+        return;
+      }
+      p.owner = true;
+    }
+    p.look = sanitizeLook(msg.look, p.owner);
     p.ready = true;
     this.players.set(p.id, p);
     const players = [];
     for (const o of this.players.values()) {
-      if (o !== p) players.push({ id: o.id, name: o.name, look: o.look, color: o.color, st: o.st });
+      if (o !== p) players.push({ id: o.id, name: o.name, look: o.look, color: o.color, st: o.st, owner: o.owner ? 1 : 0, inv: o.inv ? 1 : 0 });
     }
     const props = [];
     for (const pr of this.props.values()) {
@@ -224,8 +236,9 @@ export class Room {
     const media = {};
     for (const [id, m] of this.media) media[id] = m;
     this.send(p, {
-      t: 'welcome', id: p.id, color: p.color, now: Date.now(), room: this.name,
+      t: 'welcome', id: p.id, color: p.color, now: Date.now(), room: this.name, owner: p.owner ? 1 : 0,
       players, props, vehicles, media, settings: this.settings, gtick: this.grass.tick,
+      fires: this.firePatches.filter(f=>f.end>Date.now()).map(f=>({id:f.id,p:f.p,n:f.n,life:(f.end-Date.now())/1000})),
       poker: this.poker.publicState(),
       fb: this.football.state(),
     });
@@ -237,7 +250,7 @@ export class Room {
       this.send(p, this._surfacePacket(id, s));
     }
     this.send(p, { t: 'ready' });
-    this.broadcast({ t: 'pjoin', p: { id: p.id, name: p.name, look: p.look, color: p.color, st: null } }, p);
+    this.broadcast({ t: 'pjoin', p: { id: p.id, name: p.name, look: p.look, color: p.color, st: null, owner: p.owner ? 1 : 0 } }, p);
     this.sys(p.name + ' entró al lobby. ¡Bienvenido/a!');
   }
 
@@ -301,11 +314,60 @@ export class Room {
         break;
       case 'chat': this.onChat(p, msg); break;
       case 'ev':
+        // quemar a alguien con el fuego de la boca: solo el dueño
+        if (msg.k === 'burn' && (!p.owner || p.look.model !== 'diablo')) break;
+        if(msg.k==='burn') {
+          if(!this.players.has(msg.to)||msg.to===p.id)break;
+          if(msg.mode==='ball') {
+            const hit=fireVector(msg.p),shot=p.fireShots?.get(String(msg.shot));
+            if(!hit||!shot||now-shot.time>4000||shot.targets.has(msg.to))break;
+            if(Math.hypot(...hit.map((n,i)=>n-shot.o[i]))>FIRE.ballRange+1)break;
+            const target=fireVector(this.players.get(msg.to).st?.p);
+            if(!target||Math.hypot(hit[0]-target[0],hit[2]-target[2])>FIRE.blastRadius+.5||Math.abs(hit[1]-target[1])>3)break;
+            shot.targets.add(msg.to);msg.p=hit;msg.shot=String(msg.shot);
+          }
+          msg.s=Math.max(0,Math.min(1,+msg.s||0));
+        }
         msg.id = p.id;
         this.broadcast(msg, p);
         break;
+      case 'pow': // poderes del dueño: invisible, fuego por la boca, risa
+        if (!p.owner || p.look.model !== 'diablo') break;
+        if (msg.a === 'inv') {
+          p.inv = !!msg.v;
+          this.broadcast({ t: 'pow', id: p.id, a: 'inv', v: p.inv ? 1 : 0 }, p);
+        } else if (msg.a === 'fire') {
+          const d=fireVector(msg.d),length=d?Math.hypot(...d):0;
+          this.broadcast({t:'pow',id:p.id,a:'fire',v:msg.v?1:0,...(length>.001?{d:d.map(n=>n/length)}:{})},p);
+        }
+        else if(msg.a==='ball') {
+          const shot=fireShot(msg.o,msg.d,p.st?.p),key=String(msg.shot||'');
+          if(!shot||!/^\d{1,10}$/.test(key)||now-(p.lastFireBall||0)<FIRE.ballCooldown*1000)break;
+          p.fireShots||=new Map();
+          for(const [id,s]of p.fireShots)if(now-s.time>4000)p.fireShots.delete(id);
+          if(p.fireShots.has(key))break;
+          p.lastFireBall=now;p.fireShots.set(key,{...shot,time:now,targets:new Set()});
+          this.broadcast({t:'pow',id:p.id,a:'ball',shot:key,...shot},p);
+        }
+        else if(msg.a==='patch') {
+          const point=fireVector(msg.p),normal=fireVector(msg.n),caster=fireVector(p.st?.p);
+          if(!point||!normal||!caster||Math.hypot(...normal)<.001||Math.hypot(...point.map((n,i)=>n-caster[i]))>FIRE.ballRange+4||now-(p.lastFirePatch||0)<250)break;
+          p.lastFirePatch=now;const len=Math.hypot(...normal),n=normal.map(v=>v/len);
+          this.firePatches=this.firePatches.filter(f=>f.end>now);
+          let patch=this.firePatches.find(f=>f.id===p.id&&Math.hypot(...f.p.map((v,i)=>v-point[i]))<.65);
+          if(!patch){if(this.firePatches.length>=FIRE.maxPatches)this.firePatches.shift();patch={};this.firePatches.push(patch);}
+          Object.assign(patch,{id:p.id,p:point,n,end:now+FIRE.patchSeconds*1000});
+          this.broadcast({t:'pow',id:p.id,a:'patch',p:point,n,life:FIRE.patchSeconds},p);
+        }
+        else if (msg.a === 'laugh') this.broadcast({ t: 'pow', id: p.id, a: 'laugh', v: Math.max(0, Math.min(2, msg.v | 0)) }, p);
+        break;
       case 'look':
-        p.look = sanitizeLook(msg.look);
+        p.look = sanitizeLook(msg.look, p.owner);
+        if (p.look.model !== 'diablo' && p.owner) {
+          p.inv = false;
+          this.broadcast({t:'pow', id:p.id, a:'inv', v:0}, p);
+          this.broadcast({t:'pow', id:p.id, a:'fire', v:0}, p);
+        }
         this.broadcast({ t: 'look', id: p.id, look: p.look }, p);
         break;
       case 'cut': this.onCut(p, msg); break;
@@ -745,7 +807,7 @@ export class Room {
   }
 }
 
-function sanitizeLook(l) {
+function sanitizeLook(l, owner = false) {
   const col = (c, d) => (typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c) ? c : d);
   l = l && typeof l === 'object' ? l : {};
   return {
@@ -759,6 +821,6 @@ function sanitizeLook(l) {
     beard: !!l.beard,
     glasses: ['none', 'sun', 'nerd'].includes(l.glasses) ? l.glasses : 'none',
     body: ['normal', 'gordo', 'flaco'].includes(l.body) ? l.body : 'normal',
-    model: ['eric', 'carla', 'claudia'].includes(l.model) ? l.model : 'eric',
+    model: ['eric', 'carla', 'claudia', 'galleta', ...(owner ? ['diablo'] : [])].includes(l.model) ? l.model : 'eric',
   };
 }

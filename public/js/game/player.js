@@ -28,6 +28,10 @@ import { MAP_BOUNDS, SPAWN, isPvpAt } from '../shared/mapdata.js';
 const BODY_Y = 0.80;
 const CAPSULE_HALF = 0.50;
 const CAPSULE_RADIUS = 0.28;
+function movementSize(meta) {
+  const scale=(meta.height||1.8)/1.8;
+  return {bodyY:BODY_Y*scale,capsuleHalf:CAPSULE_HALF*scale,capsuleRadius:CAPSULE_RADIUS*scale};
+}
 export const RAG_FILTER = GR.WORLD | GR.PROP | GR.VEHICLE | GR.REMOTE | GR.DEBRIS;
 export const PROXY_FILTER = GR.RAGDOLL | GR.PROP | GR.DEBRIS;
 // umbral de impacto por parte (cambio de velocidad en m/s) para que duela (tirado en el piso)
@@ -99,6 +103,18 @@ function spawnPoint() {
   const a = Math.random() * Math.PI * 2;
   const r = 2 + Math.random() * SPAWN.r;
   return new THREE.Vector3(SPAWN.x + Math.sin(a) * r, 0.02, SPAWN.z + 6 + Math.cos(a) * r * 0.6);
+}
+// Keep world rotations and the pelvis position while adapting joint spacing.
+function resizedPose(pose, jointRest) {
+  const rig = new PoseRig(jointRest);
+  rig.joints[0].position.set(...pose[0].slice(0,3));
+  const parent = [-1,0,1,1,3,1,5,0,7,0,9];
+  for (let i=0;i<11;i++) {
+    const q = new THREE.Quaternion(...pose[i].slice(3));
+    if (parent[i]>=0) q.premultiply(new THREE.Quaternion(...pose[parent[i]].slice(3)).invert());
+    rig.joints[i].quaternion.copy(q);
+  }
+  return rig.transforms();
 }
 const r3 = (v) => Math.round(v * 1000) / 1000;
 
@@ -229,7 +245,8 @@ export class LocalPlayer {
     this.char.root.name = 'local-player';
     G.scene.add(this.char.root);
     this.meta = this.char.meta;
-    this.rig = new PoseRig(this.meta.jointRest, this.meta.clavPivot);
+    this.rig = new PoseRig(this.meta.jointRest, this.meta.clavPivot, this.meta.gripLocal);
+    Object.assign(this,movementSize(this.meta));
     this.equipment = new EquipmentView(G.scene);
 
     this.pos = spawnPoint();
@@ -290,9 +307,9 @@ export class LocalPlayer {
     this.bleedRate = 0; // hp por segundo que se pierden desangrándose
     this.onEvent = null; // callback para FX/red: (type, data)
 
-    const desc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(this.pos.x, this.pos.y + BODY_Y, this.pos.z);
+    const desc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(this.pos.x, this.pos.y + this.bodyY, this.pos.z);
     this.body = G.phys.world.createRigidBody(desc);
-    const cd = RAPIER.ColliderDesc.capsule(CAPSULE_HALF, CAPSULE_RADIUS)
+    const cd = RAPIER.ColliderDesc.capsule(this.capsuleHalf, this.capsuleRadius)
       .setFriction(0)
       .setCollisionGroups(groups(GR.ME, GR.WORLD | GR.VEHICLE));
     this.collider = G.phys.world.createCollider(cd, this.body);
@@ -333,6 +350,40 @@ export class LocalPlayer {
   setLook(look) {
     this.look = { ...look };
     this.char.setLook(this.look);
+    if (this.meta !== this.char.meta) {
+      // A model change also changes limb lengths and hit volumes (especially
+      // the 2.2 m Diablo). Keeping the old rig pulls the new skin out of shape.
+      const oldRig = this.rig;
+      const dynamic = this.physMode === 'rag';
+      const pose = dynamic ? this.rag.read() : null;
+      const velocities = dynamic ? this.rag.bodies.map(b => ({lin:b.linvel(),ang:b.angvel()})) : null;
+      this.releaseAll(true);
+      this._clearGrips(true);
+      G.gore?.detachFrom(this.rag.bodies[PART.TORSO]);
+      this.meta = this.char.meta;
+      this.rig = new PoseRig(this.meta.jointRest, this.meta.clavPivot, this.meta.gripLocal);
+      Object.assign(this,movementSize(this.meta));
+      this.collider.setShape(new RAPIER.Capsule(this.capsuleHalf,this.capsuleRadius));
+      const center={x:this.pos.x,y:this.pos.y+this.bodyY,z:this.pos.z};
+      this.body.setTranslation(center,true);this.body.setNextKinematicTranslation(center);
+      this.rig.anim = oldRig.anim;
+      for (let i = 0; i < 11; i++) this.rig.joints[i].quaternion.copy(oldRig.joints[i].quaternion);
+      this.rig.place(this.pos, this.yaw);
+      this.rag.meta = this.meta;
+      this.rag.totalMass = this.meta.mass.reduce((a,b) => a+b, 0);
+      this.rag.build(dynamic ? resizedPose(pose, this.meta.jointRest) : this.rig.transforms());
+      if (velocities) this.rag.bodies.forEach((b,i) => { b.setLinvel(velocities[i].lin,true); b.setAngvel(velocities[i].ang,true); });
+      this._base = null; this._blendFrom = null; this.blendT = 1;
+      this._pose = []; this._rpose = []; this._legsGround = undefined;
+      this.targets = this.rig.compute();
+      this._resetArms();
+      for (let i = 0; i < 11; i++) if ((this.gore & (1 << i)) || (i === PART.HEAD && (this.gore & GORE_HEAD_POP))) {
+        G.gore?.sever(this.char, i, {gib:false});
+        this.rag.detachBranch(i, branchOf(i));
+      }
+    }
+    this.char.devil?.setGhost(this.invisible ? 1 : 0);
+    this._syncVisual();
   }
 
   setAction(name, duration = 0.8) {
@@ -352,7 +403,7 @@ export class LocalPlayer {
     this.jumpBuffer = 0;
     this.yaw = yaw;
     this.vy = 0;
-    const center = { x: pos.x, y: pos.y + BODY_Y, z: pos.z };
+    const center = { x: pos.x, y: pos.y + this.bodyY, z: pos.z };
     this.body.setTranslation(center, true);
     this.body.setNextKinematicTranslation(center);
     this.rig.place(pos, yaw);
@@ -426,7 +477,7 @@ export class LocalPlayer {
       this.physMode = 'anim';
       this.rag.setKinematic(true);
       this.rag.setGroups(GR.RAGDOLL, RAG_FILTER);
-      this.body.setTranslation({ x: this.pos.x, y: this.pos.y + BODY_Y, z: this.pos.z }, true);
+      this.body.setTranslation({ x: this.pos.x, y: this.pos.y + this.bodyY, z: this.pos.z }, true);
     }
   }
 
@@ -476,7 +527,7 @@ export class LocalPlayer {
 
   // ---------------------------------------------------------------- vida
   damage(amount = 10, byId = 0) {
-    if (this.dead) return false;
+    if (this.dead || this.immortal) return false;
     this.hp = Math.max(0, this.hp - amount);
     this.lastHurtT = G.time;
     if (byId) this.lastHitBy = byId;
@@ -514,7 +565,7 @@ export class LocalPlayer {
   }
 
   die() {
-    if (this.dead) return;
+    if (this.dead || this.immortal) return;
     // sin cabeza no hay grito
     if (!(this.gore & (GORE_HEAD_POP | (1 << PART.HEAD)))) this._vocal('death');
     if (this.seat) this.standUp();
@@ -592,7 +643,7 @@ export class LocalPlayer {
     if (Math.hypot(fwd.x, fwd.z) > 0.2) this.yaw = Math.atan2(fwd.x, fwd.z);
     this.pos.copy(p);
     this.previousPos.copy(p);
-    const center = { x: p.x, y: p.y + BODY_Y, z: p.z };
+    const center = { x: p.x, y: p.y + this.bodyY, z: p.z };
     this.body.setTranslation(center, true);
     this.body.setNextKinematicTranslation(center);
     this.state = 'getup';
@@ -767,7 +818,7 @@ export class LocalPlayer {
       const bp = rp.bodyPos || rp.pos;
       let dx = this.pos.x - bp.x, dz = this.pos.z - bp.z;
       let d = Math.hypot(dx, dz);
-      const R = CAPSULE_RADIUS * 2 + 0.04;
+      const R = this.capsuleRadius + (rp.capsuleRadius||CAPSULE_RADIUS) + 0.04;
       if (d > R + 0.08 || Math.abs(this.pos.y - rp.pos.y) > 1.2) continue;
       if (d < 1e-3) { dx = -Math.sin(this.yaw); dz = -Math.cos(this.yaw); d = 1; } // justo encima: para atrás
       const nx = dx / d, nz = dz / d;
@@ -852,7 +903,8 @@ export class LocalPlayer {
     let s = clamp(sev, 0, 3) * (self ? 0.45 : 1);
     const pvp = G.settings.desmadre || isPvpAt(this.pos.x, this.pos.z);
     // afuera de las zonas PvP los golpes de otros jugadores empujan pero no lastiman (autos y caídas sí)
-    const harmless = !pvp && (hit.src === 'remote' || (hit.src === 'prop' && by));
+    // el dueño en modo inmortal: lo empujan, pero no lo lastiman
+    const harmless = this.immortal || (!pvp && (hit.src === 'remote' || (hit.src === 'prop' && by)));
     // guardia: los golpes de frente a la cabeza, el torso y los brazos pierden casi toda la fuerza
     let blocked = false;
     if (this.guard && hit.src !== 'vehicle' && hit.src !== 'world' && part <= PART.FARM_R) {
@@ -1888,7 +1940,7 @@ export class LocalPlayer {
     } else if (st === 'ko' || st === 'dead') {
       // el controlador sigue al cuerpo tirado (la cámara lo acompaña)
       const pt = this.rag.pelvis().translation();
-      this.body.setNextKinematicTranslation({ x: pt.x, y: BODY_Y + 0.02, z: pt.z });
+      this.body.setNextKinematicTranslation({ x: pt.x, y: this.bodyY + 0.02, z: pt.z });
       this.velocity.set(0, 0);
       this.speed = 0;
       this.vy = 0;
@@ -1901,7 +1953,7 @@ export class LocalPlayer {
 
     // pose objetivo (con los brazos avanzando un paso)
     const tr = this.body.translation();
-    const base = V6.set(tr.x, tr.y - BODY_Y, tr.z);
+    const base = V6.set(tr.x, tr.y - this.bodyY, tr.z);
     if (st === 'seated' || st === 'driving') base.copy(this.pos);
     this._poseRig(base, dt);
     this.targets = this.rig.compute();
@@ -2002,7 +2054,7 @@ export class LocalPlayer {
     }
     const tr = this.body.translation();
     this.previousPos.copy(this.pos);
-    if (this.state !== 'seated' && this.state !== 'driving') this.pos.set(tr.x, tr.y - BODY_Y, tr.z);
+    if (this.state !== 'seated' && this.state !== 'driving') this.pos.set(tr.x, tr.y - this.bodyY, tr.z);
     if (this.pos.y < -15 || !Number.isFinite(this.pos.y)) { this.respawn(); return; }
     if (this.state === 'driving') return;
     if (this.physMode === 'rag') this._scanContacts();
@@ -2044,6 +2096,7 @@ export class LocalPlayer {
       for (const k of LEGS) this.rag.setPartFilter(k, legsGround ? RAG_FILTER : LEG_FILTER_UP);
     }
     // desangrándose (miembros cortados, tripas afuera): el chorro se va cortando solo en ~15-20 s
+    if (this.immortal) this.bleedRate = 0;
     if (this.bleedRate > 0 && !this.dead) {
       this.hp -= this.bleedRate * dt;
       this.bleedRate = Math.max(0, this.bleedRate - dt * 0.13);
@@ -2264,6 +2317,7 @@ export class RemotePlayer {
     this.color = data.color || '#ffffff';
     this.look = data.look || {};
     this.char = new HumanCharacter(this.look);
+    Object.assign(this,movementSize(this.char.meta));
     this.char.root.name = `remote-${this.id}`;
     G.scene.add(this.char.root);
     this.equipment = new EquipmentView(G.scene);
@@ -2280,7 +2334,7 @@ export class RemotePlayer {
     });
     // cápsula de movimiento (como la mía): mi controlador choca contra ella, así no nos atravesamos
     this.body = G.phys.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, -50, 0));
-    this.pawn = G.phys.world.createCollider(RAPIER.ColliderDesc.capsule(CAPSULE_HALF, CAPSULE_RADIUS - 0.02)
+    this.pawn = G.phys.world.createCollider(RAPIER.ColliderDesc.capsule(this.capsuleHalf, this.capsuleRadius - 0.02)
       .setCollisionGroups(groups(GR.PAWN, GR.ME)), this.body);
     G.phys.tag(this.pawn, { kind: 'pawn', ref: this });
     this.vel = new THREE.Vector3(); // velocidad (de la cápsula) para el empujón entre cuerpos
@@ -2294,8 +2348,20 @@ export class RemotePlayer {
   get standing() { const s = this.stateData?.s ?? 0; return s === 0 || s === 1 || s === 4; }
 
   setLook(look) {
+    const meta = this.char.meta;
     this.look = { ...look };
     this.char.setLook(this.look);
+    if (meta !== this.char.meta) {
+      Object.assign(this,movementSize(this.char.meta));
+      this.pawn.setShape(new RAPIER.Capsule(this.capsuleHalf,this.capsuleRadius-.02));
+      this.proxy.destroy();
+      this.proxy.meta = this.char.meta;
+      this.proxy.totalMass = this.char.meta.mass.reduce((a,b) => a+b, 0);
+      // Old snapshots belong to the previous skeleton. Rebuild the proxy when
+      // a fresh pose arrives, instead of interpolating between body sizes.
+      this.buf.length = 0;
+      this._pose.length = 0;
+    }
   }
 
   get stateName() { return CODE_STATE[this.stateData?.s ?? 0] || 'active'; }
@@ -2412,7 +2478,7 @@ export class RemotePlayer {
     if (dt > 0) this.vel.set((bp.x - bx) / dt, 0, (bp.z - bz) / dt);
     const on = this.standing;
     if (this.pawn.isEnabled() !== on) this.pawn.setEnabled(on);
-    if (on) this.body.setNextKinematicTranslation({ x: bp.x, y: this.pos.y + BODY_Y, z: bp.z });
+    if (on) this.body.setNextKinematicTranslation({ x: bp.x, y: this.pos.y + this.bodyY, z: bp.z });
     // la reacción a los golpes va sobre la pose que llega (de pie o sentado; tirado ya es física)
     this.react.update(dt);
     if (pose && (this.standing || s.s === 5)) this.react.apply(pose);

@@ -63,6 +63,7 @@ Se puede agarrar una cosa con las dos manos, agarrar a otro jugador con una mano
 - **YouTube compartido** en el cine, la rockola del bar y el autocine.
 - **Voz por proximidad** (WebRTC, se escucha según la distancia y la dirección) y **chat** con globos.
 - Birra y faso con efectos de borrachera y de estar fumado; coma alcohólico si te pasás.
+- **Personajes**: Eric, Carla y Claudia (Renderpeople), la **Galleta** (masa dorada con ojos, sonrisa y botones de chocolate) y **El Diablo**, exclusivo del dueño: con el nombre reservado SmokePyro y su clave (la valida el servidor; se cambia con la variable `OWNER_KEY`) aparece el demonio, que abre la boca al hablar, reírse y escupir fuego, y trae poderes para trollear: **K** (o el botón del medio) fuego por la boca (quema a los que agarra el chorro y deja fuego en las paredes y el piso), **N** bola de fuego, **I** invisible, **O** inmortal, **L** risa.
 
 ## Verificaciones
 
@@ -70,7 +71,9 @@ Se puede agarrar una cosa con las dos manos, agarrar a otro jugador con una mano
 npm test
 ```
 
-62 pruebas: movimiento del jugador físico (caminar, saltar, paredes, cámara), brazos con peso y piñas, golpes justos y balance (patada > piña, una piña a la cabeza no noquea, lo revoleado lastima), reacciones a los golpes, agarrar (no apaga al otro, lo arrastra, se zafa, se lo derriba con la pierna o con tirones, revoleo al soltar), jugadores que no se atraviesan ni quedan encimados, la mano que no se mete en otro cuerpo, cortes sin muerte y cadáveres que caen bien, póker, regeneración de vida, controles sin teclas pisadas, carteles tapados por paredes, vehículos, aerosol, audio, YouTube y red.
+81 pruebas: movimiento del jugador físico (caminar, saltar, paredes, cámara), brazos con peso y piñas, golpes justos y balance (patada > piña, una piña a la cabeza no noquea, lo revoleado lastima), reacciones a los golpes, agarrar (no apaga al otro, lo arrastra, se zafa, se lo derriba con la pierna o con tirones, revoleo al soltar), jugadores que no se atraviesan ni quedan encimados, la mano que no se mete en otro cuerpo, cortes sin muerte y cadáveres que caen bien, póker, regeneración de vida, controles sin teclas pisadas, carteles tapados por paredes, vehículos, aerosol, audio, YouTube y red, y los personajes (Galleta y Diablo caminan y saltan sin hundir los pies, el pecho no se estira al levantar los brazos) con los poderes del dueño (clave, invisible, fuego, bola de fuego).
+
+`npm run test:fire` levanta un servidor de prueba y cuatro clientes reales por WebSocket para el aliento, la bola de fuego, las quemaduras y el fuego que queda en el suelo.
 
 Bancos: `node --loader ./tests/loader.mjs tests/ragdoll-limits.mjs` (límites de articulaciones), `tests/grab-bench.mjs` (tiempos de derribo al agarrar) y `tests/gore-bench.mjs` (cortes y cadáveres).
 
@@ -93,7 +96,7 @@ El servidor puede desplegarse como un único Web Service de Node en Render: sirv
 - Modelos y texturas: [Poly Haven](https://polyhaven.com) (CC0).
 - Sonidos: [Kenney](https://kenney.nl) (CC0).
 - Voces de dolor (CC0): HaelDB y thebardofblasphemy (OpenGameArt), Cici Fyre (RPG Voice Starter Pack), gritos de tcrocker68, pushkin y Archeos (Freesound). Detalle en `public/assets/sfx/vo/CREDITOS.txt`.
-- Personajes: Renderpeople (modelos gratuitos).
+- Personajes: Renderpeople (modelos gratuitos). **El Diablo**: "Demon" de VidovicArts ([Sketchfab](https://sketchfab.com/3d-models/demon-9e6cba1ba85d499db050ecd5be899fe2), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)), reparado, riggeado y con mandíbula en Blender (`assets/blender/`); risas CC0 de tim-rockk (OpenGameArt, `public/assets/sfx/diablo/CREDITOS.txt`). **Galleta**: modelo propio hecho en Blender (`assets/blender/build_cookie2.py`) a partir de la hoja de personaje de Luz.
 - Árboles: [ez-tree](https://github.com/dgreenheck/ez-tree) (MIT).
 - Oclusión ambiental: [N8AO](https://github.com/N8python/n8ao) (ISC).
 - Castillo: manchas de filtración de [ambientCG](https://ambientcg.com) (CC0); sangre, hollín, moho y rajaduras generados en `assets/blender/decals.py`. Música y sonidos CC0: detalle en `public/assets/music/CREDITOS.txt` y `public/assets/sfx/castillo/CREDITOS.txt`.

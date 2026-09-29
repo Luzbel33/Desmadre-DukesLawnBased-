@@ -27,7 +27,7 @@ export class AvatarPreview {
     const rect=this.container.getBoundingClientRect();if(rect.width<1||rect.height<1)return;
     if(rect.width!==this.width||rect.height!==this.height){this.width=rect.width;this.height=rect.height;this.renderer.setSize(rect.width,rect.height);this.camera.aspect=rect.width/rect.height;this.camera.updateProjectionMatrix();}
     this.char.animate({speed:0,grounded:true},dt);this.char.update(dt);this.char.root.rotation.y=this.yaw;
-    const focus=this.distance<2?1.42:.91;this.camera.position.set(0,focus+.18,this.distance);this.camera.lookAt(0,focus,0);
+    const k=Math.max(1,(this.char.meta?.height||1.75)/1.8);const focus=(this.distance<2?1.42:.91)*k;this.camera.position.set(0,focus+.18*k,this.distance*k);this.camera.lookAt(0,focus,0);
     this.renderer.render(this.scene,this.camera);
   }
   dispose(){this.char.dispose();this.renderer.dispose();this.renderer.domElement.remove();}
