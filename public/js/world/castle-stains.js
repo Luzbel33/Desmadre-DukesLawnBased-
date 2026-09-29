@@ -124,6 +124,7 @@ export function stainCastle(castle) {
   const along = (x0, z0, x1, z1) => Math.atan2(-(z1 - z0), x1 - x0);
   // cocina: el charco bajo la mesa de carnicero, salpicaduras, manos en el marco y las pisadas hacia el comedor
   floor(S.pool, -16, -121, 2.3, 1.9, 0.4);
+  floor(S.pool, -16.42, -120.4, 0.8, 0.62, 0.9, { opacity: 0.95 }); // drip-pool: donde cae el goteo de la sábana (castle-corpse.js)
   floor(S.splat, -14.6, -122.3, 1.2, 1.2, 1.1, { opacity: 0.8 });
   B(S.splat, -15.6, F0 + 1.7, IZ0, 0, 0, 1, 1.7, 1.7);
   B(S.spray, IX0, F0 + 1.9, -120.6, 1, 0, 0, 2.1, 1.5, { flip: true });

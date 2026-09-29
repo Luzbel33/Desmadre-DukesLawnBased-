@@ -1,0 +1,14 @@
+Cadaver de la mesa de carniceria (cocina del castillo)
+=====================================================
+El modelo public/assets/props/castle/corpse_sheet.glb lo hicimos en Blender, sin bajar nada de la web:
+
+  01_pose.py     posa el modelo de Eric SOLO como molde de colision: acostado (A), sentado (B) y con el brazo derecho colgando
+  02_drape.py    simulacion de tela (Blender cloth): la sabana cae sobre el cuerpo (una corrida para A y otra para B)
+  03_texture.py  lino sucio + sangre + rugosidad + normal (numpy, sin dependencias)
+  04_export.py   GLB: sabana (morph target "sit") + antebrazo y mano de Eric (palido, sangre por vertice)
+
+Correr en orden con: blender -b --factory-startup -P <script> -- <args> (ver el encabezado de cada uno).
+Los intermedios van a work/ (o a CORPSE_WORK). En el juego lo maneja public/js/world/castle-corpse.js:
+haunt.js gira una bisagra (sheetTorso.rotation.z) y eso mezcla la forma acostada con la sentada.
+
+Credito: solo la mano y el antebrazo salen del modelo de Eric (mismo origen y licencia que public/assets/chars/eric.glb).

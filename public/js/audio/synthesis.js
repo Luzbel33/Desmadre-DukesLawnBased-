@@ -4,7 +4,7 @@
 // un seno sostenido suena a "señal de radio".
 const TAU=Math.PI*2;
 const GAIN={engine:3,blades:1.4,water:1.6};
-const DURATIONS={gulp:.32,cough:.9,pain:.42,burp:.7,'step-grass':.18,'step-hard':.16,jump:.2,land:.28,hit:.22,swing:.24,pickup:.18,throw:.3,drink:1.0,smoke:.8,spray:2,engine:2,blades:2,horn:.55,wind:6,birds:1.6,water:4,ui:.18,munch:.5};
+const DURATIONS={gulp:.32,cough:.9,pain:.42,burp:.7,'step-grass':.18,'step-hard':.16,jump:.2,land:.28,hit:.22,swing:.24,pickup:.18,throw:.3,drink:1.0,smoke:.8,spray:2,engine:2,blades:2,horn:.55,wind:6,birds:1.6,water:4,ui:.18,munch:.5,drip:.42};
 
 // Filtro de dos polos (RBJ): pasabanda de ganancia 0 dB en el pico, o pasabajos.
 function biquad(kind,f,q,sr){
@@ -35,6 +35,7 @@ export function synthesize(name, sampleRate=22050, seed=1) {
     // burbujas: gotitas cortas con el tono subiendo (resonancia de Minnaert), en momentos al azar
     st.bub=[];let t=0;while(t<duration){t+=.012+rnd()*.07;st.bub.push({t,f:520+rnd()*1100,d:.012+rnd()*.03,a:.018+rnd()*.05});}
   }
+  if(name==='drip'){st.f0=480+rnd()*420;st.dec=rnd()*10;}
   if(name==='blades'){st.bp=biquad('bp',430,1.2,sr);st.hiss=biquad('bp',1900,1.4,sr);st.lp=biquad('lp',180,.7,sr);}
   if(name==='engine'){
     // monocilíndrico: explosiones a ~24 Hz (48 en 2 s, así el loop cierra) que excitan el escape
@@ -101,6 +102,8 @@ export function synthesize(name, sampleRate=22050, seed=1) {
         }
         break;
       }
+      // gota que cae en un charco: "plip" con el tono subiendo (la burbuja que se cierra) y un chasquido corto
+      case 'drip': {const f=st.f0*(1+1.5*(1-Math.exp(-t*60)));phase+=TAU*f/sampleRate;v=.6*Math.sin(phase)+.14*Math.sin(2*phase)*Math.exp(-t*40)+.22*n*Math.exp(-t*220);env=Math.min(1,t/.002)*Math.exp(-t*(15+st.dec));break;}
       case 'ui': v=.24*Math.sin(TAU*(u<.5?660:880)*t);env=Math.sin(Math.PI*u)**2;break;
       case 'gulp': {const f=150-180*u;phase+=TAU*f/sampleRate;v=.55*Math.sin(phase)+.25*lo;env=Math.exp(-(((u-.3)/.2)**2));break;}
       case 'cough': {const k=Math.floor(u*3),lu=(u*3)%1;v=.55*lo+.25*n+.2*Math.sin(TAU*(180-60*lu)*t);env=(k<3?1:0)*Math.exp(-lu*6)*(1-k*.25);break;}

@@ -7,6 +7,8 @@ import { whenAsset, assetModel, instanceModel } from '../game/assets.js';
 import { Builder, getMat } from './builder.js';
 import { CASTLE } from '../shared/mapdata.js';
 import { stainCastle } from './castle-stains.js';
+import { dressCastle } from './castle-dress.js';
+import { Corpse } from './castle-corpse.js';
 
 const F0 = CASTLE.keep.floor;
 const HAS_DOM = typeof document !== 'undefined';
@@ -187,6 +189,7 @@ export class Decor {
     this._crows();
     this._deadTrees();
     this._models();
+    dressCastle(this); // muebles, vajilla, libros, alfombras y demás (castle-dress.js)
   }
 
   // ---------------------------------------------------------------- modelos repetidos (instanciados cuando llegan)
@@ -452,7 +455,7 @@ export class Decor {
     const spots = [];
     const r = this.r;
     // montones en nichos de la cripta y del cuarto secreto
-    for (const [x, y, z, n] of [[8.85, 0.12, -110, 9], [8.85, 0.12, -121.5, 7], [23.3, 0.12, -114.5, 6], [9.5, F0 + 0.1, -125.2, 5], [18.2, F0 + 0.95, -125.2, 3]]) {
+    for (const [x, y, z, n] of [[8.85, 0.12, -110, 9], [8.85, 0.12, -121.5, 7], [23.3, 0.12, -114.5, 6], [9.5, F0 + 0.1, -125.2, 5], [13.9, F0 + 1.14, -125.05, 3]]) {
       for (let i = 0; i < n; i++) spots.push([x + (r() - 0.5) * 0.5, y + (i > 4 ? 0.17 : 0) + r() * 0.03, z + (r() - 0.5) * 0.9, (r() - 0.5) * 1.5]);
     }
     for (const [x, z] of [[33, -109.2], [29.7, -125.5], [42.3, -113]]) spots.push([x, 0.1, z, r() * 3]);
@@ -520,21 +523,10 @@ export class Decor {
     b.box('black', -23.28, F0 + 0.95, -123.2, 0.04, 1.7, 2.4, { collide: false, noShadow: true });
     b.box('woodDark', -16, F0 + 0.85, -121, 2.4, 0.12, 1.1);
     for (const [dx, dz] of [[-1.1, -0.45], [1.1, -0.45], [-1.1, 0.45], [1.1, 0.45]]) b.box('woodDark', -16 + dx, F0 + 0.4, -121 + dz, 0.12, 0.8, 0.12, { collide: false });
-    // algo tapado con una sábana... (las piernas quietas; el torso tiene bisagra en la cadera: se sienta)
-    b.box('linen', -15.55, F0 + 1.0, -121, 1.0, 0.2, 0.7, { collide: false });
-    const torso = new THREE.Group();
-    torso.position.set(-16.05, F0 + 0.92, -121);
-    const tb = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.24, 0.72), getMat('linen'));
-    tb.position.set(-0.47, 0.1, 0);
-    const hd = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 8), getMat('linen'));
-    hd.scale.set(1, 0.8, 1.1);
-    hd.position.set(-1.05, 0.14, 0);
-    const stain = new THREE.Mesh(new THREE.CircleGeometry(0.16, 10), new THREE.MeshStandardMaterial({ color: 0x3a0406, roughness: 0.6 }));
-    stain.rotation.x = -Math.PI / 2;
-    stain.position.set(-0.6, 0.225, 0.05);
-    for (const o of [tb, hd, stain]) { o.castShadow = true; torso.add(o); }
-    this.scene.add(torso);
-    this.models.sheetTorso = torso;
+    // el cadáver de la mesa: un cuerpo de verdad (castle-corpse.js) que se incorpora cuando haunt.js gira la bisagra
+    const hinge = new THREE.Object3D();
+    this.models.sheetTorso = hinge;
+    this.corpse = new Corpse(this, hinge);
     this.c.anchors.sheet = new THREE.Vector3(-16, F0 + 1.05, -121);
     for (const y of [1.2, 2.0]) b.box('woodDark', -23.5, F0 + y, -117.5, 0.4, 0.06, 2.4, { collide: false });
     // comedor: mesa larga con mantel, platos y copas; chimenea
@@ -543,7 +535,6 @@ export class Decor {
     b.box('linen', -16, F0 + 0.84, -109.5, 7.3, 0.02, 1.62, { collide: false });
     for (let i = 0; i < 6; i++) for (const s of [-1, 1]) {
       b.cylinder('white', -18.75 + i * 1.1, F0 + 0.86, -109.5 + s * 0.45, 0.13, 0.11, 0.02, 14, {});
-      b.cylinder('gold', -18.75 + i * 1.1 + 0.2, F0 + 0.95, -109.5 + s * 0.3, 0.035, 0.02, 0.18, 8, {});
     }
     this._fireplace(b, -23.3, -109.5, Math.PI / 2);
     this._fireplace(b, 23.3, -111.5, -Math.PI / 2);
@@ -1063,6 +1054,7 @@ export class Decor {
 
   update(t, dt) {
     for (const a of this.anim) a(t, dt);
+    this.corpse?.update(dt);
     // ratas: van y vienen a lo largo de la pared
     for (const r of this.rats || []) {
       r.t += dt;

@@ -6,3 +6,4 @@ QA/
 .env.*
 !.env.example
 *.log
+assets/blender/corpse/work/
