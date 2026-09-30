@@ -105,6 +105,7 @@ export const CASTLE_MANIFEST = {
   c_skel_hang: { url: P + 'art/skeleton_hang.glb', scale: 1, center: false },
   c_gibbet: { url: P + 'art/gibbet.glb', scale: 1, center: false },
   c_gallows: { url: P + 'art/gallows.glb', scale: 1, center: false },
+  c_throne: { url: P + 'art/throne.glb', scale: 1, center: false },
   c_logbench: { url: P + 'castle/log_bench.glb', scale: 1 },
   c_firewood: { url: P + 'castle/firewood.glb', scale: 1 },
   c_firepit: { url: P + 'castle/firepit.glb', scale: 1 },

@@ -566,18 +566,27 @@ export class ClubGame {
           // abajo: el nombre (sangre) con llamas que suben de las letras
           vec2 nu = vec2(vUv.x, vUv.y / 0.3);
           if (vUv.y <= 0.3) {
-            vec4 nm = texture2D(tName, vec2(nu.x, 1.0 - nu.y));
+            vec4 nm = texture2D(tName, nu); // la textura del canvas ya viene derecha (flipY)
             col = vec3(0.03, 0.0, 0.0);
             float fl = 0.0;
             for (int k = 1; k <= 6; k++) {
               float o = float(k) * 0.035;
-              float a = texture2D(tName, vec2(nu.x + sin(uT * 3.0 + nu.y * 20.0) * 0.004, 1.0 - (nu.y - o))).a;
+              float a = texture2D(tName, vec2(nu.x + sin(uT * 3.0 + nu.y * 20.0) * 0.004, nu.y - o)).a; // la letra de abajo
               fl += a * (1.0 - float(k) / 7.0);
             }
             float noise = n2(vec2(nu.x * 30.0, nu.y * 8.0 - uT * 4.0)) * n2(vec2(nu.x * 11.0 + 3.0, nu.y * 5.0 - uT * 2.3));
             fl = clamp(fl * noise * 2.4, 0.0, 1.0);
+            // el fuego sale de ARRIBA de las letras (no las tapa) y alrededor queda una sombra que las recorta
+            fl *= 1.0 - smoothstep(0.05, 0.6, nm.a);
+            float halo = 0.0;
+            for (int k = 0; k < 8; k++) {
+              float an = float(k) * 0.785;
+              halo += texture2D(tName, vec2(nu.x + cos(an) * 0.006, nu.y + sin(an) * 0.03)).a;
+            }
+            halo = clamp(halo / 8.0 * 1.6, 0.0, 1.0);
             col += mix(vec3(1.0, 0.25, 0.02), vec3(1.0, 0.85, 0.3), fl) * fl * 1.8;
-            col = mix(col, nm.rgb, nm.a);
+            col *= 1.0 - halo * 0.75;
+            col = mix(col, nm.rgb * 1.35, nm.a);
           }
           gl_FragColor = vec4(col, 1.0);
         }`,
@@ -617,8 +626,8 @@ export class ClubGame {
     g.restore();
     // letras de sangre: oscuro abajo, brillante arriba, borde negro, y chorreado
     const grd = g.createLinearGradient(0, y - px / 2, 0, y + px / 2);
-    grd.addColorStop(0, '#ff2a2a'); grd.addColorStop(0.5, '#b00008'); grd.addColorStop(1, '#4a0003');
-    g.lineWidth = 10; g.strokeStyle = '#1a0000'; g.strokeText(text, W / 2, y);
+    grd.addColorStop(0, '#ff7a4a'); grd.addColorStop(0.35, '#ff1a10'); grd.addColorStop(0.7, '#b00008'); grd.addColorStop(1, '#5a0004');
+    g.lineJoin = 'round'; g.lineWidth = 16; g.strokeStyle = '#0a0000'; g.strokeText(text, W / 2, y);
     g.fillStyle = grd; g.fillText(text, W / 2, y);
     const tw = g.measureText(text).width;
     g.fillStyle = '#8a0006';

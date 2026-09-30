@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { G, clamp, rng } from '../core/G.js';
 import { Builder, getMat, defineMat } from './builder.js';
 import { CLUB } from '../shared/mapdata.js';
+import { whenAsset, assetModel } from '../game/assets.js';
 
 const HAS_DOM = typeof document !== 'undefined';
 const C = CLUB, H = C.hall;
@@ -334,7 +335,7 @@ export class Club {
     for (const x of [-12, 0, 12]) this.deco('iron', x, h - 1.1, (H.z0 + H.z1) / 2, 0.18, 0.18, H.z1 - H.z0 - 1);
     for (const [x, z] of [[-12, -452], [12, -452], [-12, -470], [12, -470]]) this.box('bunkerConcrete', x, h / 2, z, 0.8, h, 0.8);
     // zócalo de neón violeta alrededor
-    for (const [x, z, sx, sz] of [[0, H.z1 + 0.08, H.x1 - H.x0, 0.05], [H.x0 + 0.08, (H.z0 + H.z1) / 2, 0.05, H.z1 - H.z0], [H.x1 - 0.08, (H.z0 + H.z1) / 2, 0.05, H.z1 - H.z0]]) this.deco('neonPurple', x, 0.12, z, sx, 0.05, sz);
+    for (const [x, z, sx, sz] of [[0, H.z1 - 0.08, H.x1 - H.x0, 0.05], [H.x0 + 0.08, (H.z0 + H.z1) / 2, 0.05, H.z1 - H.z0], [H.x1 - 0.08, (H.z0 + H.z1) / 2, 0.05, H.z1 - H.z0]]) this.deco('neonPurple', x, 0.12, z, sx, 0.05, sz);
     // luces de ambiente: bañadores rojos en los muros y violeta en el techo (laten con la música)
     const wash = [[-22, 3, -450, 0xff1030], [-22, 3, -466, 0x8020ff], [22, 3, -458, 0xff1030], [22, 3, -472, 0x8020ff], [0, 6.2, -448, 0xff2060], [-10, 6.2, -476, 0x3040ff], [10, 6.2, -476, 0xff1030]];
     for (const [x, y, z, c] of wash) this.party.push(this.light(x, y, z, c, 14, 18, { priority: 1.6 }));
@@ -444,21 +445,9 @@ export class Club {
     const fx = Math.sin(T.yaw), fz = Math.cos(T.yaw);
     const g = new THREE.Group();
     g.position.set(x, up, z); g.rotation.y = T.yaw;
-    const M = (key) => getMat(key);
-    const add = (geo, key, px, py, pz, rx = 0, ry = 0, rz = 0) => { const m = new THREE.Mesh(geo, M(key)); m.position.set(px, py, pz); m.rotation.set(rx, ry, rz); m.castShadow = true; m.receiveShadow = true; g.add(m); return m; };
-    add(new THREE.BoxGeometry(1.2, 0.5, 1.0), 'blackWood', 0, 0.25, 0);
-    add(new THREE.BoxGeometry(1.0, 0.1, 0.85), 'velvet', 0, 0.52, 0.05);
-    add(new THREE.BoxGeometry(1.25, 2.6, 0.18), 'blackWood', 0, 1.3, -0.45);
-    add(new THREE.BoxGeometry(0.9, 1.9, 0.05), 'velvet', 0, 1.4, -0.34);
-    for (const s of [-1, 1]) {
-      add(new THREE.BoxGeometry(0.16, 0.45, 0.95), 'blackWood', s * 0.62, 0.72, 0.02);
-      add(new THREE.SphereGeometry(0.1, 12, 10), 'gold', s * 0.62, 0.98, 0.45);
-      // cuernos retorcidos arriba del respaldo
-      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.9, 10, 1), M('bone'));
-      horn.position.set(s * 0.52, 2.95, -0.45); horn.rotation.set(-0.2, 0, -s * 0.55);
-      horn.castShadow = true; g.add(horn);
-    }
-    add(new THREE.TorusGeometry(0.28, 0.035, 8, 24), 'gold', 0, 2.2, -0.35);
+    // el trono de verdad (assets/blender/artpass/throne.py): respaldo ojival capitoneado, pináculos, cuernos, pentagrama,
+    // calaveras en los apoyabrazos y patas con garras
+    whenAsset('c_throne', () => { const m = assetModel('c_throne'); if (m) { m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); g.add(m); } });
     this.group.add(g);
     this.throneModel = g;
     // collider del trono (el asiento se usa con X; el cuerpo va por el asiento)
@@ -475,7 +464,8 @@ export class Club {
     }
     this.world.embers?.add(x, up + 1, z, 50, { radius: 2.2, height: 5, strength: 0.8, speed: 0.4 });
     // la pantalla de atrás (cámara en vivo del que se sienta): la llena game/club.js
-    const back = V1.set(x - fx * 1.25, up + 3.6, z - fz * 1.25);
+    // más alta y más atrás que el trono (que llega a ~3.3 m): así el nombre de abajo no queda tapado por el respaldo
+    const back = V1.set(x - fx * 1.7, up + 4.55, z - fz * 1.7);
     this.anchors.throneScreen = back.clone();
     this.anchors.throneCam = new THREE.Vector3(x + fx * 2.6, up + 1.45, z + fz * 2.6);
     this.anchors.throneLook = new THREE.Vector3(x, up + 1.2, z);
@@ -485,15 +475,15 @@ export class Club {
   _lounge() {
     // sillones de terciopelo contra el muro sur (a los dos lados de la entrada) con mesas ratonas
     for (const cx of [-15, -8.5, 8.5]) {
-      const z = H.z0 - 0.75;
+      const z = H.z1 - 0.75; // muro sur = H.z1 (el de la puerta)
       this.box('velvet', cx, 0.24, z, 3.4, 0.48, 0.9);
       this.box('velvet', cx, 0.75, z + 0.35, 3.4, 0.6, 0.2);
       for (let k = -1; k <= 1; k++) this.seat(cx + k * 1.05, 0.5, z - 0.05, Math.PI);
       this.box('blackTile', cx, 0.22, z - 1.25, 1.6, 0.44, 0.8);
       this.deco('chrome', cx, 0.45, z - 1.25, 1.3, 0.01, 0.55);
     }
-    this.anchors.drugTable = new THREE.Vector3(-8.5, 0.45, H.z0 - 2.0);
-    this.light(-11.8, 3, H.z0 - 2, 0xff2060, 3, 8, { priority: 1.3 });
+    this.anchors.drugTable = new THREE.Vector3(-8.5, 0.45, H.z1 - 2.0);
+    this.light(-11.8, 3, H.z1 - 2, 0xff2060, 3, 8, { priority: 1.3 });
   }
 
   _dungeon() {
@@ -664,9 +654,10 @@ export class Club {
 
   _signs() {
     const hall = neonSign('EL BÚNKER', { px: 150, color: '#ff1a3a' });
-    this.mesh(new THREE.PlaneGeometry(4.4, 1.1), hall, 0, 6.95, H.z1 + 0.36);
+    // norte (H.z0): arriba de la pantalla del escenario; sur (H.z1): arriba de la puerta, mirando para adentro
+    this.mesh(new THREE.PlaneGeometry(4.4, 1.1), hall, 0, 6.95, H.z0 + 0.45);
     const hell = neonSign('Bienvenidos al infierno', { font: 'Metal Mania', px: 84, color: '#b040ff' });
-    this.mesh(new THREE.PlaneGeometry(7, 1.75), hell, 0, 3.7, H.z0 - 0.26, { yaw: Math.PI });
+    this.mesh(new THREE.PlaneGeometry(7, 1.75), hell, 0, 4.5, H.z1 - 0.26, { yaw: Math.PI });
     const bar = neonSign('BARRA LIBRE*', { font: 'Metal Mania', px: 100, color: '#ff3080' });
     this.mesh(new THREE.PlaneGeometry(5, 1.25), bar, H.x0 + 0.2, 4.6, -460, { yaw: Math.PI / 2 });
     const fine = neonSign('*se paga con el alma', { font: 'Rubik', px: 44, color: '#ff80b0', h: 128 });
@@ -678,7 +669,7 @@ export class Club {
     const dj = neonSign('DJ', { font: 'Bangers', px: 150, color: '#20d8ff', w: 256 });
     this.mesh(new THREE.PlaneGeometry(0.9, 0.9), dj, -7.2, 1.45, -471.68);
     const pent = neonSign('⛧', { font: 'serif', px: 220, color: '#ff1030', w: 256, h: 256 });
-    this.mesh(new THREE.PlaneGeometry(1.6, 1.6), pent, 0, 5.9, H.z0 - 0.26, { yaw: Math.PI });
+    this.mesh(new THREE.PlaneGeometry(1.6, 1.6), pent, 0, 6.3, H.z1 - 0.26, { yaw: Math.PI });
   }
 
   _smoke() {
@@ -749,7 +740,7 @@ export class Club {
         let tt = 1e9, n = 0;
         const tx = d.x > 0 ? (H.x1 - 0.02 - p.x) / d.x : (H.x0 + 0.02 - p.x) / d.x;
         const ty = d.y > 0 ? (H.h - 0.02 - p.y) / d.y : (0.06 - p.y) / d.y;
-        const tz = d.z > 0 ? (H.z0 - 0.02 - p.z) / d.z : (H.z1 + 0.02 - p.z) / d.z;
+        const tz = d.z > 0 ? (H.z1 - 0.02 - p.z) / d.z : (H.z0 + 0.02 - p.z) / d.z; // +Z va al sur (H.z1)
         if (tx < tt) { tt = tx; n = 0; }
         if (ty < tt) { tt = ty; n = 1; }
         if (tz < tt) { tt = tz; n = 2; }
