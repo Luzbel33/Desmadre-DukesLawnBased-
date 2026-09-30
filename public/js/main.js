@@ -16,6 +16,7 @@ import { VehicleManager } from './game/entities.js';
 import { PropManager, defOf } from './game/props.js';
 import { preloadAssets, registerManifest } from './game/assets.js';
 import { Haunt } from './game/haunt.js';
+import { ClubGame } from './game/club.js';
 import { pbrReady } from './world/builder.js';
 
 // Que no se vea nada provisorio: compila todos los shaders de la escena (también los de los fantasmas, que arrancan
@@ -452,6 +453,13 @@ function closeChat(lock = true) {
 
 function sendChat() {
   const input = $('chat-input'); const text = input.value.trim();
+  // la contraseña del Búnker se le dice al portero, no a toda la sala
+  if (text && state.local && G.club?.nearDoorman(state.local.pos) && text.length < 30 && !text.startsWith('/')) {
+    ownBubble(text);
+    G.club.tryPassword(text);
+    closeChat(true);
+    return;
+  }
   if (text) {
     state.net.send({ t: 'chat', m: text });
     if (!text.startsWith('/')) {
@@ -462,8 +470,25 @@ function sendChat() {
   closeChat(true);
 }
 
+// Ir a otro lado de una (la tumba, el ritual): baja del vehículo o del asiento y mira para donde toca
+function teleportLocal(pos, yaw) {
+  const L = state.local;
+  if (!L) return;
+  if (L.vehicle) state.vehicles?.exitCurrent();
+  if (L.seat) { if (L.seat.poker) G.poker?.leave(); L.standUp(); }
+  L.teleport(pos, yaw);
+  state.viewYaw = yaw; state.viewPitch = 0;
+}
+// Fundido a negro: cb se llama con la pantalla negra y después vuelve (ms: cuánto queda negro)
+function fadeScreen(on, cb = null, ms = 450) {
+  const el = $('fade');
+  if (!el) { cb?.(); return; }
+  el.classList.add('on');
+  setTimeout(() => { cb?.(); setTimeout(() => el.classList.remove('on'), ms); }, 420);
+}
+
 function openPause() {
-  if (!G.inGame || ['chat', 'media', 'palette', 'menu', 'activities', 'poker'].includes(state.mode)) return;
+  if (!G.inGame || ['chat', 'media', 'palette', 'menu', 'activities', 'poker', 'club'].includes(state.mode)) return;
   setMode('pause');
 }
 
@@ -479,6 +504,7 @@ function nearestWorldInteract() {
   if (!state.local) return null;
   let best = null;
   for (const it of INTERACT) {
+    if (it.when && !it.when()) continue; // puntos que aparecen solo a veces (el ritual del Diablo)
     const d = Math.hypot(state.local.pos.x - it.p[0], state.local.pos.y + 1 - it.p[1], state.local.pos.z - it.p[2]);
     if (d <= it.r && (!best || d < best.dist)) best = { kind: 'world', item: it, dist: d };
   }
@@ -599,6 +625,7 @@ function interact() {
     }
     if (it.k === 'football') { state.net.send({ t: 'fbctl', a: 'start' }); G.sfx?.trigger('ui-ok'); return; }
     if (it.k === 'haunt') { G.haunt?.use(it); return; }
+    if (it.k === 'club') { G.club?.use(it); return; }
   }
 }
 
@@ -846,6 +873,9 @@ function handleEvent(m) {
       break;
     case 'onfire': // otro se prendió fuego
       G.owner?.onFire(m);
+      break;
+    case 'club': // el Búnker: la tumba, el ascensor, quién tiene la clave
+      G.club?.remote(m);
       break;
     case 'mv': // barrida / dive de otro (la pose ya llega con su cuerpo; acá el ruido)
       if (rp) moveSound(m.m, rp.pos);
@@ -1230,6 +1260,18 @@ function setupUIEvents() {
     ownerUI();
   });
   $('owner-ok').addEventListener('click', verifyOwnerKey);
+  // el Búnker: el portero y el ritual del pentagrama
+  const passOk = () => { const v = $('bunker-pass').value; if (!v.trim()) return; const ok = G.club?.tryPassword(v); ownBubble(v); if (ok) G.club?.closePassword(); else { $('bunker-err').textContent = 'El portero te miró mal.'; $('bunker-pass').select(); } };
+  $('bunker-ok').addEventListener('click', passOk);
+  $('bunker-cancel').addEventListener('click', () => G.club?.closePassword());
+  $('bunker-pass').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); passOk(); }
+    else if (e.key === 'Escape') { e.preventDefault(); state.escT = performance.now(); G.club?.closePassword(); }
+  });
+  $('ritual-all').addEventListener('click', () => G.club?.confirmRitual('all'));
+  $('ritual-me').addEventListener('click', () => G.club?.confirmRitual('me'));
+  $('ritual-some').addEventListener('click', () => G.club?.confirmRitual('some'));
+  $('ritual-cancel').addEventListener('click', () => G.club?.closeRitual());
   $('owner-cancel').addEventListener('click', closeOwnerModal);
   $('owner-key').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); verifyOwnerKey(); }
@@ -1301,6 +1343,7 @@ function setupUIEvents() {
       if (e.code === 'KeyV') { G.sfx?.unlock(); G.voice?.setPTT(true); }
     }
     if (state.mode === 'activities' && (e.key === 'Escape' || e.code === 'KeyJ')) { e.preventDefault(); closeOverlayToGame(e.key === 'Escape'); return; }
+    if (state.mode === 'club' && e.key === 'Escape') { e.preventDefault(); state.escT = performance.now(); if (state.clubUI === 'ritual') G.club?.closeRitual(); else G.club?.closePassword(); return; }
     if (state.mode === 'media' || state.mode === 'palette') {
       if (e.key === 'Escape' || (state.mode === 'palette' && e.code === 'KeyR')) { e.preventDefault(); closeOverlayToGame(e.key === 'Escape'); }
     } else if (state.mode === 'pause' && e.key === 'Escape' && !escJustClosed()) { e.preventDefault(); state.escT = performance.now(); resumeGame(); }
@@ -1648,6 +1691,16 @@ async function boot() {
     // castillo del terror: sustos, apariciones y cosas para usar; la tormenta y el castillo suenan por el motor
     G.hudMessage = (title, text) => bigMessage(title, text, 2600);
     try { G.haunt = new Haunt(G.world, { onScare: (k) => { state.shake = Math.max(state.shake || 0, 0.9 * k); } }); } catch (e) { console.warn('castillo: sustos', e); }
+    try {
+      G.club = new ClubGame({
+        world: G.world, getLocal: () => state.local, getNet: () => state.net, isOwner: () => !!state.isOwner,
+        notify: (h) => G.hud?.notify(h, 3500), big: (t, s, ms) => bigMessage(t, s, ms),
+        teleport: teleportLocal, fade: fadeScreen, shake: (k) => { state.shake = Math.max(state.shake || 0, k); },
+        puff: (p, a) => G.fx?.puff(p, new THREE.Vector3(0, 1, 0), a, 0x9a9090),
+        openUI: (name) => { setMode('club'); state.clubUI = name; G.input.unlock(); },
+        closeUI: () => { state.clubUI = null; if (state.mode === 'club') closeOverlayToGame(); },
+      });
+    } catch (e) { console.warn('búnker', e); }
     G.sfx.ambientHook = (dt, sfx) => {
       const st = G.world?.storm;
       if (st) { sfx.birdMute = st.s; st.ambience(dt, sfx); }
@@ -1719,7 +1772,7 @@ async function boot() {
         else updateCamera(dt);
         G.poker?.update(G.camera, dt);
         updateNameTags(); updatePrompt(); updateHud(dt); updatePost();
-        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.owner?.update(dt);
+        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.club?.update(dt); G.owner?.update(dt);
         { const hide = (G.world.storm?.indoor || 0) > 0.95; for (const m of G.grass.meshes) m.visible = !hide; }
         G.fx.update(dt); G.blood.update(dt); G.football?.update(dt); G.gore?.update(dt); state.graffiti?.flush();
         G.bag?.update(dt);

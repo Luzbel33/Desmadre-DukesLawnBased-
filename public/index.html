@@ -84,6 +84,32 @@
   </div>
   <div id="owner-badges" class="hidden"></div>
 
+  <!-- El Búnker: el portero pide la contraseña -->
+  <div id="bunker-modal" class="hidden">
+    <div class="owner-card bunker-card">
+      <h2>🚪 El Portero</h2>
+      <p>—¿La contraseña? Y no me hagas perder el tiempo.</p>
+      <input id="bunker-pass" type="text" maxlength="30" autocomplete="off" spellcheck="false" placeholder="Contraseña">
+      <p id="bunker-err" class="err"></p>
+      <div class="owner-row"><button id="bunker-cancel" type="button">Irme</button><button id="bunker-ok" type="button" class="big">DECIRLA</button></div>
+    </div>
+  </div>
+  <!-- El ritual del pentagrama (solo el Diablo) -->
+  <div id="ritual-modal" class="hidden">
+    <div class="owner-card ritual-card">
+      <h2>⛧ Ritual</h2>
+      <p>¿A quién te llevás al Búnker? Solo pueden ir los que están parados en el pentagrama.</p>
+      <div id="ritual-list"></div>
+      <div class="owner-row wrap">
+        <button id="ritual-cancel" type="button">Cancelar</button>
+        <button id="ritual-me" type="button">Solo yo</button>
+        <button id="ritual-some" type="button">Los marcados</button>
+        <button id="ritual-all" type="button" class="big">TODOS</button>
+      </div>
+    </div>
+  </div>
+  <div id="fade"></div>
+
   <!-- Menú de inicio -->
   <div id="menu" class="hidden">
     <div class="menu-card lobby-card">

@@ -79,6 +79,8 @@ export class Storm {
     this.flashRaw = 0;
     this.lastStrike = null;
     this.indoorAt = null; // (x, y, z) => { indoor, roofed }: lo pone el castillo
+    this.undergroundAt = null; // (x, z) => 0..1: el Búnker (sin sol, sin luna, sin lluvia, sin truenos)
+    this.u = 0;
     this.onStrike = null; // (strike) => void: el castillo ilumina ventanas, los sustos aprovechan
     this.base = {
       fog: world.scene.fog.color.clone(), fogD: world.scene.fog.density,
@@ -501,8 +503,12 @@ export class Storm {
     const t = G.time;
     const cam = camera.position;
     // factor de tormenta en la cámara (suavizado: al teletransportarse no hay salto)
-    const target = stormAt(cam.x, cam.z);
+    // bajo tierra (el Búnker): el cambio es de golpe (se llega por la escalera o el ritual, entre humo)
+    this.u = this.undergroundAt ? this.undergroundAt(cam.x, cam.z) : 0;
+    const U = this.u;
+    const target = U ? 0 : stormAt(cam.x, cam.z);
     this.s += (target - this.s) * Math.min(1, dt * 1.8);
+    if (U) this.s = 0;
     const s = this.s;
     const io = this.indoorAt ? this.indoorAt(cam.x, cam.y, cam.z) : null;
     const tin = io ? io.indoor : 0, troof = io ? io.roofed : 0;
@@ -523,7 +529,7 @@ export class Storm {
       // trueno: una sola vez por relámpago (si pasó hace poco; al entrar no suenan los viejos)
       if (dtS >= st.delay && dtS < st.delay + 1.5 && !this._played.has(k)) {
         this._played.add(k);
-        this._thunder(st, 0.3 + 0.7 * s);
+        if (!U) this._thunder(st, 0.3 + 0.7 * s);
       }
     }
     if (this._played.size > 40) for (const k of this._played) if (k < k0 - 30) this._played.delete(k);
@@ -556,6 +562,14 @@ export class Storm {
     w.sun.shadow.autoUpdate = s < 0.9;
     w.sun.color.copy(B.sunColor).lerp(Nn.sunColor, s);
     this.scene.environmentIntensity = lerp(B.env, Nn.env, s) * (1 - this.indoor * 0.6 * s);
+    if (U) {
+      // bajo tierra: solo las luces del club (el cielo, el sol y la luna no llegan) y una bruma de boliche
+      w.sun.intensity = 0;
+      if (w.hemi) { w.hemi.intensity = 0.06; w.hemi.color.setRGB(0.5, 0.3, 0.6); w.hemi.groundColor.setRGB(0.15, 0.05, 0.1); }
+      this.scene.environmentIntensity = 0.04;
+      fog.color.setRGB(0.05, 0.02, 0.06);
+      fog.density = 0.012;
+    }
     // una sola luz direccional con sombra: la luna fría y quieta; el relámpago la enciende (el cielo marca de dónde viene)
     const ls = this.lastStrike;
     if (ls && ls.to) {
@@ -570,7 +584,7 @@ export class Storm {
     ML.position.set(mcx + MOON[0], MOON[1], mcz + MOON[2]);
     ML.target.position.set(mcx, 0, mcz);
     ML.target.updateMatrixWorld();
-    ML.intensity = fin * 5.5 + s * (0.5 + this.indoor * 1.4);
+    ML.intensity = U ? 0 : fin * 5.5 + s * (0.5 + this.indoor * 1.4);
     if (ML.castShadow && s > 0.02) {
       this.moonT += dt;
       if (this.moonT > 0.25 || Math.hypot(mcx - this.moonC.x, mcz - this.moonC.y) > 3) {

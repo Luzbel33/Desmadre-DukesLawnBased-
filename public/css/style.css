@@ -205,6 +205,18 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; border-radius: 5
 #act-list .t { font-weight: 700; font-size: 14px; }
 #act-list .w { font-size: 12px; color: var(--accent); }
 #act-list .h { font-size: 12px; color: var(--dim); line-height: 1.35; }
+/* El Búnker: portero, ritual y fundido */
+#bunker-modal, #ritual-modal { position: fixed; inset: 0; z-index: 12; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.55); }
+#bunker-modal.hidden, #ritual-modal.hidden { display: none; }
+.bunker-card { border-color: #ff2a3a; box-shadow: 0 0 40px rgba(255, 30, 50, 0.35); }
+.ritual-card { border-color: #ff5a10; box-shadow: 0 0 50px rgba(255, 70, 10, 0.45); }
+.ritual-card h2, .bunker-card h2 { font-family: 'Metal Mania', var(--title); color: #ff3a3a; }
+#ritual-list { display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow-y: auto; margin: 10px 0; text-align: left; }
+.owner-row.wrap { flex-wrap: wrap; }
+#fade { position: fixed; inset: 0; z-index: 20; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.4s; }
+#fade.on { opacity: 1; }
+.tag3d.npc .name { background: rgba(120, 10, 20, 0.85); }
+
 /* menú circular de gestos */
 #radial { position: fixed; left: 50%; top: 50%; width: 0; height: 0; z-index: 6; pointer-events: none; }
 #radial .radial-disc { position: absolute; left: -205px; top: -205px; width: 410px; height: 410px; border-radius: 50%;

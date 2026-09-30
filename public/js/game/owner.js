@@ -112,6 +112,7 @@ export class OwnerPowers {
 
   // ---------------------------------------------------------------- lo que manda el servidor de otros dueños
   onPow(m) {
+    if (m.a === 'ritual') { G.club?.onRitual(m); return; } // el pentagrama: lo aprobó el servidor
     if(m.a==='patch') {
       const p=fireVector(m.p),n=fireVector(m.n);
       if(p&&n)this.patches.add(new THREE.Vector3(...p),new THREE.Vector3(...n),clamp(+m.life||F.patchSeconds,0,F.patchSeconds),m.id);

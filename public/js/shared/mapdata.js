@@ -226,7 +226,7 @@ export const SCREENS = [
   },
   {
     // arriba del escenario del Búnker: si pasa algo acá, la música del club se calla (no se pisan)
-    id: 'bunker', name: 'Pantalla del Búnker', c: [0, 4.75, -477.72], yaw: 0, w: 9.6, h: 5.4,
+    id: 'bunker', name: 'Pantalla del Búnker', c: [0, 4.2, -477.6], yaw: 0, w: 8, h: 4.5,
     zone: 'bunker', hearFull: 30, hearMax: 48,
   },
 ];
@@ -348,7 +348,7 @@ export const INTERACT = [
   { id: 'parrilla', k: 'grill', p: [-17.2, 1.0, -98.4], r: 2.0, label: 'Comerse un choripán' },
   { id: 'fogon_proyector', k: 'media', screen: 'fogon', p: [-17.4, 1.0, -91.3], r: 2.0, label: 'Elegir video o historia de terror' },
   { id: 'futbol', k: 'football', p: [0, 1.0, 15.4], r: 2.6, label: 'Iniciar / reiniciar el partido de fútbol' },
-  { id: 'bunker_dj', k: 'media', screen: 'bunker', p: [-7.2, 1.9, -470.2], r: 2.4, label: 'Pasar música o un video en el Búnker' },
+  { id: 'bunker_dj', k: 'media', screen: 'bunker', p: [-7.2, 1.5, -470.4], r: 2.6, label: 'Pasar música o un video en el Búnker' },
 ];
 
 // Botiquines: curan, cortan el sangrado y devuelven sangre (cada uno se repone solo). yaw: hacia dónde mira

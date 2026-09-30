@@ -4,7 +4,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { isOwnerName, checkOwnerKey, allowTry } from './owner.js';
 import {
-  PROTOCOL, GRASSMAP, GRASS, SURFACES, SURFACE_BY_ID, SCREENS, VEHICLES, PROPS, FIELD, PAINT, parsePatch, grassAllowed,
+  PROTOCOL, GRASSMAP, GRASS, SURFACES, SURFACE_BY_ID, SCREENS, VEHICLES, PROPS, FIELD, PAINT, parsePatch, grassAllowed, CLUB, CASTLE,
 } from '../public/js/shared/mapdata.js';
 import { applyDots, cutRect, growAll, fieldMask, mowField, DOT_BYTES } from '../public/js/shared/raster.js';
 import { Football } from './football.js';
@@ -333,6 +333,17 @@ export class Room {
         break;
       case 'pow': // poderes del dueño: invisible, fuego por la boca, risa
         if (!p.owner || p.look.model !== 'diablo') break;
+        if (msg.a === 'ritual') {
+          // el pentagrama del cuarto secreto: el Diablo parado adentro se lleva al Búnker a los que elija de los
+          // que también están parados ahí (cada 6 s como mucho)
+          const P = CLUB.pentagram, F0 = CASTLE.keep.floor;
+          const on = (q) => Array.isArray(q?.st?.p) && Math.hypot(q.st.p[0] - P.x, q.st.p[2] - P.z) < P.r + 0.6 && Math.abs(q.st.p[1] - F0) < 1.6;
+          if (!on(p) || now - (p.lastRitual || 0) < 6000) break;
+          p.lastRitual = now;
+          const ids = (Array.isArray(msg.ids) ? msg.ids : []).slice(0, 16).map(Number).filter((id) => id !== p.id && this.players.has(id) && on(this.players.get(id)));
+          this.broadcast({ t: 'pow', id: p.id, a: 'ritual', ids: [...new Set(ids)] });
+          break;
+        }
         if (msg.a === 'inv') {
           p.inv = !!msg.v;
           this.broadcast({ t: 'pow', id: p.id, a: 'inv', v: p.inv ? 1 : 0 }, p);

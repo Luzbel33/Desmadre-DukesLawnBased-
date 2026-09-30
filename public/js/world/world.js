@@ -5,7 +5,8 @@ import { G, rng } from '../core/G.js';
 import { Builder, pbrMaps } from './builder.js';
 import { TEX } from './textures.js';
 import { Forest } from './trees.js';
-import { FURNITURE, MAP_BOUNDS, LAWN, INTERACT, NO_GRASS, MEDKITS, STORM } from '../shared/mapdata.js';
+import { FURNITURE, MAP_BOUNDS, LAWN, INTERACT, NO_GRASS, MEDKITS, STORM, inClub } from '../shared/mapdata.js';
+import { Club } from './club.js';
 import { buildFurniture, WATER_T } from './furniture.js';
 import { makeFarSun } from './shadows.js';
 import { FireSet } from '../fx/fire.js';
@@ -80,9 +81,14 @@ export class World {
     for (const it of this.castle.interact) INTERACT.push(it);
     this.storm = new Storm(this, { quality });
     this.storm.setRainMask(this.castle.rainMask());
-    this.storm.indoorAt = (x, y, z) => this.castle.indoorAt(x, y, z);
+    // el Búnker (club secreto del Diablo): lejos, al norte, cerrado y sin sol (ver CLUB en mapdata)
+    this.club = new Club(this).build();
+    for (const s of this.club.seats) this.seats.push({ ...s, id: this.seats.length });
+    for (const it of this.club.interact) INTERACT.push(it);
+    this.storm.indoorAt = (x, y, z) => this.club.indoorAt(x, y, z) || this.castle.indoorAt(x, y, z);
+    this.storm.undergroundAt = (x, z) => (inClub(x, z, 2) ? 1 : 0);
     this.storm.tower = this.castle.spire;
-    this.pool.roomAt = (x, y, z) => this.castle.roomOf(x, y, z);
+    this.pool.roomAt = (x, y, z) => this.club.roomOf(x, y, z) || this.castle.roomOf(x, y, z);
     // las luces de los edificios y muebles también pasan al pool (la escena siempre tiene las mismas luces)
     this.pool.adopt(scene);
     this.castleAssets = loadAssetsLater(CASTLE_MANIFEST);

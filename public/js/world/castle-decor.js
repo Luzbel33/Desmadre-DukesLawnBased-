@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { G, rng } from '../core/G.js';
 import { whenAsset, assetModel, instanceModel } from '../game/assets.js';
 import { Builder, getMat } from './builder.js';
-import { CASTLE } from '../shared/mapdata.js';
+import { CASTLE, CLUB } from '../shared/mapdata.js';
 import { stainCastle } from './castle-stains.js';
 import { dressCastle } from './castle-dress.js';
 import { Corpse } from './castle-corpse.js';
@@ -496,6 +496,8 @@ export class Decor {
     // cripta: sarcófagos en fila y el del Conde al medio
     for (const [x, z, big] of [[10.5, -109.5, 0], [10.5, -114.5, 0], [10.5, -119.5, 0], [14.2, -114.5, 1], [18.4, -110.2, 0], [18.4, -114.8, 0]]) {
       const w = big ? 1.3 : 1.0, l = big ? 2.6 : 2.2;
+      // la tumba de la escalera al Búnker: hueca, con su tapa aparte (se corre; ver game/club.js)
+      if (!big && x === CLUB.tomb.x && z === CLUB.tomb.z) continue;
       b.box('keepStone', x, 0.45, z, w, 0.9, l);
       if (!big) { b.box('castleStone', x, 0.97, z, w + 0.14, 0.16, l + 0.14, { collide: false }); continue; }
       const lid = new THREE.Group();
