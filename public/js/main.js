@@ -21,6 +21,7 @@ import { preloadAssets, registerManifest } from './game/assets.js';
 import { Haunt } from './game/haunt.js';
 import { ClubGame } from './game/club.js';
 import { Villagers } from './game/villagers.js';
+import { Cctv } from './game/cctv.js';
 import { BunkerItems } from './game/bunker-items.js';
 import { pbrReady } from './world/builder.js';
 import { yieldToBrowser, prepareScene } from './core/startup.js';
@@ -117,8 +118,9 @@ function setMode(mode) {
   show($('palette'), mode === 'palette');
   show($('poker'), mode === 'poker');
   show($('shop'), mode === 'shop');
+  show($('cctv'), mode === 'cctv');
   // sentado al póker no hay HUD del juego (zona, barras, etc.): solo la mesa
-  show($('hud'), ingame && mode !== 'menu' && mode !== 'poker');
+  show($('hud'), ingame && mode !== 'menu' && mode !== 'poker' && mode !== 'cctv');
   show($('chat'), ingame);
   if (mode !== 'chat') $('chat')?.classList.remove('open');
   if (G.input) { G.input.enabled = mode === 'game'; if (mode !== 'game') G.input.releaseAll(); }
@@ -648,6 +650,7 @@ function interact() {
     }
     if (it.k === 'football') { state.net.send({ t: 'fbctl', a: 'start' }); G.sfx?.trigger('ui-ok'); return; }
     if (it.k === 'haunt') { G.haunt?.use(it); return; }
+    if (it.k === 'club' && it.e === 'monitors') { openCctv(); return; }
     if (it.k === 'club') { G.club?.use(it); return; }
   }
 }
@@ -1419,6 +1422,8 @@ function setupUIEvents() {
   $('ritual-me').addEventListener('click', () => G.club?.confirmRitual('me'));
   $('ritual-some').addEventListener('click', () => G.club?.confirmRitual('some'));
   $('ritual-cancel').addEventListener('click', () => G.club?.closeRitual());
+  $('cctv-prev').addEventListener('click', () => cctvStep(-1));
+  $('cctv-next').addEventListener('click', () => cctvStep(1));
   $('owner-cancel').addEventListener('click', closeOwnerModal);
   $('owner-key').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); verifyOwnerKey(); }
@@ -1508,6 +1513,11 @@ function setupUIEvents() {
       if (kc === 'KeyV') { G.sfx?.unlock(); G.voice?.setPTT(true); }
     }
     if (state.mode === 'activities' && (e.key === 'Escape' || kc === 'KeyJ')) { e.preventDefault(); closeOverlayToGame(e.key === 'Escape'); return; }
+    if (state.mode === 'cctv') {
+      if (e.key === 'Escape' || kc === 'KeyX') { e.preventDefault(); state.escT = performance.now(); closeCctv(); return; }
+      if (kc === 'KeyA' || e.code === 'ArrowLeft') { cctvStep(-1); return; }
+      if (kc === 'KeyD' || e.code === 'ArrowRight' || kc === 'Space') { cctvStep(1); return; }
+    }
     if (state.mode === 'shop' && e.key === 'Escape') { e.preventDefault(); state.escT = performance.now(); G.villagers?.close(); return; }
     if (state.mode === 'club' && e.key === 'Escape') { e.preventDefault(); state.escT = performance.now(); if (state.clubUI === 'ritual') G.club?.closeRitual(); else G.club?.closePassword(); return; }
     if (state.mode === 'media' || state.mode === 'palette') {
@@ -1668,8 +1678,32 @@ function snapHeldToFists() {
   }
 }
 
+// ---------------------------------------------------------------- cámaras de seguridad a pantalla completa
+function openCctv() {
+  if (!G.cctv) return;
+  state.cctv = state.cctv ?? 0;
+  setMode('cctv'); G.input.unlock();
+  cctvStep(0);
+}
+function closeCctv() { state.cctvOn = false; closeOverlayToGame(true); }
+function cctvStep(d) {
+  const n = G.cctv.cams.length;
+  state.cctv = ((state.cctv + d) % n + n) % n;
+  state.cctvOn = true;
+  const c = G.cctv.cams[state.cctv];
+  $('cctv-name').textContent = `CAM ${String(state.cctv + 1).padStart(2, '0')} · ${c.name}`;
+  G.sfx?.trigger('ui', null, 0.3);
+}
+
 function updateCamera(dt) {
   const L = state.local; if (!L) return;
+  if (state.mode === 'cctv' && state.cctvOn && G.cctv) {
+    // mirando una cámara de seguridad: la vista es la de la cámara (el cuerpo queda en la silla)
+    G.cctv.pose(state.cctv, G.camera, G.time);
+    L.char.setVisibleHead(true);
+    $('cctv-time').textContent = new Date().toLocaleTimeString('es-AR');
+    return;
+  }
   const pitch = state.viewPitch;
   const cp = Math.cos(pitch);
   const fwd = tmpV.set(Math.sin(state.viewYaw) * cp, Math.sin(pitch), Math.cos(state.viewYaw) * cp).normalize();
@@ -1893,6 +1927,8 @@ async function boot() {
         closeUI: () => { if (state.mode === 'shop') closeOverlayToGame(); },
       }).build();
     } catch (e) { console.warn('aldeanos', e); }
+    // cámaras de seguridad (ojos en el castillo) y la pared de monitores del Búnker
+    try { G.cctv = new Cctv({ scene: G.scene, renderer, world: G.world, getLocal: () => state.local }).build(); } catch (e) { console.warn('cámaras', e); }
     G.items = new BunkerItems({
       getLocal: () => state.local, getNet: () => state.net,
       kick: (k) => { camKick.v.x -= k * 12; }, shake: (k) => { state.shake = Math.max(state.shake || 0, k); },
@@ -1960,6 +1996,7 @@ async function boot() {
     }
     // depuración: window.__dukesStep(ms) avanza un cuadro a mano; window.__dukesPause congela el loop
     window.__dukesStep = (ms = 1000 / 60) => step(last + ms);
+    window.__dukesCctv = openCctv; // depuración: abrir la sala de monitores sin ir al escritorio
     function step(now) {
       try {
       const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000)); last = now; G.time += dt; G.dt = dt; G.frame++;
@@ -1980,7 +2017,7 @@ async function boot() {
         }
         G.poker?.update(G.camera, dt);
         updateNameTags(); updatePrompt(); updateHud(dt); updatePost();
-        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.club?.update(dt); G.villagers?.update(dt, G.camera); G.items?.update(dt); G.owner?.update(dt);
+        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.club?.update(dt); G.villagers?.update(dt, G.camera); G.cctv?.update(dt, G.camera); G.items?.update(dt); G.owner?.update(dt);
         { const hide = (G.world.storm?.indoor || 0) > 0.95; for (const m of G.grass.meshes) m.visible = !hide; }
         G.fx.update(dt); G.blood.update(dt); G.football?.update(dt); G.gore?.update(dt); state.graffiti?.flush();
         G.bag?.update(dt);
