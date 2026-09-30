@@ -108,13 +108,13 @@
       </div>
       <button id="m-play" class="big">¡A JUGAR!</button>
       <p id="m-err" class="err"></p>
-      <p class="camera-hint">Primera persona al entrar · <b>C</b> cambia la cámara</p>
+      <p class="camera-hint">Primera persona al entrar · <b>Y</b> cambia la cámara</p>
         </section>
       </div>
       <details class="controls">
         <summary>Controles</summary>
         <div class="cols">
-          <div><b>WASD</b> moverse · <b>Shift</b> correr · <b>Espacio</b> saltar</div>
+          <div><b>WASD</b> moverse · <b>Shift</b> correr · <b>Espacio</b> saltar · <b>C</b> agacharse (corriendo: barrida · en el aire: dive)</div>
           <div><b>Click izq / der corto</b> piña con esa mano (o tomar, fumar, comer)</div>
           <div><b>Click sostenido + mouse</b> mover ese brazo (pegar, empujar, revolear) · <b>rueda</b> estirar/acercar</div>
           <div><b>Los dos clicks</b> guardia: manos arriba, los golpes de frente casi no pasan</div>
@@ -122,7 +122,7 @@
           <div><b>X</b> usar: sentarse/levantarse, subir/bajar, heladerita, parrilla, botiquín, pantallas</div>
           <div><b>G</b> revolear lo que tenés en la mano · <b>F</b> patada · <b>R</b> cabezazo</div>
           <div><b>1-4</b> birra · faso · aerosol · mano libre · <b>B</b> colores del aerosol</div>
-          <div><b>C</b> cámara · <b>Z</b> gestos · <b>J</b> ¿qué hacemos? · <b>P</b> pantallas</div>
+          <div><b>Y</b> cámara · <b>Z</b> o <b>rueda (click)</b> gestos · <b>J</b> ¿qué hacemos? · <b>P</b> pantallas</div>
           <div><b>T / Enter</b> chat · <b>V</b> hablar · <b>Tab</b> jugadores · <b>Esc</b> pausa</div>
           <div>En vehículo: <b>WASD</b> manejar · <b>S</b> frena · <b>Shift</b> turbo · <b>Espacio</b> cuchillas · <b>H</b> bocina · <b>X</b> bajar · <b>click</b> tomar/fumar</div>
         </div>
@@ -163,6 +163,7 @@
         </label>
         <label class="chk"><input type="checkbox" id="o-spatial"> Voz por proximidad (3D)</label>
         <label class="chk"><input type="checkbox" id="o-invert"> Invertir mouse Y</label>
+        <label class="chk" title="Chrome solo deja frenar Ctrl+W, Ctrl+T, Ctrl+N en pantalla completa"><input type="checkbox" id="o-fullscreen"> Pantalla completa: bloquea Ctrl+W y otros atajos que cierran la pestaña</label>
       </div>
       <div class="row">
         <button id="audio-test">Probar sonido</button>

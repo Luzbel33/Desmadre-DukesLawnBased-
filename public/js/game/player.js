@@ -334,6 +334,9 @@ export class LocalPlayer {
     this.lean = new THREE.Vector2(); // inclinación por aceleración (x) y giro (y): da peso
     this.leanV = new THREE.Vector2(); // (resortes con un poco de rebote: el cuerpo se pasa y vuelve)
     this.land = 0; // flexión al caer de un salto (rodillas que ceden)
+    // agacharse / barrida / dive: slideT > 0 barriendo; dive 1 volando, 2 de panza, 3 levantándose
+    this.mv = { cPrev: false, slideT: 0, dive: 0, diveT: 0, v: 0, dx: 0, dz: 1 };
+    this.crouching = false;
     this.landV = 0;
     this.push = new THREE.Vector2(); // empujón horizontal que decae (trastabillar)
     this.held = 0; // manos ajenas que me tienen agarrado
@@ -393,6 +396,9 @@ export class LocalPlayer {
   }
   setEmote(name) { this.emote = name || null; this.emoteT = 0; }
   queueJump() { if (this.state === 'active') this.jumpBuffer = 0.12; }
+  _endDive() { this.mv.dive = 0; this.mv.diveT = 0; this.mv.v = 0; }
+  // cuánto bajan los ojos (la cámara de tercera persona acompaña): agachado, barriendo o tirado del dive
+  get eyeDrop() { const m = this.mv; return m.dive === 2 ? 1.25 : m.dive === 3 ? 0.7 : m.dive === 1 ? 0.35 : m.slideT > 0 ? 0.8 : this.crouching ? 0.45 : 0; }
 
   // ---------------------------------------------------------------- teletransporte / respawn
   teleport(pos, yaw = this.yaw) {
@@ -1866,15 +1872,57 @@ export class LocalPlayer {
         dx = ndx; dz = ndz;
       }
       const run = active && (input.key('ShiftLeft') || input.key('ShiftRight'));
+      // C: agacharse; corriendo, barrida; en el aire, dive (Max Payne). Nada de Ctrl: Ctrl+W cierra la pestaña
+      const mo = this.mv;
+      const cDown = active && input.key('KeyC');
+      const cHit = cDown && !mo.cPrev;
+      mo.cPrev = cDown;
       const slow = st === 'stun' ? 0.3 : st === 'getup' ? 0.15 : 1;
       // cargar algo pesado o estar en guardia te hace más lento
       const load = clamp(1 - (this._heldMass('l') + this._heldMass('r')) / 30, 0.55, 1) * (this.guard ? 0.7 : 1);
       const legGone = this.gore & ((1 << PART.THIGH_L) | (1 << PART.SHIN_L) | (1 << PART.THIGH_R) | (1 << PART.SHIN_R));
       const limp = legGone ? 0.38 : 1;
-      const targetSpeed = (run && !this.guard && !legGone ? 6.8 : 3.9) * (1 - clamp(this.drunk, 0, 1) * 0.2) * slow * load * limp;
+      if (st !== 'active') { mo.slideT = 0; if (mo.dive) this._endDive(); }
+      else if (cHit && !mo.dive && !mo.slideT && !legGone) {
+        const hs = Math.hypot(this.velocity.x, this.velocity.y);
+        const [ddx, ddz] = length ? [dx, dz] : hs > 0.5 ? [this.velocity.x / hs, this.velocity.y / hs] : [fx, fz];
+        if (!this.grounded) {
+          mo.dive = 1; mo.diveT = 0; mo.dx = ddx; mo.dz = ddz; mo.v = Math.max(8.4, hs + 1.8);
+          this.vy = Math.max(this.vy, 2.4);
+          this.yaw = Math.atan2(ddx, ddz);
+          this.onEvent?.('move', { k: 'dive' });
+        } else if (hs > 5.2) {
+          mo.slideT = 0.9; mo.v = Math.max(hs, 6.8) + 1.4; mo.dx = this.velocity.x / hs; mo.dz = this.velocity.y / hs;
+          this.onEvent?.('move', { k: 'slide' });
+        }
+      }
+      this.crouching = st === 'active' && cDown && this.grounded && !mo.slideT && !mo.dive;
+      const targetSpeed = (run && !this.guard && !legGone && !this.crouching ? 6.8 : 3.9) * (this.crouching ? 0.5 : 1) * (1 - clamp(this.drunk, 0, 1) * 0.2) * slow * load * limp;
       const blend = 1 - Math.exp(-(length ? 14 : 20) * dt);
       this.velocity.x += (dx * targetSpeed - this.velocity.x) * blend;
       this.velocity.y += (dz * targetSpeed - this.velocity.y) * blend;
+      if (mo.slideT > 0) {
+        // barrida: seguís de largo frenando de a poco; Espacio salta (y conserva la velocidad)
+        mo.slideT -= dt; mo.v -= 6.5 * dt;
+        this.velocity.set(mo.dx * mo.v, mo.dz * mo.v);
+        if (mo.slideT <= 0 || mo.v < 2.4 || !this.grounded) mo.slideT = 0;
+      } else if (mo.dive) {
+        mo.diveT += dt;
+        if (mo.dive === 1) {
+          // volando: casi sin control (se puede torcer un poco)
+          if (length) { mo.dx += (dx - mo.dx) * dt * 0.8; mo.dz += (dz - mo.dz) * dt * 0.8; const n = Math.hypot(mo.dx, mo.dz) || 1; mo.dx /= n; mo.dz /= n; }
+          this.velocity.set(mo.dx * mo.v, mo.dz * mo.v);
+          if (this.grounded && mo.diveT > 0.12) { mo.dive = 2; mo.diveT = 0; this.landV += 2.5; this.onEvent?.('move', { k: 'land' }); }
+        } else if (mo.dive === 2) {
+          // de panza, resbalando hasta frenar; moverse o saltar te levanta antes
+          mo.v = Math.max(0, mo.v - 13 * dt);
+          this.velocity.set(mo.dx * mo.v, mo.dz * mo.v);
+          if (mo.diveT > 0.7 || (mo.diveT > 0.3 && (length || this.jumpBuffer > 0))) { mo.dive = 3; mo.diveT = 0; this.jumpBuffer = 0; }
+        } else {
+          this.velocity.multiplyScalar(Math.exp(-10 * dt));
+          if (mo.diveT > 0.45) this._endDive();
+        }
+      }
       if (!active) this.velocity.set(0, 0);
       const diff = angleDiff(this.yaw, viewYaw);
       const busy = length > 0 || this.action || this.armActive() || this.guard || this.arm.l.script || this.arm.r.script
@@ -1883,7 +1931,8 @@ export class LocalPlayer {
       else if (active && Math.abs(diff) > 1.15) this.yaw = dampAngle(this.yaw, viewYaw - Math.sign(diff) * 1.0, 6, dt);
       this.coyote = this.grounded ? 0.09 : Math.max(0, this.coyote - dt);
       this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
-      if (active && this.coyote > 0 && this.jumpBuffer > 0 && st === 'active') {
+      if (active && this.coyote > 0 && this.jumpBuffer > 0 && st === 'active' && !mo.dive) {
+        mo.slideT = 0;
         this.vy = 5.6; this.grounded = false; this.coyote = 0; this.jumpBuffer = 0;
       }
       this.vy = Math.max(-22, this.vy - 15.5 * dt);
@@ -1923,7 +1972,8 @@ export class LocalPlayer {
       if (!this.grounded) this.fallPeak = Math.min(this.fallPeak, this.vy);
       if (this.grounded) {
         // al caer de un salto las rodillas ceden (más cuanto más fuerte cae) y vuelven con un rebotito
-        if (!wasGrounded && this.fallPeak < -2.5) this.landV += Math.min(6.5, -this.fallPeak * 0.9);
+        // corriendo se amortigua con las piernas y sigue (antes se doblaba entero y parecía un tropezón)
+        if (!wasGrounded && this.fallPeak < -2.5) this.landV += Math.min(6.5, -this.fallPeak * 0.9) * (this.speed > 4.5 ? 0.45 : 1);
         // caída fuerte: aturde o desmaya
         if (!wasGrounded && this.fallPeak < -11) {
           const sev = (-this.fallPeak - 11) / 5;
@@ -1937,6 +1987,13 @@ export class LocalPlayer {
       }
       if (desired.y > 0 && mv.y < desired.y - 0.002) this.vy = 0;
       this.speed = Math.hypot(nx - tr.x, nz - tr.z) / dt;
+      // dive contra una pared: te la comés (el tropezón de siempre, ahora solo si te lo ganaste)
+      if (mo.dive === 1 && mo.diveT > 0.08 && this.speed < mo.v * 0.35) {
+        this._endDive();
+        this.stun(0.6, V2.set(-mo.dx * 2.5, 0, -mo.dz * 2.5));
+        this.react.hit(PART.HEAD, -mo.dx, -mo.dz, 0.8, 0, 0, this.yaw);
+        this.onEvent?.('move', { k: 'bonk' });
+      }
       this.fwdSpeed = ((nx - tr.x) * fx + (nz - tr.z) * fz) / dt;
     } else if (st === 'ko' || st === 'dead') {
       // el controlador sigue al cuerpo tirado (la cámara lo acompaña)
@@ -2151,6 +2208,10 @@ export class LocalPlayer {
       fwdSpeed: this.fwdSpeed,
       grounded: this.grounded || this.state === 'seated' || this.state === 'driving',
       vy: this.vy,
+      crouch: this.crouching,
+      slide: this.mv.slideT > 0,
+      dive: this.mv.dive,
+      diveT: this.mv.diveT,
       action: rigAction,
       actionT: this.actionT,
       aimPitch: this.aimPitch,

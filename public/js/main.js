@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { G, clamp } from './core/G.js';
 import { Physics, GR, groups } from './core/physics.js';
 import { Input } from './core/input.js';
+import { guard } from './core/browser-guard.js';
 import { Net } from './net/net.js';
 import { World } from './world/world.js';
 import { Grass } from './world/grass.js';
@@ -239,6 +240,7 @@ function setupMenuDefaults() {
   $('o-hints').value = G.hud?.mode || 'primeras';
   $('o-spatial').checked = G.opts.voiceSpatial;
   $('o-invert').checked = G.opts.invertY;
+  $('o-fullscreen').checked = guard.enabled;
   updateMicUI();
 }
 
@@ -445,7 +447,7 @@ function closeChat(lock = true) {
   if (state.chatFrom === 'poker' && G.poker?.isSeated()) { state.mode = 'poker'; G.input.enabled = false; }
   else { state.mode = 'game'; G.input.enabled = true; }
   state.chatFrom = null;
-  if (lock) setTimeout(() => G.input.lock(), 0);
+  if (lock) setTimeout(() => G.input.lock(() => G.hud?.notify('<b>Click</b> para seguir jugando', 2200)), 0);
 }
 
 function sendChat() {
@@ -468,6 +470,7 @@ function openPause() {
 function resumeGame() {
   if (!G.inGame) return;
   G.sfx?.unlock();
+  guard.enter();
   setMode('game');
   setTimeout(() => G.input.lock(), 0);
 }
@@ -624,7 +627,15 @@ function openEmotes() {
   if (state.mode !== 'game') return;
   setMode('emotes'); G.input.unlock();
 }
-function closeOverlayToGame() { setMode('game'); setTimeout(() => G.input.lock(), 0); }
+// Cerrar un menú vuelve directo al juego (nunca pasa por la pausa). Si el navegador no deja recapturar el mouse
+// (pasa después de un Esc), queda el juego a la vista con un aviso: un click y seguís.
+function closeOverlayToGame(byEsc = false) {
+  if (byEsc) state.escT = performance.now();
+  setMode('game');
+  setTimeout(() => G.input.lock(() => G.hud?.notify('<b>Click</b> para seguir jugando', 2200)), 0);
+}
+// Esc recién usado para cerrar algo: la liberación del mouse que provoca no abre la pausa
+const escJustClosed = () => performance.now() - (state.escT || -1e9) < 800;
 
 // Panel "¿Qué hacemos?": lista de actividades con distancia; tocar una la marca como destino
 function openActivities() {
@@ -806,6 +817,9 @@ function handleEvent(m) {
     case 'onfire': // otro se prendió fuego
       G.owner?.onFire(m);
       break;
+    case 'mv': // barrida / dive de otro (la pose ya llega con su cuerpo; acá el ruido)
+      if (rp) moveSound(m.m, rp.pos);
+      break;
     case 'horn':
       if (rp && performance.now() - (rp._lastHorn || 0) > 700) { rp._lastHorn = performance.now(); G.sfx?.trigger('horn', rp.pos, 0.8); }
       break;
@@ -883,9 +897,23 @@ function handleEvent(m) {
 }
 
 // Eventos del cuerpo del jugador local -> FX + red
+// ruido de la barrida y del dive (ropa contra el piso, el golpe al caer, la frente contra la pared)
+function moveSound(k, pos = null) {
+  const cloth = 'cloth' + (1 + ((Math.random() * 4) | 0));
+  if (k === 'slide' || k === 'dive') G.sfx?.trigger(cloth, pos, 0.55);
+  else if (k === 'land') { G.sfx?.trigger('hit-soft', pos, 0.55); G.sfx?.trigger(cloth, pos, 0.4); }
+  else if (k === 'bonk') G.sfx?.trigger('hit', pos, 0.7);
+}
+
 function onLocalEvent(type, d) {
   const net = state.net;
   switch (type) {
+    case 'move':
+      moveSound(d.k);
+      if (d.k === 'land') state.shake = Math.min(1, (state.shake || 0) + 0.18);
+      if (d.k === 'bonk') { state.shake = Math.min(1, (state.shake || 0) + 0.5); addChat('', { html: '<i>Te la diste contra la pared.</i>' }); }
+      net?.send({ t: 'ev', k: 'mv', m: d.k });
+      break;
     case 'wound':
       net?.send({ t: 'ev', k: 'wd', p: d.p, l: d.l, kd: d.k, s: d.s });
       break;
@@ -1101,6 +1129,7 @@ function updateDesmadreUI() {
 
 async function joinGame() {
   G.sfx?.unlock(); // user gesture, BEFORE awaiting the connection
+  guard.enter(); // pantalla completa + Ctrl+W bloqueado (también necesita el click)
   if (state.reconnecting) return;
   const name = $('m-name').value.trim() || 'Anónimo';
   const room = ($('m-room').value.trim() || 'principal').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 24) || 'principal';
@@ -1183,7 +1212,7 @@ function setupUIEvents() {
 
   $('chat-input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); sendChat(); }
-    else if (e.key === 'Escape') { e.preventDefault(); closeChat(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); state.escT = performance.now(); closeChat(true); }
   });
 
   $('audio-toggle').addEventListener('click', () => {
@@ -1195,7 +1224,7 @@ function setupUIEvents() {
   $('o-mute').addEventListener('change', (e) => { G.opts.muted = e.target.checked; G.sfx?.unlock(); saveAudioOptions(); });
   $('o-ambient').addEventListener('input', (e) => { G.opts.volAmbient = +e.target.value; saveAudioOptions(); });
   $('p-media').addEventListener('click', () => openMedia(G.media?.nearest(state.local.pos)));
-  $('media-close').addEventListener('click', closeOverlayToGame);
+  $('media-close').addEventListener('click', () => closeOverlayToGame());
   $('media-screen').addEventListener('change', (e) => openMedia(e.target.value));
   $('media-unlock').addEventListener('click', () => { G.sfx?.unlock(); G.media?.unlock(state.mediaScreen); });
   $('media-retry').addEventListener('click', () => G.media?.retry(state.mediaScreen));
@@ -1233,6 +1262,7 @@ function setupUIEvents() {
   $('o-voicemode').addEventListener('change', (e) => { G.opts.voiceMode = e.target.value; G.voice?._applyTrackEnabled(); updateMicUI(); });
   $('o-spatial').addEventListener('change', (e) => { G.opts.voiceSpatial = e.target.checked; });
   $('o-invert').addEventListener('change', (e) => { G.opts.invertY = e.target.checked; });
+  $('o-fullscreen').addEventListener('change', (e) => guard.setEnabled(e.target.checked));
   $('o-hints').addEventListener('change', (e) => G.hud?.setHintMode(e.target.value));
   $('o-grass').addEventListener('change', (e) => { G.opts.grass = e.target.value; G.grass.build(G.opts.grass); });
 
@@ -1243,10 +1273,10 @@ function setupUIEvents() {
       if (e.code === 'KeyM') { G.sfx?.unlock(); G.voice?.toggleMic(); }
       if (e.code === 'KeyV') { G.sfx?.unlock(); G.voice?.setPTT(true); }
     }
-    if (state.mode === 'activities' && (e.key === 'Escape' || e.code === 'KeyJ')) { e.preventDefault(); closeOverlayToGame(); return; }
+    if (state.mode === 'activities' && (e.key === 'Escape' || e.code === 'KeyJ')) { e.preventDefault(); closeOverlayToGame(e.key === 'Escape'); return; }
     if (state.mode === 'media' || state.mode === 'emotes' || state.mode === 'palette') {
-      if (e.key === 'Escape' || (state.mode === 'palette' && e.code === 'KeyR')) { e.preventDefault(); closeOverlayToGame(); }
-    } else if (state.mode === 'pause' && e.key === 'Escape') { e.preventDefault(); resumeGame(); }
+      if (e.key === 'Escape' || (state.mode === 'palette' && e.code === 'KeyR')) { e.preventDefault(); closeOverlayToGame(e.key === 'Escape'); }
+    } else if (state.mode === 'pause' && e.key === 'Escape' && !escJustClosed()) { e.preventDefault(); state.escT = performance.now(); resumeGame(); }
     else if (state.mode === 'poker' && !typing) {
       // póker: las teclas de la mesa primero (apostar, pasar, retirarse, ver jugadas); X se levanta; T/Enter chat
       if (G.poker?.key(e, true)) { e.preventDefault(); return; }
@@ -1317,7 +1347,7 @@ function updateInput(dt) {
   }
   if (inp.hit('KeyT') || inp.hit('Enter')) openChat();
   if (inp.hit('Tab')) renderPlayerList();
-  if (inp.hit('KeyC')) state.cameraMode = (state.cameraMode + 1) % 3;
+  if (inp.hit('KeyY')) state.cameraMode = (state.cameraMode + 1) % 3; // C es agacharse (barrida / dive)
   G.owner?.input(inp); // Diablo: K/rueda aliento · N bola · I invisible · O inmortal · L risa
   const items = [null, 'beer', 'smoke', 'spray', null];
   for (let i = 1; i <= 4; i++) {
@@ -1432,7 +1462,10 @@ function updateCamera(dt) {
   if (down) {
     const pt = L.rag.pelvis().translation();
     pivot = new THREE.Vector3(pt.x, pt.y + 0.6, pt.z);
-  } else pivot = L.renderPos.clone().add(new THREE.Vector3(0, L.seat || L.vehicle ? 1.3 : 1.62*(L.char.meta?.height||1.8)/1.8, 0));
+  } else {
+    state.eyeDrop = (state.eyeDrop || 0) + ((L.seat || L.vehicle ? 0 : L.eyeDrop || 0) - (state.eyeDrop || 0)) * (1 - Math.exp(-10 * dt));
+    pivot = L.renderPos.clone().add(new THREE.Vector3(0, L.seat || L.vehicle ? 1.3 : 1.62 * (L.char.meta?.height || 1.8) / 1.8 - state.eyeDrop, 0));
+  }
   let dist = mode === 0 ? 4.2 : 2.4;
   if (L.vehicle) dist += 1.8;
   if (down) dist = 3.6;
@@ -1572,8 +1605,9 @@ async function boot() {
     };
     G.fx.onBloodLand = (x, z, size) => G.blood.add(x, z, size);
     G.input = new Input(canvas); G.input.enabled = false;
-    G.input.onLockChange = (locked) => { if (!locked && G.inGame && state.mode === 'game') openPause(); };
-    canvas.addEventListener('click', () => { if (G.inGame && (state.mode === 'game' || state.mode === 'poker') && !G.input.locked) G.input.lock(); });
+    G.input.onLockChange = (locked) => { if (!locked && G.inGame && state.mode === 'game' && !escJustClosed()) openPause(); };
+    canvas.addEventListener('click', () => { if (G.inGame && (state.mode === 'game' || state.mode === 'poker') && !G.input.locked) { guard.enter(); G.input.lock(); } });
+    guard.init({ isPlaying: () => G.inGame && !!state.local });
 
     G.sfx = new AudioEngine({ opts: G.opts, changed: updateAudioUI });
     G.sfx.setSamples(SFX_MANIFEST);

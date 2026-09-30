@@ -61,12 +61,13 @@ export class Input {
     return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
   }
 
-  lock() {
+  // onFail: el navegador no dejó capturar el mouse (p. ej. justo después de un Esc): hay que hacer click
+  lock(onFail) {
     if (this.locked) return;
     try {
       const p = this.canvas.requestPointerLock({ unadjustedMovement: false });
-      if (p && p.catch) p.catch(() => {});
-    } catch { /* ignore */ }
+      if (p && p.catch) p.catch(() => onFail?.());
+    } catch { onFail?.(); }
   }
   unlock() {
     if (document.pointerLockElement) document.exitPointerLock();

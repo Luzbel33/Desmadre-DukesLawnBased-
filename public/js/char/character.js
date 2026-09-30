@@ -704,12 +704,15 @@ export class Character {
         J.shoulderL[2] = 0.15; J.shoulderR[2] = -0.15;
       }
     } else if (st.grounded === false) {
-      // en el aire
-      J.hipL[0] = -0.7; J.hipR[0] = -0.2;
-      J.kneeL[0] = 1.1; J.kneeR[0] = 0.5;
-      J.shoulderL[2] = 0.9; J.shoulderR[2] = -0.9;
-      J.shoulderL[0] = J.shoulderR[0] = -0.4;
-      J.elbowL[0] = J.elbowR[0] = -0.5;
+      // en el aire: corriendo, zancada larga (una pierna adelante, la otra atrás, brazos cruzados como al correr);
+      // parado, piernas recogidas y brazos apenas abiertos. Antes los brazos se abrían en cruz y parecía un tropezón
+      const leap = clamp((spd - 3.5) / 2.5, 0, 1), up = clamp((st.vy || 0) / 5, -1, 1);
+      J.hipL[0] = lerp(-0.55, -0.95, leap); J.hipR[0] = lerp(-0.25, 0.4, leap);
+      J.kneeL[0] = lerp(0.9, 0.75, leap) + Math.max(0, -up) * 0.2; J.kneeR[0] = lerp(0.6, 0.85, leap);
+      J.shoulderL[0] = lerp(-0.35, 0.55, leap); J.shoulderR[0] = lerp(-0.35, -0.85, leap);
+      J.shoulderL[2] = lerp(0.35, 0.12, leap); J.shoulderR[2] = -lerp(0.35, 0.12, leap);
+      J.elbowL[0] = J.elbowR[0] = lerp(-0.5, -1.05, leap);
+      J.spine[0] = leap * 0.18;
     } else {
       // caminar/correr
       const amp = lerp(0.55, 0.85, run) * walkAmt;
@@ -933,6 +936,51 @@ export class Character {
     }
     // emotes
     if (st.emote && !st.drive) this._emote(J, st.emote, st.emoteT || 0, t, (y) => { hipsY += y; });
+
+    // agachado, barrida y dive (se aplican sobre todo lo anterior; ver LocalPlayer.physicsStep)
+    if (!st.sit && !st.drive) {
+      const J0 = J.hips || (J.hips = [0, 0, 0]);
+      if (st.dive === 1) {
+        // volando (Max Payne): cuerpo horizontal, brazos estirados adelante, piernas juntas atrás, la cabeza al frente
+        const k = clamp((st.diveT || 0) / 0.12, 0, 1);
+        J0[0] = lerp(J0[0], 1.3, k); J0[1] = 0; J0[2] = 0;
+        J.spine[0] = lerp(J.spine[0], -0.2, k); J.spine[1] = 0;
+        J.neck[0] = lerp(J.neck[0], -0.95, k);
+        J.shoulderL[0] = J.shoulderR[0] = lerp(J.shoulderL[0], -2.75, k);
+        J.shoulderL[2] = 0.18; J.shoulderR[2] = -0.18;
+        J.elbowL[0] = J.elbowR[0] = -0.15;
+        J.hipL[0] = 0.12; J.hipR[0] = 0.02; J.kneeL[0] = 0.28; J.kneeR[0] = 0.12;
+        J.hipL[2] = 0.06; J.hipR[2] = -0.06;
+        hipsY -= 0.15 * k;
+      } else if (st.dive === 2 || st.dive === 3) {
+        // de panza en el piso (resbalando) y después levantándose con las manos
+        const k = st.dive === 2 ? 1 : clamp(1 - (st.diveT || 0) / 0.45, 0, 1);
+        J0[0] = 1.45 * k; J0[1] = 0; J0[2] = 0;
+        J.spine[0] = -0.45 * k + (1 - k) * J.spine[0];
+        J.neck[0] = -0.8 * k;
+        J.shoulderL[0] = J.shoulderR[0] = lerp(J.shoulderL[0], st.dive === 2 ? -2.4 : -1.4, k);
+        J.elbowL[0] = J.elbowR[0] = lerp(J.elbowL[0], st.dive === 2 ? -0.35 : -1.2, k);
+        J.shoulderL[2] = 0.35 * k; J.shoulderR[2] = -0.35 * k;
+        J.hipL[0] = lerp(J.hipL[0], st.dive === 2 ? 0.1 : -1.2, k); J.hipR[0] = lerp(J.hipR[0], st.dive === 2 ? 0.05 : -0.3, k);
+        J.kneeL[0] = lerp(J.kneeL[0], st.dive === 2 ? 0.4 : 1.6, k); J.kneeR[0] = lerp(J.kneeR[0], st.dive === 2 ? 0.2 : 0.6, k);
+        hipsY -= 0.78 * k;
+      } else if (st.slide) {
+        // barrida: tirado para atrás, la pierna de adelante estirada, la otra doblada abajo, una mano al piso
+        J0[0] = -0.55; J0[1] = 0.12; J0[2] = 0;
+        J.spine[0] = 0.25; J.spine[1] = -0.1; J.neck[0] = 0.35;
+        J.hipR[0] = -0.95; J.kneeR[0] = 0.12;
+        J.hipL[0] = -0.1; J.kneeL[0] = 1.85; J.hipL[2] = 0.18;
+        J.shoulderL[0] = 0.55; J.shoulderL[2] = 0.45; J.elbowL[0] = -0.2;
+        J.shoulderR[0] = -0.9; J.elbowR[0] = -0.7;
+        hipsY -= 0.62;
+      } else if (st.crouch) {
+        // agachado: rodillas dobladas, torso adelante; caminando, pasos cortos
+        J.hipL[0] = J.hipL[0] * 0.55 - 1.0; J.hipR[0] = J.hipR[0] * 0.55 - 1.0;
+        J.kneeL[0] = J.kneeL[0] * 0.5 + 1.65; J.kneeR[0] = J.kneeR[0] * 0.5 + 1.65;
+        J.spine[0] += 0.38; J.neck[0] -= 0.3;
+        hipsY += -0.33 - hipsY * 0.5;
+      }
+    }
 
     // caminar en pedo: piernas más abiertas
     if (drunk > 0.4 && walkAmt > 0.1) {

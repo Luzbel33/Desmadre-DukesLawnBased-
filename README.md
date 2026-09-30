@@ -21,6 +21,7 @@ No hace falta `npm install`: las librerías y los modelos vienen incluidos. Si c
 | Tecla | Acción |
 | --- | --- |
 | WASD / Shift | Caminar / correr |
+| C | Agacharse · corriendo: barrida · en el aire (después de saltar): dive tipo Max Payne |
 | Espacio | Saltar |
 | Mouse | Mirar (la cabeza sigue a donde mirás) |
 | J | ¿Qué hacemos? Lista de actividades (póker, fútbol, cortadoras, cine...) y marcar destino |
@@ -33,15 +34,15 @@ No hace falta `npm install`: las librerías y los modelos vienen incluidos. Si c
 | F / R | Patada (en la cancha: patear la pelota) / cabezazo |
 | 1–4 | Birra, faso, aerosol, mano libre |
 | B / rueda | Paleta del aerosol (color, chorreado) / tamaño del trazo |
-| C | Cambiar cámara: primera persona / tercera persona (lejos o cerca) |
+| Y | Cambiar cámara: primera persona / tercera persona (lejos o cerca) |
 | T o Enter | Chat (aparece como globo arriba de tu cabeza) |
 | V (mantener) / M | Hablar por micrófono / prender o apagar el micrófono |
 | P | Pantallas de YouTube (cine, rockola, autocine) |
-| Z | Gestos |
+| Z o click de la rueda | Gestos (menú circular) |
 | Manejando | W/S acelerar y frenar/reversa · A/D doblar · Shift turbo · Espacio cuchillas · H bocina · X bajarse · click tomar/fumar |
 | Tab | Lista de jugadores |
 | Póker (sentado a la mesa) | Espacio pasar/igualar · R subir (rueda o ↑↓ el monto; 1 mínimo, 2 medio pozo, 3 pozo, 4 todo; R confirma) · F mantenida retirarse · Tab mantenida ver jugadas · mouse mirar la mesa · X levantarse · T chat |
-| Esc | Pausa, volumen, silenciar jugadores, opciones |
+| Esc | Cierra el menú abierto; si no hay ninguno, pausa (volumen, silenciar jugadores, opciones) |
 
 Se puede agarrar una cosa con las dos manos, agarrar a otro jugador con una mano y pegarle con la otra, y revolear lo que tengas moviendo el brazo y soltando. Sentado (cine, bar, sillones) los brazos y las manos siguen andando: podés tomar, fumar, comer y revolear pochoclos o pegar.
 
@@ -64,6 +65,8 @@ Se puede agarrar una cosa con las dos manos, agarrar a otro jugador con una mano
 - **Voz por proximidad** (WebRTC, se escucha según la distancia y la dirección) y **chat** con globos.
 - Birra y faso con efectos de borrachera y de estar fumado; coma alcohólico si te pasás.
 - **Personajes**: Eric, Carla y Claudia (Renderpeople), la **Galleta** (masa dorada con ojos, sonrisa y botones de chocolate) y **El Diablo**, exclusivo del dueño: con el nombre reservado SmokePyro y su clave (la valida el servidor; se cambia con la variable `OWNER_KEY`) aparece el demonio, que abre la boca al hablar, reírse y escupir fuego, y trae poderes para trollear: **K** (o el botón del medio) fuego por la boca (quema a los que agarra el chorro y deja fuego en las paredes y el piso), **N** bola de fuego, **I** invisible, **O** inmortal, **L** risa.
+
+Al entrar el juego pasa a pantalla completa y bloquea los atajos del navegador (Chrome solo deja frenar Ctrl+W, Ctrl+T y Ctrl+N así); se apaga en la pausa. Si igual se intenta cerrar la pestaña, el navegador pregunta antes.
 
 ## Verificaciones
 

@@ -128,3 +128,44 @@ test('the controller stops at a wall without tunnelling',async()=>{
  assert.ok(p.pos.z>2&&p.pos.z<2.55,`player crossed wall at z=${p.pos.z}`);
  assert.ok(Math.abs(p.pos.y)<.01);ph.world.free();
 });
+// C: agacharse / barrida corriendo / dive en el aire (nunca Ctrl: Ctrl+W cierra la pestaña)
+test('C agacha (más lento), corriendo es barrida y en el aire es dive',async()=>{
+ const {p,ph,keys}=await fixture(new Set(['KeyW','KeyC']));
+ for(let n=0;n<90;n++)frame(p,ph,1/60,0);
+ assert.ok(p.crouching,'no se agacha');
+ assert.ok(p.speed>1.2&&p.speed<2.6,`agachado va a ${p.speed.toFixed(2)} m/s`);
+ keys.delete('KeyC');keys.add('ShiftLeft');
+ for(let n=0;n<60;n++)frame(p,ph,1/60,0);
+ assert.ok(p.speed>6,`corriendo va a ${p.speed.toFixed(2)}`);
+ keys.add('KeyC');frame(p,ph,1/60,0);
+ assert.ok(p.mv.slideT>0,'corriendo + C no barre');
+ for(let n=0;n<12;n++)frame(p,ph,1/60,0);
+ assert.ok(p.speed>6,`la barrida frenó de golpe (${p.speed.toFixed(2)})`);
+ for(let n=0;n<90;n++)frame(p,ph,1/60,0);
+ assert.equal(p.mv.slideT,0,'la barrida no termina');
+ ph.world.free();
+ const f=await fixture(new Set(['KeyW','ShiftLeft']));
+ for(let n=0;n<60;n++)frame(f.p,f.ph,1/60,0);
+ f.p.queueJump();for(let n=0;n<8;n++)frame(f.p,f.ph,1/60,0);
+ assert.ok(!f.p.grounded,'no saltó corriendo');
+ f.keys.add('KeyC');frame(f.p,f.ph,1/60,0);
+ assert.equal(f.p.mv.dive,1,'C en el aire no hace dive');
+ let top=0;const seen=new Set();
+ for(let n=0;n<150;n++){frame(f.p,f.ph,1/60,0);top=Math.max(top,f.p.speed);seen.add(f.p.mv.dive);}
+ assert.ok(top>8,`el dive no lanza (${top.toFixed(2)} m/s)`);
+ assert.ok(seen.has(2)&&seen.has(3),'no cae de panza ni se levanta: '+[...seen]);
+ assert.equal(f.p.mv.dive,0,'se quedó tirado');
+ assert.equal(f.p.state,'active');
+ f.ph.world.free();
+});
+test('saltar corriendo no tropieza: cae y sigue corriendo',async()=>{
+ const {p,ph}=await fixture(new Set(['KeyW','ShiftLeft']));
+ for(let n=0;n<60;n++)frame(p,ph,1/60,0);
+ p.queueJump();
+ let air=false,landed=false;
+ for(let n=0;n<90;n++){frame(p,ph,1/60,0);if(!p.grounded)air=true;else if(air)landed=true;}
+ assert.ok(air&&landed);
+ assert.equal(p.state,'active');assert.equal(p.mv.dive,0);
+ assert.ok(p.speed>6,`después del salto va a ${p.speed.toFixed(2)}`);
+ ph.world.free();
+});
