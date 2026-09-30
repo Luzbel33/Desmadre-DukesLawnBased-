@@ -31,8 +31,7 @@ class Ctx:
         self.kneeY = h('lowerleg01.L')[1]
         self.ankleY = h('foot.L')[1]
         self.eyeL, self.eyeR = h('eye.L'), h('eye.R')
-        # la boca: entre el labio de arriba (oris03) y las comisuras de abajo (oris07); con solo oris03 quedaba 1,8 cm
-        # arriba y los labios pintados parecían bigote
+        # la boca: entre el labio de arriba (oris03) y las comisuras de abajo (oris07)
         self.mouth = (h('oris03.L') + h('oris03.R') + h('oris07.L') + h('oris07.R')) / 4
         self.shL, self.shR = h('upperarm01.L'), h('upperarm01.R')
         self.elL, self.elR = h('lowerarm01.L'), h('lowerarm01.R')
@@ -90,16 +89,39 @@ def skin_color(C, ctx, pos, n, d):
     col *= (1 - 0.14 * smooth(-0.2, -0.8, n[:, 1]))[:, None]
     rough = np.full(len(pos), 0.55)
     face = inset(d, HEAD) * (n[:, 2] > 0.1)
-    # labios
-    # labios: una elipse chica (2,2 cm de medio ancho, 1 cm de alto) con el de arriba en arco; color suave, cerca
-    # de la piel (los oscuros quedaban como bigote/barba)
+    # Labios discretos y ceñidos a la boca: una mancha ancha o muy oscura parecía bigote.
     dx, dy = pos[:, 0] - ctx.mouth[0], pos[:, 1] - ctx.mouth[1]
-    arch = 0.0025 * np.cos(np.clip(dx / 0.022, -1, 1) * np.pi)
-    lips = smooth(1.0, 0.72, np.hypot(dx / 0.022, (dy - arch * (dy > 0)) / 0.0095)) * face * (pos[:, 2] > ctx.mouth[2] - 0.012)
+    arch = 0.0015 * np.cos(np.clip(dx / 0.014, -1, 1) * np.pi)
+    lips = smooth(1.0, 0.62, np.hypot(dx / 0.014, (dy - arch * (dy > 0)) / 0.0055)) * face * (pos[:, 2] > ctx.mouth[2] - 0.008)
     lc = np.array(C.get('lips', [0.62, 0.3, 0.3]))
     lc = lc * 0.55 + np.array(C.get('skin', [0.78, 0.6, 0.5])) * np.array([0.72, 0.5, 0.5]) * 0.45
-    col = col * (1 - lips[:, None] * 0.85) + lc * lips[:, None] * 0.85
+    col = col * (1 - lips[:, None] * 0.5) + lc * lips[:, None] * 0.5
     rough = rough * (1 - lips) + 0.25 * lips
+    if C.get('baseSkin'):
+        # Natural areola/nipple tones on the forward breast surface.
+        base_skin = np.array(C.get('skin', [0.78, 0.6, 0.5]))
+        areola_color = base_skin * np.array([0.72, 0.48, 0.53]) + np.array([0.12, 0.035, 0.05])
+        nipple_color = base_skin * np.array([0.68, 0.32, 0.43]) + np.array([0.18, 0.025, 0.045])
+        front = (n[:, 2] > 0.45).astype(np.float64)
+        for joint_name in ('breast.L____head', 'breast.R____head'):
+            if joint_name not in ctx.J:
+                continue
+            center = ctx.J[joint_name]
+            radius = np.hypot((pos[:, 0] - center[0]) / 0.021,
+                              (pos[:, 1] - center[1]) / 0.019)
+            outer = smooth(1.2, 0.72, radius) * front
+            inner = smooth(0.43, 0.16, radius) * front
+            col = col * (1 - outer[:, None] * 0.82) + areola_color * (outer[:, None] * 0.82)
+            col = col * (1 - inner[:, None] * 0.92) + nipple_color * (inner[:, None] * 0.92)
+
+        # Small tapered patch of short body hair at the pubic mound.
+        dy_pub = pos[:, 1] - (ctx.crotchY + 0.008)
+        width = 0.012 + 0.03 * np.clip((dy_pub + 0.025) / 0.05, 0, 1)
+        shape = np.maximum(np.abs(pos[:, 0]) / width, np.abs(dy_pub) / 0.038)
+        patch = smooth(1.22, 0.76, shape) * front
+        strands = 0.7 + 0.3 * vnoise(pos, 220, 27)
+        hair_color = base_skin * np.array([0.10, 0.08, 0.085]) + np.array([0.018, 0.014, 0.012])
+        col = col * (1 - patch[:, None] * strands[:, None] * 0.94) + hair_color * (patch[:, None] * strands[:, None] * 0.94)
     # cejas
     for e in (ctx.eyeL, ctx.eyeR):
         # ceja: arco fino que se afina hacia afuera

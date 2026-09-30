@@ -189,11 +189,11 @@ def build(name, preview=False):
     from outfits import paint_layers, Ctx  # noqa: E402
     ctx = Ctx(J, P, head_top)
     push = np.zeros(len(verts))
-    # baseSkin is a reusable clean body variant: keep footwear and hair paint,
-    # while leaving every garment layer off the body.
+    # baseSkin is a reusable clean body variant: keep footwear, not scalp paint
+    # (the hairstyle is real geometry added below).
     layers = paint_layers(C, ctx)
     if C.get('baseSkin'):
-        layers = [L for L in layers if getattr(L, 'is_boots', False) or getattr(L._where, 'is_hair', False)]
+        layers = [L for L in layers if getattr(L, 'is_boots', False)]
     for L in layers:
         m = L.mask(verts, nrm, dom)
         # con pelo de verdad (geometría), el pintado es solo cuero cabelludo: casi pegado (si no, casco)
