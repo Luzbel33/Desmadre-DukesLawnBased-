@@ -677,8 +677,34 @@ function openEmotes(by) {
 function chooseEmote(it) {
   state.radial.hide();
   if (!it) return;
+  state.lastEmote = it.e;
+  try { localStorage.setItem('dukes.lastEmote', it.e); } catch { /* */ }
   if (it.e === 'laugh') { if (!G.owner?.laugh()) G.sfx?.trigger('ui-err', null, 0.4); return; }
   state.local?.setEmote(it.e); state.net?.send({ t: 'ev', k: 'emote', e: it.e });
+}
+// Z o el click de la rueda: un toque repite el último gesto; mantenido (según la opción de la pausa) abre la rueda
+function emoteHoldMs() {
+  if (state.emoteHoldMs === undefined) { let v = 800; try { v = +localStorage.getItem('dukes.emoteHold') || 800; } catch { /* */ } state.emoteHoldMs = v; }
+  return state.emoteHoldMs;
+}
+function repeatEmote(by) {
+  if (state.lastEmote === undefined) { try { state.lastEmote = localStorage.getItem('dukes.lastEmote'); } catch { state.lastEmote = null; } }
+  const e = state.lastEmote;
+  const it = e === 'laugh' ? (G.owner?.active() ? { e: 'laugh' } : null) : EMOTES.find((x) => x.e === e);
+  if (it) { chooseEmote(it); return; }
+  openEmotes(by); state.radial.sticky = true; // todavía no hay último gesto: se abre la rueda
+}
+function emoteKeys(inp) {
+  const H = state.emoteHold;
+  if (!H) {
+    if (inp.hit('KeyZ')) state.emoteHold = { by: 'z', t: performance.now() };
+    else if (inp.btnHit(1)) state.emoteHold = { by: 'mid', t: performance.now() };
+    return;
+  }
+  const held = performance.now() - H.t;
+  const down = H.by === 'mid' ? inp.btn(1) : inp.key('KeyZ');
+  if (!down) { state.emoteHold = null; if (held < emoteHoldMs()) repeatEmote(H.by); }
+  else if (held >= emoteHoldMs()) { state.emoteHold = null; openEmotes(H.by); }
 }
 // cada cuadro con el menú abierto: el mouse elige (la cámara no gira); soltar/click confirma
 function stepRadial(inp) {
@@ -1278,6 +1304,9 @@ function setupPauseSections() {
     if (k in open) d.open = !!open[k];
     d.addEventListener('toggle', () => { open[k] = d.open; try { localStorage.setItem('dukes.pauseOpen', JSON.stringify(open)); } catch { /* */ } });
   });
+  const eh = $('o-emotehold');
+  eh.value = String(emoteHoldMs() / 1000);
+  eh.addEventListener('input', () => { state.emoteHoldMs = +eh.value * 1000; try { localStorage.setItem('dukes.emoteHold', String(state.emoteHoldMs)); } catch { /* */ } });
   $('keys-reset').addEventListener('click', () => { keys.reset(); renderKeybinds(); G.sfx?.trigger('ui-ok', null, 0.5); });
   renderKeybinds();
 }
@@ -1486,8 +1515,7 @@ function updateInput(dt) {
   }
   if (inp.hit('KeyF') && onFoot) L.kick();
   if (inp.hit('KeyR') && onFoot) L.headbutt();
-  if (inp.hit('KeyZ')) openEmotes('z');
-  else if (inp.btnHit(1)) openEmotes('mid');
+  emoteKeys(inp);
   if (inp.hit('KeyJ')) openActivities();
   if (inp.hit('KeyB') && L.hands.r.item === 'spray') openPalette();
   // rueda del mouse: tamaño del aerosol, o qué tan estirado va el brazo que controlás

@@ -40,7 +40,7 @@ Todas las teclas se pueden cambiar en la pausa (Esc → Controles). Estas son la
 | T o Enter | Chat (aparece como globo arriba de tu cabeza) |
 | V (mantener) / M | Hablar por micrófono / prender o apagar el micrófono |
 | P | Pantallas de YouTube (cine, rockola, autocine) |
-| Z o click de la rueda | Gestos (menú circular) |
+| Z o click de la rueda | Un toque repite el último gesto; mantenida abre la rueda de gestos (el tiempo se ajusta en la pausa) |
 | Manejando | W/S acelerar y frenar/reversa · A/D doblar · Shift turbo · Espacio cuchillas · H bocina · X bajarse · click tomar/fumar |
 | Tab | Lista de jugadores |
 | Póker (sentado a la mesa) | Espacio pasar/igualar · R subir (rueda o ↑↓ el monto; 1 mínimo, 2 medio pozo, 3 pozo, 4 todo; R confirma) · F mantenida retirarse · Tab mantenida ver jugadas · mouse mirar la mesa · X levantarse · T chat |
