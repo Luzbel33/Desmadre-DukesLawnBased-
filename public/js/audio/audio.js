@@ -1,5 +1,6 @@
 import { synthesize } from './synthesis.js';
 import { stepSound } from './surface.js';
+import { zoneAt } from '../shared/mapdata.js';
 import { ZoneMusic } from './music.js';
 const clamp=(x,a=0,b=1)=>Math.min(b,Math.max(a,Number.isFinite(+x)?+x:0));
 const DEFAULTS={vol:.8,volSfx:.8,volAmbient:.35,volMusic:.7,muted:false};
