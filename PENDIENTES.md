@@ -19,9 +19,11 @@ bajar la calidad. Orden: primero bugs y lo importante, lo "random" al final.
 - [x] Ritual: pentagrama nuevo en el piso del Búnker (frente al trono) para llegar y para volver al castillo con los
       que elija el Diablo (el servidor valida los dos); toda llegada por teletransporte busca piso firme y lugar
       libre (`Player.safeSpot`): nadie queda metido en la tarima ni en el piso.
-- [ ] Choques con NPCs: con el AUTO son como paredes (el auto sale volando y ellos siguen caminando: tienen
-      que ser atropellados); A PIE chocan una vez y después se atraviesan; los que se queman no respetan
-      colisiones; al morir se congelan (tiene que ser ragdoll).
+- [x] Choques con NPCs: el auto los atropella (salen revoleados dando vuelta, con daño y sangre; el auto pierde un
+      poco de envión y vos seguís arriba; despacio los corrés a un costado). A pie chocan siempre: después de
+      caerse el contador de "tirado" quedaba en -0.005 y el NPC era "tirado" para siempre (sin cápsula y, al
+      morir, sin ragdoll: por eso se congelaban). Los NPC que caminan (guardias, el que pasea, los prendidos fuego)
+      ahora chocan con paredes, autos y jugadores; el que se quema salta de la silla y corre en pánico.
 - [ ] NPCs invisibles (¿guardias?) y el de cara de cerdo (transparente / colisiones rotas).
 - [ ] Rendimiento: el juego está pesado y el sonido se traba a veces.
 

@@ -14,6 +14,12 @@ import { stepSound } from '../audio/surface.js';
 
 const V1 = new THREE.Vector3();
 const V2 = new THREE.Vector3();
+// Movimiento con choques: los NPC que caminan (guardias, el que corre prendido fuego, el que pasea) no atraviesan
+// paredes, autos ni jugadores. Un solo controlador de Rapier para todos (se usa de a uno).
+// Grupos de la consulta: el miembro VEHICLE hace que la cápsula del jugador (que solo mira WORLD|VEHICLE) cuente.
+const MOVE_GROUPS = groups(GR.VEHICLE | GR.PAWN, GR.WORLD | GR.ME | GR.PAWN | GR.VEHICLE);
+let KCC = null;
+const notNpc = (c) => G.phys.info(c)?.kind !== 'npc';
 const Q1 = new THREE.Quaternion();
 const E1 = new THREE.Euler();
 const HAS_DOM = typeof document !== 'undefined';
@@ -102,7 +108,7 @@ export class Npc {
     this.dead = true; this.deadT = 0;
     if (this.bubble) this.bubble.style.display = 'none';
     this.bubbleT = 0;
-    if (!this.down) this.knockout(vel.clone(), 1e9);
+    if (!(this.down > 0)) this.knockout(vel.clone(), 1e9);
     else this.down = 1e9;
   }
   // una explosión (k: 0 lejos .. 1 encima)
@@ -203,7 +209,9 @@ export class Npc {
     this.burnT = Math.max(this.burnT || 0, secs);
     this.burnBy = by;
     this.vocal('scream');
-    if (!this.down && !this.sit) this.say(['¡ME QUEMO!', '¡AGUA! ¡AGUAAA!', '¡AAAAAAH!'][Math.floor(Math.random() * 3)], 2);
+    // el que estaba sentado salta de la silla y sale corriendo
+    if (this.sit) { this.sit = false; this.table = false; this.action = null; }
+    if (!this.down) this.say(['¡ME QUEMO!', '¡AGUA! ¡AGUAAA!', '¡AAAAAAH!'][Math.floor(Math.random() * 3)], 2);
   }
   _burnStep(dt) {
     if (!(this.burnT > 0)) return;
@@ -242,6 +250,8 @@ export class Npc {
   _getUp() {
     const pt = this.rag.pelvis().translation();
     this.pos.set(pt.x, this.home.pos.y, pt.z);
+    this.down = 0; // sin esto quedaba en -0.00x: "sigue tirado" para todo (sin cápsula, sin ragdoll al morir)
+    this._pp?.copy(this.pos);
     this.rag.setKinematic(true);
     this.char.mode = 'anim';
     this.hp = Math.max(this.hp, 25); // se levanta golpeado (no con la vida llena)
@@ -311,7 +321,9 @@ export class Npc {
       if (this.deadT > this.respawnSecs) this.respawn();
       return;
     }
-    this.role?.(this, dt);
+    // prendido fuego no hace caso a su rol: corre en pánico (ver _burnStep)
+    if (!(this.burnT > 0)) this.role?.(this, dt);
+    this._resolveMove();
     // mirar a alguien: la cabeza primero, el cuerpo si hace falta
     let want = this.baseYaw, hy = 0;
     if (this.lookAt) {
@@ -343,6 +355,7 @@ export class Npc {
       this.down -= dt;
       ch.applyWorldTransforms(this.rag.read());
       if (this.down <= 0) {
+        this.down = 0;
         // sin una pierna no se levanta: se queda y se desangra
         if (this.lost & ((1 << PART.THIGH_L) | (1 << PART.SHIN_L) | (1 << PART.THIGH_R) | (1 << PART.SHIN_R))) this.die();
         else this._getUp();
@@ -400,6 +413,23 @@ export class Npc {
     }
   }
 
+  // Lo que movió el rol (o el pánico del fuego) se pasa por el controlador: se desliza por paredes, autos y
+  // jugadores en vez de atravesarlos. Los que tienen la posición armada a mano (bailarinas, sentados) no.
+  _resolveMove() {
+    if (!this.pawn || !this.pawn.isEnabled() || this.sit || this.noCollide || this.down > 0 || this.dead) return;
+    const c = this.pawn.translation();
+    const dx = this.pos.x - c.x, dz = this.pos.z - c.z, d2 = dx * dx + dz * dz;
+    if (d2 < 1e-10 || d2 > 9) return; // quieto, o lo pusieron en otro lado de una (reaparecer, levantarse)
+    if (!KCC) { KCC = G.phys.world.createCharacterController(0.02); KCC.setSlideEnabled?.(true); }
+    KCC.computeColliderMovement(this.pawn, { x: dx, y: 0, z: dz }, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, MOVE_GROUPS, notNpc);
+    const m = KCC.computedMovement();
+    this.pos.x = c.x + m.x; this.pos.z = c.z + m.z;
+    this.blocked = Math.hypot(m.x - dx, m.z - dz) > 0.002;
+    if (this.blocked && this.burnT > 0) this.data.panic = 0; // chocó corriendo prendido fuego: otra dirección
+    const hk = this.heightK * ((this.char?.meta?.height || 1.8) / 1.8);
+    this.pawnBody.setNextKinematicTranslation({ x: this.pos.x, y: this.pos.y + 0.91 * hk, z: this.pos.z });
+  }
+
   // cápsula de movimiento (como la de otro jugador): mi controlador choca contra ella; lleva su velocidad
   _pawnStep(dt, on) {
     if (!G.phys) return;
@@ -415,7 +445,12 @@ export class Npc {
     if (this.pawn.isEnabled() !== on) this.pawn.setEnabled(on);
     this.standing = on;
     if (dt > 0) { this.vel.set((this.pos.x - this._pp.x) / dt, 0, (this.pos.z - this._pp.z) / dt); this._pp.copy(this.pos); }
-    if (on) this.pawnBody.setNextKinematicTranslation({ x: this.pos.x, y: this.pos.y + 0.91 * hk, z: this.pos.z });
+    if (on) {
+      // recién vuelve a estar parado (se levantó, reapareció): la cápsula aparece donde está, sin arrastrarse
+      if (!this._pawnOn) this.pawnBody.setTranslation({ x: this.pos.x, y: this.pos.y + 0.91 * hk, z: this.pos.z }, true);
+      this.pawnBody.setNextKinematicTranslation({ x: this.pos.x, y: this.pos.y + 0.91 * hk, z: this.pos.z });
+    }
+    this._pawnOn = on;
   }
 
   dispose() {

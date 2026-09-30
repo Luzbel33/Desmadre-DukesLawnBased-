@@ -35,6 +35,23 @@ export const VEHICLE_SOLIDS = {
     ...[-.66,.66].flatMap(x=>[-.85,.85].map(z=>[.09,.23,.23,x,.25,z]))],
 };
 const DRIVE_GROUPS = groups(GR.VEHICLE, GR.WORLD | GR.VEHICLE | GR.PAWN | GR.REMOTE);
+// los NPC no son paredes para el auto (se los atropella: ver _runOver); ni su cápsula ni su cuerpo tirado lo frenan
+const NPC_KINDS = new Set(['npc', 'bag']);
+function driveFilter(v) {
+  return (collider) => {
+    const inf = G.phys.info(collider);
+    if (inf && NPC_KINDS.has(inf.kind)) return false;
+    return !v.seats.includes(inf?.ref?.id);
+  };
+}
+// caja que ocupa cada tipo de vehículo (de sus sólidos): medio ancho y de dónde a dónde va a lo largo
+const EXTENTS = {};
+function extentsOf(type) {
+  if (EXTENTS[type]) return EXTENTS[type];
+  let hx = 0, z0 = 1e9, z1 = -1e9;
+  for (const [sx, , sz, x, , z] of VEHICLE_SOLIDS[type] || VEHICLE_SOLIDS.mower) { hx = Math.max(hx, Math.abs(x) + sx); z0 = Math.min(z0, z - sz); z1 = Math.max(z1, z + sz); }
+  return (EXTENTS[type] = { hx, z0, z1 });
+}
 const VEHICLE_GROUPS = groups(GR.VEHICLE, GR.WORLD | GR.VEHICLE | GR.PAWN | GR.REMOTE | GR.RAGDOLL | GR.PROP | GR.DEBRIS | GR.ME);
 
 export class VehicleManager {
@@ -190,7 +207,7 @@ export class VehicleManager {
       if (Math.abs(dist)>1e-6) for (const part of localV.driveParts) {
         const candidate = G.phys.world.castShape(this._driveOrigin(localV,part.center), rotation, {x:dx,y:0,z:dz},
           part.shape,.008,1,false,RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,DRIVE_GROUPS,null,localV.body,
-          collider=>!localV.seats.includes(G.phys.info(collider)?.ref?.id));
+          driveFilter(localV));
         if (candidate && (!hit || candidate.time_of_impact<hit.time_of_impact)) hit=candidate;
       }
       const fraction = hit ? Math.max(0, hit.time_of_impact - 0.002 / Math.abs(dist)) : 1;
@@ -205,6 +222,7 @@ export class VehicleManager {
         }
         localV.speed = 0; // contact stops motion; repeated throttle must not bounce the camera
       }
+      this._runOver(localV);
       localV.pos.y = VDEF.get(localV.id)?.p?.[1] ?? localV.pos.y;
       localV.quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), localV.yaw);
       localV.targetPos.copy(localV.pos); localV.targetQuat.copy(localV.quat);
@@ -262,10 +280,57 @@ export class VehicleManager {
       if (contact && contact.distance < -0.015) blocked = true;
       return !blocked;
     }, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, DRIVE_GROUPS, null, v.body,
-    collider => !v.seats.includes(G.phys.info(collider)?.ref?.id));
+    driveFilter(v));
     if (blocked) break;
     }
     return blocked;
+  }
+
+  // Atropellar: el NPC que queda adentro de la caja del vehículo sale revoleado según la velocidad (con daño, sangre
+  // y el golpe), el vehículo pierde un poco de envión y sigue. Despacio solo lo corrés a un costado. Antes el NPC
+  // era una pared: el auto frenaba en seco, el conductor salía volando y el NPC seguía caminando como si nada.
+  _runOver(v) {
+    const npcs = G.allNpcs?.();
+    if (!npcs?.length) return;
+    const sp = v.speed || 0, asp = Math.abs(sp);
+    const s = Math.sin(v.yaw), c = Math.cos(v.yaw), E = extentsOf(v.type);
+    const fx = s * Math.sign(sp || 1), fz = c * Math.sign(sp || 1);
+    for (const n of npcs) {
+      if (!n.char || n.dead || n.sit || n.down > 0) continue;
+      const dx = n.pos.x - v.pos.x, dz = n.pos.z - v.pos.z;
+      if (dx * dx + dz * dz > 16 || Math.abs(n.pos.y - v.pos.y) > 1.6) continue;
+      const lx = c * dx - s * dz, lz = s * dx + c * dz; // en el marco del vehículo (x al costado, z adelante)
+      const R = 0.3;
+      if (Math.abs(lx) > E.hx + R || lz < E.z0 - R || lz > E.z1 + R) continue;
+      if ((n._runT || 0) > G.time) continue;
+      n._runT = G.time + 0.5;
+      const pt = TMPV.set(n.pos.x, n.pos.y + 0.95, n.pos.z);
+      if (asp < 2.2) {
+        // despacio: lo corrés a un costado (y se queja)
+        const side = lx >= 0 ? 1 : -1, push = E.hx + R - Math.abs(lx) + 0.05;
+        n.pos.x += c * side * push; n.pos.z -= s * side * push;
+        if ((n._honkT || 0) < G.time) { n._honkT = G.time + 3; n.say?.(['¡Eh! ¡Fijate!', '¡Casi me pisás!', '¡Tarado!'][Math.floor(Math.random() * 3)], 2); }
+        continue;
+      }
+      // atropellado: el golpe (daño según la velocidad) y el revoleo en la dirección del vehículo
+      n.punch(asp * 1.5, pt, TMPV2.set(fx, 0.25, fz).normalize(), 9, true, 'blunt');
+      const vel = TMPV2.set(fx * asp * 1.05 + (Math.random() - 0.5) * 1.5, 1.4 + asp * 0.32, fz * asp * 1.05 + (Math.random() - 0.5) * 1.5);
+      if (!n.dead && !(n.down > 0)) n.knockout(vel.clone(), 2.8 + asp * 0.35);
+      // las piernas salen más rápido que la cabeza: el cuerpo gira y cae de espaldas sobre el capó (no vuela
+      // parado como un maniquí)
+      if (n.rag?.alive) {
+        const base = n.pos.y, jx = (Math.random() - 0.5) * 1.2, jz = (Math.random() - 0.5) * 1.2;
+        for (const b of n.rag.bodies) {
+          const t = b.translation(), h = clamp((t.y - base) / 1.7, 0, 1), k = 1.3 - 0.65 * h;
+          b.setLinvel({ x: fx * asp * k + jx, y: 0.9 + asp * (0.1 + 0.3 * h), z: fz * asp * k + jz }, true);
+          b.setAngvel({ x: -fz * asp * 0.8, y: (Math.random() - 0.5) * 3, z: fx * asp * 0.8 }, true);
+        }
+      }
+      G.sfx?.trigger('hit', pt, Math.min(1, 0.4 + asp / 10), { rate: 0.8 });
+      G.fx?.blood?.(pt.clone(), TMPV2.set(fx, 0.8, fz).normalize(), Math.min(1.5, asp / 6));
+      v.speed *= asp > 6 ? 0.82 : 0.7; // el golpe frena un poco (no en seco)
+      this.onRunOver?.(v, asp, n);
+    }
   }
 
   // Estampado de corte (30 Hz): cubre todo lo recorrido desde el anterior, así a mucha velocidad
