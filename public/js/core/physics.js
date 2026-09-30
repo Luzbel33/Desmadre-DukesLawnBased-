@@ -66,7 +66,7 @@ export class Physics {
     desc.setFriction(opts?.friction ?? 0.8);
     desc.setCollisionGroups(groups(GR.WORLD, 0xffff));
     const c = this.world.createCollider(desc);
-    this.tag(c, { kind: 'world', mat: opts?.mat || 'stone', paint: !!opts?.paint });
+    this.tag(c, { kind: 'world', mat: opts?.mat || 'stone', paint: !!opts?.paint, holes: !!opts?.holes });
     return c;
   }
   // Analytic floor: avoids capsule shape-cast jitter against the former 900m cuboid.

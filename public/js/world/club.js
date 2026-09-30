@@ -416,7 +416,7 @@ export class Club {
       if (door) { this.deco('iron', (x0 + x1) / 2, h - 0.05, (z0 + z1) / 2, 0.08, 0.1, len, { yaw }); continue; }
       const p = this.mesh(new THREE.PlaneGeometry(len, h - 0.2), fence, (x0 + x1) / 2, h / 2, (z0 + z1) / 2, { yaw: yaw + Math.PI / 2 });
       p.material.side = THREE.DoubleSide;
-      this.phys.box((x0 + x1) / 2, h / 2, (z0 + z1) / 2, 0.04, h / 2, len / 2, yaw, { paint: false, mat: 'metal' });
+      this.phys.box((x0 + x1) / 2, h / 2, (z0 + z1) / 2, 0.04, h / 2, len / 2, yaw, { paint: false, mat: 'metal', holes: true }); // alambrado: las balas pasan
     }
     this.light(cx, 5.8, cz, 0xfff0d0, 18, 12, { priority: 2 });
     this.deco('lamp', cx, 5.9, cz, 1.2, 0.06, 1.2);

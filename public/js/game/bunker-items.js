@@ -90,7 +90,7 @@ export class BunkerItems {
     const o = cam.position.clone(), d = cam.getWorldDirection(new THREE.Vector3());
     const hit = G.phys.raycast(o.x, o.y, o.z, d.x, d.y, d.z, 90, SHOT_GROUPS, null, (col) => {
       const info = G.phys.info(col);
-      return !(info && (info.kind === 'me' || info.kind === 'player' || info.kind === 'gib'));
+      return !(info && (info.kind === 'me' || info.kind === 'player' || info.kind === 'gib' || info.holes));
     });
     const end = hit ? new THREE.Vector3(hit.x, hit.y, hit.z) : o.clone().addScaledVector(d, 90);
     const muzzle = L.handPos('r', new THREE.Vector3()).addScaledVector(d, 0.25).add(V1.set(0, 0.035, 0));
