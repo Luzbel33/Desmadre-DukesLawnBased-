@@ -23,7 +23,7 @@ import { defOf, holdOf, heldQuat, heldPos, gripPoints, bladePoints, handleAxis, 
 import {
   Arm, stepArm, startControl, moveControl, reachControl, startScript, torsoTwist, torsoLean,
 } from './arms.js';
-import { MAP_BOUNDS, SPAWN, isPvpAt } from '../shared/mapdata.js';
+import { MAP_BOUNDS, SPAWN, isPvpAt, inClub } from '../shared/mapdata.js';
 
 const BODY_Y = 0.80;
 const CAPSULE_HALF = 0.50;
@@ -1964,8 +1964,10 @@ export class LocalPlayer {
       this.controller.computeColliderMovement(this.collider, desired, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, ns.length ? KCC_NO_PAWN : KCC_GROUPS);
       const mv = this.controller.computedMovement();
       const tr = this.body.translation();
-      const nx = clamp(tr.x + mv.x, MAP_BOUNDS.x0 + 1, MAP_BOUNDS.x1 - 1);
-      const nz = clamp(tr.z + mv.z, MAP_BOUNDS.z0 + 1, MAP_BOUNDS.z1 - 1);
+      // afuera del mapa solo se puede estar adentro del búnker (lo cierran sus paredes)
+      const club = inClub(tr.x, tr.z);
+      const nx = club ? tr.x + mv.x : clamp(tr.x + mv.x, MAP_BOUNDS.x0 + 1, MAP_BOUNDS.x1 - 1);
+      const nz = club ? tr.z + mv.z : clamp(tr.z + mv.z, MAP_BOUNDS.z0 + 1, MAP_BOUNDS.z1 - 1);
       this.body.setNextKinematicTranslation({ x: nx, y: tr.y + mv.y, z: nz });
       const wasGrounded = this.grounded;
       this.grounded = this.vy <= 0 && this.controller.computedGrounded() === true;

@@ -46,6 +46,10 @@ const PBR = {
   doorWood: { id: 'medieval_wood', tint: 0x9a8472, size: 1.8, ao: 1, disp: 0.012, weather: [0.2, 0.3, 0, 0.3], wet: 0.2 },
   velvet: { id: 'velour_velvet', tint: 0x9a1a24, size: 0.9 },
   cryptBrick: { id: 'mossy_brick', tint: 0x8c8c82, size: 2.2, ao: 1, disp: 0.03, weather: [0.6, 0.4, 0.6, 0.6], wet: 0 },
+  // el búnker: hormigón gastado, ladrillo pintado de negro, chapa oxidada
+  bunkerConcrete: { id: 'concrete_floor_01', tint: 0x77777c, size: 3 },
+  bunkerBrick: { id: 'brick_wall_001', tint: 0x3c3438, size: 2.6 },
+  bunkerIron: { id: 'rusty_corrugated_iron', tint: 0x6e645c, size: 2 },
 };
 const loader = new THREE.TextureLoader();
 // cargas en curso: la pantalla de carga espera a que terminen (si no, al entrar se ven las texturas provisorias)
@@ -124,6 +128,9 @@ const TEXMATS = {
   doorWood: { tex: 'woodDark', rough: 0.7, tile: 1.8 },
   velvet: { tex: 'carpet', rough: 1, tile: 0.9 },
   cryptBrick: { tex: 'brick', rough: 0.95, tile: 2.2 },
+  bunkerConcrete: { tex: 'concrete', rough: 0.95, tile: 3 },
+  bunkerBrick: { tex: 'brick', rough: 0.9, tile: 2.6 },
+  bunkerIron: { tex: 'metal', rough: 0.6, metal: 0.4, tile: 2 },
 };
 const COLORMATS = {
   white: { color: 0xd8d4ca, rough: 0.8 },
@@ -171,7 +178,27 @@ const COLORMATS = {
   ember: { color: 0x2a0c06, emissive: 0xff4a10, emissiveIntensity: 2.4 },
   hay: { color: 0x8a7440, rough: 1 },
   hemp: { color: 0x3a2c1e, rough: 1 }, // soga vieja y sucia
+  // el búnker
+  latex: { color: 0x070709, rough: 0.16, metal: 0.15 },
+  leatherBlack: { color: 0x141112, rough: 0.45 },
+  blackTile: { color: 0x0b0b0e, rough: 0.12, metal: 0.25 },
+  steel: { color: 0x9aa0a8, rough: 0.32, metal: 0.95 },
+  hazard: { color: 0xd8b020, rough: 0.6 },
+  neonRed: { color: 0xff1a3a, emissive: 0xff1030, emissiveIntensity: 5 },
+  neonPurple: { color: 0xb04dff, emissive: 0x9b30ff, emissiveIntensity: 5 },
+  neonCyan: { color: 0x40e8ff, emissive: 0x20d8ff, emissiveIntensity: 4.5 },
+  neonGreen: { color: 0x50ff70, emissive: 0x30ff60, emissiveIntensity: 4.5 },
+  fluo: { color: 0xf4fbff, emissive: 0xe8f4ff, emissiveIntensity: 3.2 },
+  redLamp: { color: 0xff3020, emissive: 0xff2010, emissiveIntensity: 4 },
+  canvasRed: { color: 0x5a0e12, rough: 1 },
 };
+// Material propio (lo usa el búnker para sus shaders): queda registrado con esa clave para box/cylinder/geo
+export function defineMat(key, mat) {
+  mat.userData.tileU = mat.userData.tileU || 1;
+  mat.userData.tileV = mat.userData.tileV || 1;
+  MATS.set(key, mat);
+  return mat;
+}
 
 export function getMat(key) {
   if (MATS.has(key)) return MATS.get(key);

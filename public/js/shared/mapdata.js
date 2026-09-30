@@ -46,6 +46,41 @@ export const CASTLE = {
   keep: { x0: -25, x1: 25, z0: -127, z1: -103, floor: 3.5, top: 16.5 },
   fire: [-27, -92.5], // fogón del patio (bajo el galpón de madera)
 };
+// ---------------------------------------------------------------- El Búnker (club secreto del Diablo)
+// "Bajo tierra" no se puede de verdad (el piso físico es un plano infinito en y = 0): el complejo está lejos, al
+// norte, cerrado y a oscuras (sin sol ni luna). Se llega por una tumba de la cripta (escalera + ascensor que "baja")
+// o, el Diablo, por el pentagrama del cuarto secreto. De sur a norte: escalera, pasillo, ascensor, antesala (el
+// portero y la puerta blindada) y el club. Metros absolutos; yaw 0 mira al sur (+Z).
+export const CLUB = {
+  x0: -30, x1: 30, z0: -484, z1: -406, // todo el complejo (se puede caminar adentro aunque esté fuera del mapa)
+  name: 'El Búnker',
+  password: 'tracatraca',
+  // escalera: arriba (llegada desde la tumba) en z -410 a 6.3 m; baja hacia el norte hasta el pasillo en y 0
+  stairTop: { x: 0, y: 6.3, z: -409.4, yaw: Math.PI },
+  stairs: { x0: -1.6, x1: 1.6, zTop: -410.4, zBot: -421.6, rise: 6.3 },
+  lobby: { x0: -3.2, x1: 3.2, z0: -429.8, z1: -421.6 }, // pasillo del ascensor
+  lift: { x0: -1.6, x1: 1.6, z0: -433.4, z1: -429.8, h: 3.0 }, // cabina: puerta sur (pasillo) y norte (antesala)
+  ante: { x0: -7, x1: 7, z0: -444, z1: -433.4, h: 4.2 }, // antesala: el portero y la puerta blindada
+  door: { x: 0, z: -444, w: 2.6, h: 3.1 }, // puerta blindada (antesala -> club)
+  doorman: { x: 2.3, z: -441.2, yaw: -Math.PI / 2 - 0.35 },
+  hall: { x0: -24, x1: 24, z0: -478, z1: -444, h: 7.5 }, // el club
+  throne: { x: 17.6, z: -449.8, y: 0.62, yaw: -Math.PI / 2 - 0.55 }, // el trono del Diablo (sobre la tarima)
+  arrive: { x: 14.4, z: -452.4, yaw: Math.PI / 2 + 0.4 }, // adonde llegan los del ritual (frente al trono, entre el humo)
+  // pentagrama del cuarto secreto (castillo, piso F0): parado adentro, el Diablo abre el ritual
+  pentagram: { x: 13, z: -120.3, r: 1.85 },
+  // la tumba de la cripta que tiene la escalera (y adónde volvés al subir)
+  tomb: { x: 10.5, z: -119.5, back: { x: 11.9, z: -119.5, yaw: -Math.PI / 2 } },
+};
+// el búnker es zona PvP (hay jaula de peleas, armas y granadas); "secret": no aparece en la lista de actividades
+ZONES.bunker = { x0: CLUB.x0, z0: CLUB.z0, x1: CLUB.x1, z1: CLUB.z1, pvp: true, name: 'El Búnker', secret: true };
+export function inClub(x, z, pad = 0) {
+  return x >= CLUB.x0 - pad && x <= CLUB.x1 + pad && z >= CLUB.z0 - pad && z <= CLUB.z1 + pad;
+}
+// ¿se puede estar acá? (el mapa, o adentro del búnker)
+export function playableAt(x, z) {
+  return (x >= MAP_BOUNDS.x0 && x <= MAP_BOUNDS.x1 && z >= MAP_BOUNDS.z0 && z <= MAP_BOUNDS.z1) || inClub(x, z);
+}
+
 // Tormenta local: adentro del rectángulo es de noche, llueve y truena; hacia afuera se desvanece en `fade` metros.
 export const STORM = { x0: -62, z0: -142, x1: 62, z1: -74, fade: 18 };
 // de dónde llega la luz de la luna (desplazamiento desde el punto iluminado): alta, desde el sudoeste
@@ -138,7 +173,7 @@ export function parsePatch(id) {
   const { u, v } = patchBasis(n);
   const d = qd / 100, C = PAINT.cell;
   const c = [0, 1, 2].map((k) => n[k] * d + u[k] * (i + 0.5) * C + v[k] * (j + 0.5) * C);
-  if (c[0] < MAP_BOUNDS.x0 - 5 || c[0] > MAP_BOUNDS.x1 + 5 || c[2] < MAP_BOUNDS.z0 - 5 || c[2] > MAP_BOUNDS.z1 + 5) return null;
+  if ((c[0] < MAP_BOUNDS.x0 - 5 || c[0] > MAP_BOUNDS.x1 + 5 || c[2] < MAP_BOUNDS.z0 - 5 || c[2] > MAP_BOUNDS.z1 + 5) && !inClub(c[0], c[2], 5)) return null;
   if (c[1] < -2 || c[1] > 80) return null;
   return { id, patch: true, n, u, v, d, i, j, c, w: C, h: C, ppm: PAINT.ppm, pw: PAINT.px, ph: PAINT.px, horizontal: Math.abs(n[1]) > 0.7 };
 }
@@ -188,6 +223,11 @@ export const SCREENS = [
   {
     id: 'fogon', name: 'Pantalla del Fogón', c: [-38.35, 3.2, -92.5], yaw: Math.PI / 2, w: 7, h: 3.9375,
     zone: null, hearFull: 9, hearMax: 32, // se escucha alrededor del fuego (y un poco en el patio)
+  },
+  {
+    // arriba del escenario del Búnker: si pasa algo acá, la música del club se calla (no se pisan)
+    id: 'bunker', name: 'Pantalla del Búnker', c: [0, 4.75, -477.72], yaw: 0, w: 9.6, h: 5.4,
+    zone: 'bunker', hearFull: 30, hearMax: 48,
   },
 ];
 export const SCREEN_BY_ID = Object.fromEntries(SCREENS.map((s) => [s.id, s]));
@@ -308,6 +348,7 @@ export const INTERACT = [
   { id: 'parrilla', k: 'grill', p: [-17.2, 1.0, -98.4], r: 2.0, label: 'Comerse un choripán' },
   { id: 'fogon_proyector', k: 'media', screen: 'fogon', p: [-17.4, 1.0, -91.3], r: 2.0, label: 'Elegir video o historia de terror' },
   { id: 'futbol', k: 'football', p: [0, 1.0, 15.4], r: 2.6, label: 'Iniciar / reiniciar el partido de fútbol' },
+  { id: 'bunker_dj', k: 'media', screen: 'bunker', p: [-7.2, 1.9, -470.2], r: 2.4, label: 'Pasar música o un video en el Búnker' },
 ];
 
 // Botiquines: curan, cortan el sangrado y devuelven sangre (cada uno se repone solo). yaw: hacia dónde mira
