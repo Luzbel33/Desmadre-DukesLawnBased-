@@ -4,7 +4,7 @@
 // un seno sostenido suena a "señal de radio".
 const TAU=Math.PI*2;
 const GAIN={engine:3,blades:1.4,water:1.6};
-const DURATIONS={gulp:.32,cough:.9,pain:.42,burp:.7,'step-grass':.18,'step-hard':.16,jump:.2,land:.28,hit:.22,swing:.24,pickup:.18,throw:.3,drink:1.0,smoke:.8,spray:2,engine:2,blades:2,horn:.55,wind:6,birds:1.6,water:4,ui:.18,munch:.5,drip:.42,shot:.55,boom:2.4,bills:.7,fireball:1.3,'lift-hum':2,'lift-ding':1.8,'lift-door':1.05,'lift-clunk':.7};
+const DURATIONS={gulp:.32,cough:.9,pain:.42,burp:.7,'step-grass':.18,'step-hard':.16,jump:.2,land:.28,hit:.22,swing:.24,pickup:.18,throw:.3,drink:1.0,smoke:.8,spray:2,engine:2,blades:2,horn:.55,wind:6,birds:1.6,water:4,ui:.18,munch:.5,drip:.42,shot:.55,boom:2.4,bills:.7,fireball:1.3,'lift-hum':2,'lift-ding':1.8,'lift-door':1.05,'lift-clunk':.7,'ring-bell':1.9};
 
 // Filtro de dos polos (RBJ): pasabanda de ganancia 0 dB en el pico, o pasabajos.
 function biquad(kind,f,q,sr){
@@ -132,6 +132,11 @@ export function synthesize(name, sampleRate=22050, seed=1) {
         // freno que se suelta / engancha: golpe grave con chapa que resuena
         v=.9*Math.sin(TAU*(68*t-20*t*t))*Math.exp(-t*9)+.35*Math.sin(TAU*423*t)*Math.exp(-t*14)+.2*Math.sin(TAU*1131*t)*Math.exp(-t*22)+.5*st.lp(n)*Math.exp(-t*25);
         env=Math.min(1,t*900);break;
+      }
+      // campana de ring de boxeo: tres golpes rápidos de una campana chica (parciales inarmónicos que duran)
+      case 'ring-bell': {
+        for(let k=0;k<3;k++){const bt=t-k*.2;if(bt<0)continue;const a=(k===2?1:.8)*Math.exp(-bt*2.6);v+=a*(.5*Math.sin(TAU*1560*bt)+.26*Math.sin(TAU*1560*2.41*bt)*Math.exp(-bt*4)+.14*Math.sin(TAU*1560*3.93*bt)*Math.exp(-bt*7)+.3*n*Math.exp(-bt*90));}
+        env=Math.min(1,t*800);break;
       }
       case 'lift-ding': {
         // campanita de llegada: parciales de campana (inarmónicos) que se apagan a distinto ritmo

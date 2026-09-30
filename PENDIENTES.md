@@ -24,11 +24,15 @@ bajar la calidad. Orden: primero bugs y lo importante, lo "random" al final.
       caerse el contador de "tirado" quedaba en -0.005 y el NPC era "tirado" para siempre (sin cápsula y, al
       morir, sin ragdoll: por eso se congelaban). Los NPC que caminan (guardias, el que pasea, los prendidos fuego)
       ahora chocan con paredes, autos y jugadores; el que se quema salta de la silla y corre en pánico.
-- [ ] NPCs invisibles (¿guardias?) y el de cara de cerdo (transparente / colisiones rotas).
+- [~] NPCs invisibles: no se pudo reproducir (todos se dibujan). Lo más probable: guardias de uniforme oscuro en la
+      noche de tormenta. Ahora llevan un farol encendido en la mano (llama y luz que siguen la mano).
+- [ ] El portero "cara de chancho": capucha pintada con orejas/hocico de cilindros (se ve hueco). Va con el
+      rediseño de personajes (punto 2).
 - [ ] Rendimiento: el juego está pesado y el sonido se traba a veces.
 
 ### 2. Club / personajes
-- [ ] Botón para cortar las peleas de los boxeadores.
+- [x] Campana del ring al lado de la puerta de la jaula (que ahora sí tiene puerta): corta la pelea (cada uno a su
+      rincón) y la vuelve a largar; la oyen y la ven todos.
 - [ ] Mujeres: **el cuerpo NO se toca** (ni se mira: es la base del futuro parque anatómico). Solo la cara:
       lindas, sin bigote, con pelo largo de verdad (el de GPT está pésimo) o, si no sale bien, una máscara de
       animal distinta para cada una (fiesta de élite). Accesorios bien puestos; nada de ropa pintada.

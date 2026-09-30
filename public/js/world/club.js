@@ -464,7 +464,7 @@ export class Club {
       const x0 = cx + Math.cos(a0) * R, z0 = cz + Math.sin(a0) * R, x1 = cx + Math.cos(a1) * R, z1 = cz + Math.sin(a1) * R;
       this.cyl('iron', x0, h / 2, z0, 0.06, 0.06, h, 8, { collide: true });
       const mid = (a0 + a1) / 2;
-      const door = Math.abs(((mid - Math.PI + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.3; // el lado que mira al oeste
+      const door = i === 3; // el lado que mira a la pista (oeste-sudoeste): antes la cuenta no elegía ninguno y no había puerta
       const len = Math.hypot(x1 - x0, z1 - z0), yaw = Math.atan2(x1 - x0, z1 - z0);
       if (door) { this.deco('iron', (x0 + x1) / 2, h - 0.05, (z0 + z1) / 2, 0.08, 0.1, len, { yaw }); continue; }
       const p = this.mesh(new THREE.PlaneGeometry(len, h - 0.2), fence, (x0 + x1) / 2, h / 2, (z0 + z1) / 2, { yaw: yaw + Math.PI / 2 });
@@ -473,6 +473,16 @@ export class Club {
     }
     this.light(cx, 5.8, cz, 0xfff0d0, 18, 12, { priority: 2 });
     this.deco('lamp', cx, 5.9, cz, 1.2, 0.06, 1.2);
+    // la campana del ring, al lado de la puerta: corta la pelea (y la vuelve a largar)
+    const md = (3.5 / 8) * Math.PI * 2, ox = Math.cos(md), oz = Math.sin(md), dr = R * Math.cos(Math.PI / 8);
+    const bx = cx + ox * (dr + 0.75) + oz * 1.35, bz = cz + oz * (dr + 0.75) - ox * 1.35;
+    this.cyl('iron', bx, 0.65, bz, 0.035, 0.045, 1.3, 8, { collide: true });
+    this.deco('blackWood', bx, 1.32, bz, 0.34, 0.06, 0.2);
+    this.cyl('gold', bx, 1.47, bz, 0.03, 0.15, 0.14, 20);
+    this.cyl('gold', bx, 1.555, bz, 0.02, 0.02, 0.04, 8);
+    this.deco('redLamp', bx, 1.37, bz, 0.07, 0.02, 0.07);
+    this.anchors.bell = new THREE.Vector3(bx, 1.45, bz);
+    this.use('club_bell', [bx, 1.1, bz], 1.7, 'Tocar la campana (cortar la pelea)', { e: 'bell' });
     this.anchors.cage = new THREE.Vector3(cx, 0.16, cz);
     this.anchors.cageR = R;
   }

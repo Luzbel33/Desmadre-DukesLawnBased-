@@ -63,7 +63,7 @@ export class ClubGame {
     this.ritualUse2 = { id: 'club_ritual2', k: 'club', e: 'ritual', p: [P2.x, 1, P2.z], r: P2.r, label: '⛧ Ritual: volver al castillo', when: () => this._ownerOnPentagram() === 'bunker' };
     INTERACT.push(this.tombUse, this.ritualUse, this.ritualUse2);
     // el portero y el ascensor ya los registró world/club.js (k: 'club')
-    for (const it of this.club.interact) if (it.e === 'ride') this.rideUse = it;
+    for (const it of this.club.interact) { if (it.e === 'ride') this.rideUse = it; if (it.e === 'bell') this.bellUse = it; }
   }
 
   use(it) {
@@ -87,6 +87,7 @@ export class ClubGame {
       case 'drug': this._drug(L, it.drug); break;
       case 'bar': L.giveItem('beer'); G.sfx?.trigger('pickup'); this.onItems?.(); this.bartender?.say(['Tomá, invita la casa.', 'Esa te va a pegar.', 'Una birra del infierno.'][Math.floor(Math.random() * 3)], 2.4); break;
       case 'monitors': this.notify('📺 Las cámaras de seguridad todavía no están conectadas.'); break;
+      case 'bell': { const m = { e: 'bell', on: this.truceUntil > G.time ? 0 : 1 }; this._bellApply(m); this._send(m); break; }
       case 'ritual': this._openRitual(); break;
       default: break;
     }
@@ -119,6 +120,7 @@ export class ClubGame {
     if (m.e === 'tomb') this._openTomb();
     else if (m.e === 'lift') this._liftApply(m);
     else if (m.e === 'auth' && m.id) this.authIds.add(m.id);
+    else if (m.e === 'bell') this._bellApply(m);
   }
 
   // ---------------------------------------------------------------- la tumba y la escalera
@@ -260,6 +262,7 @@ export class ClubGame {
     this.camBob = clamp(this.camBob + this._bobV * h, -0.12, 0.12);
     Lf.speed = speed;
     this.rideUse && (this.rideUse.label = Lf.phase === 'ride' ? 'Esperá...' : Lf.at === 'top' ? 'Apretar el botón (bajar al -666)' : 'Apretar el botón (subir)');
+    if (this.bellUse) this.bellUse.label = this.truceUntil > G.time ? 'Tocar la campana (que vuelvan a pelear)' : 'Tocar la campana (cortar la pelea)';
     for (const d of [D.liftS, D.liftN]) { try { d.collider.setEnabled(d.open < 0.85); } catch { /* */ } }
     this.inLift = !!inside;
   }
@@ -412,9 +415,34 @@ export class ClubGame {
     }
   }
 
+  // la campana: cortan la pelea (cada uno a su rincón, a respirar) por un rato, o vuelven a pelear
+  _bellApply(m) {
+    const on = !!m.on;
+    this.truceUntil = on ? G.time + 30 : 0;
+    const at = this.club.anchors.bell;
+    G.sfx?.trigger('ring-bell', at, 0.9, { full: 5, max: 40, rate: 1 });
+    for (const f of this.fighters || []) {
+      if (!f.char || f.dead) continue;
+      f.data.aggroT = 0; f.action = null;
+      if (on) f.say(['¡Ya va, ya va!', 'Esto no termina acá.', 'Salvado por la campana, gil.'][Math.floor(Math.random() * 3)], 2.5);
+      else f.say(['¡A ver ahora!', '¡VENÍ!', 'Segundo round.'][Math.floor(Math.random() * 3)], 2.2);
+    }
+  }
   // un peleador: se acerca, gira alrededor, guardia, piñas y patadas; el golpe llega si está a distancia
   _fighter(n, other, dt) {
     const c = this.club.anchors.cage, R = this.club.anchors.cageR - 0.7;
+    if (this.truceUntil > G.time && !(n.data.aggroT > G.time)) {
+      // tregua: a su rincón, respira, se estira y lo mira de reojo
+      const side = n === this.fighters?.[0] ? -1 : 1;
+      const hx = c.x + side * R * 0.8, hz = c.z - R * 0.35;
+      const dx = hx - n.pos.x, dz = hz - n.pos.z, d = Math.hypot(dx, dz);
+      if (d > 0.15) { n.speed = 1.3; n.baseYaw = Math.atan2(dx, dz); n.pos.x += dx / d * 1.3 * dt; n.pos.z += dz / d * 1.3 * dt; }
+      else { n.speed = 0; n.baseYaw = Math.atan2(c.x - n.pos.x, c.z - n.pos.z); if (!n.emote && Math.random() < dt * 0.25) { n.emote = Math.random() < 0.5 ? 'flex' : null; n.emoteT = 0; } }
+      if (n.action === 'guard') n.action = null;
+      n.lookAt = other.pos;
+      n.pos.y = c.y;
+      return;
+    }
     const L = this.getLocal();
     const vsPlayer = L && n.data.aggroT > G.time && !L.dead && Math.hypot(L.pos.x - c.x, L.pos.z - c.z) < R + 1.5;
     const tgt = vsPlayer ? L.pos : other.pos;

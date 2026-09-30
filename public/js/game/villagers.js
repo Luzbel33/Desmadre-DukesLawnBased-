@@ -197,6 +197,7 @@ export class Villagers {
   }
   _guard(n, patrol = false) {
     const home = n.pos.clone();
+    this._giveLantern(n);
     return (npc, dt) => {
       const d = npc.data;
       // pegado a su puesto; el segundo camina un poco a lo largo de la muralla y vuelve
@@ -215,9 +216,31 @@ export class Villagers {
       if (p && (d.warnT ?? 0) < G.time) { d.warnT = G.time + 20; npc.say(pick(['Circulen.', 'Nada de armas en el castillo. Bueno, algunas.', 'El castillo cierra... nunca.', 'Cuidado con la bruja.']), 2.6); }
     };
   }
+  // Farol en la mano (los guardias): de noche, con la tormenta, un uniforme oscuro no se veía ni de cerca. La llama y
+  // la luz siguen a la mano (ver Npc.update: propHang)
+  _giveLantern(n) {
+    if (n.lamp) return;
+    whenAsset('c_lantern', () => {
+      const m = assetModel('c_lantern');
+      if (!m || n.prop) return;
+      const box = new THREE.Box3().setFromObject(m), h = box.max.y - box.min.y || 0.5;
+      m.scale.multiplyScalar(0.42 / h); // unos 42 cm con la manija
+      const glow = new THREE.MeshStandardMaterial({ color: 0x2a1808, emissive: 0xffa040, emissiveIntensity: 2.2, transparent: true, opacity: 0.9, depthWrite: false });
+      m.traverse((o) => { if (o.isMesh) { o.castShadow = false; if (/glass/i.test(o.material?.name || '')) o.material = glow; } });
+      m.userData.noCull = true; // lo mueve la mano: el descarte de adornos quietos no lo tiene que tocar
+      this.scene.add(m);
+      n.prop = m; n.propHang = 0.42;
+      const W = this.world;
+      n.lamp = { position: new THREE.Vector3(0, -50, 0), color: new THREE.Color(0xffa044), intensity: 2.8, distance: 8, decay: 1.8, visible: false, priority: 1.15, base: 2.8 };
+      W.pool?.add(n.lamp);
+      W.flicker?.push({ light: n.lamp, base: 2.8, seed: Math.random() * 100, fire: true });
+      n.lampFlame = W.flames ? W.flames.add(0, -50, 0, 0.03, 0.07, { intensity: 0 }) : -1;
+      n.lampWorld = W;
+    });
+  }
   _digger(n) {
     // la pala (del castillo: c_spade) en la mano; cava, tira la tierra, se seca la frente
-    whenAsset('c_spade', () => { const m = assetModel('c_spade'); if (m && !n.prop) { m.scale.setScalar(0.9); this.scene.add(m); n.prop = m; } });
+    whenAsset('c_spade', () => { const m = assetModel('c_spade'); if (m && !n.prop) { m.scale.setScalar(0.9); m.userData.noCull = true; this.scene.add(m); n.prop = m; } });
     return (npc, dt) => {
       npc.speed = 0; npc.baseYaw = Math.PI;
       const d = npc.data;

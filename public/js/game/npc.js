@@ -308,6 +308,7 @@ export class Npc {
       if (this.bubble) this.bubble.style.display = 'none';
       if (this.equip?.group) this.equip.group.visible = false;
       if (this.prop) this.prop.visible = false;
+      this._lampStep(false);
       return;
     }
     if (this.equip?.group) this.equip.group.visible = true;
@@ -316,6 +317,7 @@ export class Npc {
       this.deadT += dt;
       if (this.equip) this.equip.dispose();
       if (this.prop) this.prop.visible = false;
+      this._lampStep(false);
       if (this.rag?.alive) this.char.applyWorldTransforms(this.rag.read());
       this.char.update(dt);
       if (this.deadT > this.respawnSecs) this.respawn();
@@ -363,7 +365,8 @@ export class Npc {
     } else {
       ch.root.position.copy(this.pos);
       ch.root.rotation.set(0, this.yaw, 0);
-      ch.animate({ speed: this.speed, grounded: true, sit: this.sit, table: this.table, crouch: this.crouch, aimPitch: this.aimPitch, headYaw: this.headYaw, emote: this.emote, emoteT: this.emoteT, action: this.action, actionT: this.actionT, held: this.item || this.prop ? 'item' : null }, dt);
+      ch.animate({ speed: this.speed, grounded: true, sit: this.sit, table: this.table, crouch: this.crouch, aimPitch: this.aimPitch, headYaw: this.headYaw, emote: this.emote, emoteT: this.emoteT, action: this.action, actionT: this.actionT, held: this.item || (this.prop && !this.propHang) ? 'item' : null }, dt);
+      if (this.propHang) ch.grip.r = 1; // el farol cuelga del puño cerrado, con el brazo suelto
       // resortes de los golpes (subamortiguados: la cabeza se va y vuelve)
       const S = this.snap, w = 22, z = 0.35;
       for (const [a, v] of [[S.head, S.headV], [S.torso, S.torsoV]]) {
@@ -389,10 +392,18 @@ export class Npc {
     if (this.prop) {
       ch.root.updateWorldMatrix(true, true);
       ch.handR.getWorldPosition(this.prop.position);
-      // la pala cuelga de la mano con la hoja para abajo (el modelo viene parado, con el mango arriba)
-      this.prop.rotation.set(Math.PI - (this.action === 'swing' ? 0.9 - Math.sin(this.actionT * 5) * 0.6 : 0.35), this.yaw, 0, 'YXZ');
+      if (this.propHang) {
+        // farol colgando del puño por la manija, derecho, con vaivén al caminar
+        const sw = Math.min(1, this.speed || 0);
+        this.prop.position.y -= this.propHang * 0.94;
+        this.prop.rotation.set(Math.sin(G.time * 5.3) * 0.07 * sw, this.yaw, Math.sin(G.time * 4.1 + 1) * 0.08 * sw, 'YXZ');
+      } else {
+        // la pala cuelga de la mano con la hoja para abajo (el modelo viene parado, con el mango arriba)
+        this.prop.rotation.set(Math.PI - (this.action === 'swing' ? 0.9 - Math.sin(this.actionT * 5) * 0.6 : 0.35), this.yaw, 0, 'YXZ');
+      }
       this.prop.visible = this.visible && !this.down;
     }
+    this._lampStep(!!this.prop?.visible);
     // globo (lo que dice) y la barra de vida cuando lo lastimaron
     if (this.hpShowT > 0 && !this.bubble) this.say('', 0);
     if (this.bubble) {
@@ -428,6 +439,18 @@ export class Npc {
     if (this.blocked && this.burnT > 0) this.data.panic = 0; // chocó corriendo prendido fuego: otra dirección
     const hk = this.heightK * ((this.char?.meta?.height || 1.8) / 1.8);
     this.pawnBody.setNextKinematicTranslation({ x: this.pos.x, y: this.pos.y + 0.91 * hk, z: this.pos.z });
+  }
+
+  // la luz y la llama del farol (si tiene): siguen al farol; apagadas si no se ve o está tirado
+  _lampStep(on) {
+    const W = this.lampWorld;
+    if (!this.lamp || !W) return;
+    this.lamp.visible = on;
+    if (on) this.lamp.position.copy(this.prop.position).y += this.propHang * 0.42;
+    if (this.lampFlame >= 0) {
+      if (on) W.flames.move(this.lampFlame, this.lamp.position.x, this.lamp.position.y - 0.06, this.lamp.position.z);
+      W.flames.set(this.lampFlame, on ? 1 : 0);
+    }
   }
 
   // cápsula de movimiento (como la de otro jugador): mi controlador choca contra ella; lleva su velocidad
