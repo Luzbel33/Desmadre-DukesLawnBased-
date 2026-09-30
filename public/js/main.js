@@ -1585,7 +1585,11 @@ function updateInput(dt) {
   }
   if (inp.hit('KeyT') || inp.hit('Enter')) openChat();
   if (inp.hit('Tab')) renderPlayerList();
-  if (inp.hit('KeyY')) state.cameraMode = (state.cameraMode + 1) % 3; // C es agacharse (barrida / dive)
+  if (inp.hit('KeyY')) {
+    // Y: tercera lejos -> tercera cerca -> primera persona -> de frente (para verte la cara y la pinta)
+    state.cameraMode = (state.cameraMode + 1) % 4;
+    G.hud?.notify(['Cámara: tercera persona', 'Cámara: tercera persona cerca', 'Cámara: primera persona', 'Cámara: <b>de frente</b> (mirate)'][state.cameraMode], 1400);
+  }
   G.owner?.input(inp); // Diablo: K/rueda aliento · N bola · I invisible · O inmortal · L risa
   const items = [null, 'beer', 'smoke', 'spray', null];
   for (let i = 1; i <= 4; i++) {
@@ -1704,12 +1708,14 @@ function updateCamera(dt) {
     state.eyeDrop = (state.eyeDrop || 0) + ((L.seat || L.vehicle ? 0 : L.eyeDrop || 0) - (state.eyeDrop || 0)) * (1 - Math.exp(-10 * dt));
     pivot = L.renderPos.clone().add(new THREE.Vector3(0, L.seat || L.vehicle ? 1.3 : 1.62 * (L.char.meta?.height || 1.8) / 1.8 - state.eyeDrop, 0));
   }
-  let dist = mode === 0 ? 4.2 : 2.4;
+  let dist = mode === 0 ? 4.2 : mode === 3 ? 2.1 : 2.4;
   if (L.vehicle) dist += 1.8;
   if (down) dist = 3.6;
-  const side = mode === 1 ? 0.45 : 0.25;
+  const side = mode === 1 ? 0.45 : mode === 3 ? 0 : 0.25;
   const right = new THREE.Vector3(-Math.cos(state.viewYaw), 0, Math.sin(state.viewYaw));
-  const desired = pivot.clone().addScaledVector(fwd, -dist).addScaledVector(right, -side);
+  // de frente: la cámara va adelante (hacia donde mirás) y te mira a vos; un poco más baja que los ojos
+  if (mode === 3) pivot.y -= 0.25;
+  const desired = pivot.clone().addScaledVector(fwd, mode === 3 ? dist : -dist).addScaledVector(right, -side);
   const dir = desired.clone().sub(pivot); const len = dir.length(); dir.normalize();
   const hit = G.phys.raycast(pivot.x, pivot.y, pivot.z, dir.x, dir.y, dir.z, len, groups(0xffff, GR.WORLD));
   if (hit && hit.dist < len) desired.copy(pivot).addScaledVector(dir, Math.max(0.45, hit.dist - 0.18));

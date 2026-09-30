@@ -22,7 +22,7 @@ export const ACTIONS = [
   { g: 'Acciones', a: 'item4', label: 'Mano libre', def: 'Digit4' },
   { g: 'Acciones', a: 'palette', label: 'Colores del aerosol', def: 'KeyB' },
   { g: 'Acciones', a: 'horn', label: 'Bocina (manejando)', def: 'KeyH' },
-  { g: 'Menús y cámara', a: 'camera', label: 'Cambiar cámara', def: 'KeyY' },
+  { g: 'Menús y cámara', a: 'camera', label: 'Cambiar cámara (tercera, cerca, primera persona, de frente)', def: 'KeyY' },
   { g: 'Menús y cámara', a: 'emotes', label: 'Gestos: tocar repite el último, mantener abre la rueda (también el click de la rueda)', def: 'KeyZ' },
   { g: 'Menús y cámara', a: 'activities', label: '¿Qué hacemos?', def: 'KeyJ' },
   { g: 'Menús y cámara', a: 'screens', label: 'Pantallas de YouTube', def: 'KeyP' },
