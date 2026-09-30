@@ -2661,6 +2661,7 @@ export class RemotePlayer {
     // las muñecas en el mango las vuelve a poner el objeto en su cuadro (props.update, después de esto)
     if (this.char.gripOn) this.char.gripOn.l = this.char.gripOn.r = false;
     this.equipment?.update(this.char, s.eq || 4, this.yaw, s.ac, s.at, s.s === 3);
+    if (this.equipment?.group) this.equipment.group.visible = !this.inv; // invisible: ni la birra ni el faso
   }
 
   headPosition(out = V1) {

@@ -841,6 +841,8 @@ export class PropManager {
       if (cam) {
         const lim = p.mass > 5 ? 130 : 85;
         p.group.visible = !!p.heldBy || p.group.position.distanceToSquared(cam) < lim * lim;
+        // lo que tiene en la mano el Diablo invisible tampoco se ve (si no, flota solo)
+        if (p.heldBy && p.heldBy !== G.myId && G.players.get(p.heldBy)?.inv) p.group.visible = false;
       }
     }
     this._sendT += dt;
