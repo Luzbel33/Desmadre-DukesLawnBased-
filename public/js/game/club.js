@@ -261,7 +261,7 @@ export class ClubGame {
       if (L && this.doorman) {
         const dx = L.pos.x - this.doorman.pos.x, dz = L.pos.z - this.doorman.pos.z, d = Math.hypot(dx, dz) || 1;
         L.stun?.(0.5, V1.set((dx / d) * 5, 0, (dz / d) * 5 + 3));
-        this.doorman.action = 'punch'; this.doorman.actionT = 0; this.doorman.actionEnd = 0.6;
+        this.doorman.action = 'punchR'; this.doorman.actionT = 0; this.doorman.actionEnd = 0.6;
       }
     }
     return ok;

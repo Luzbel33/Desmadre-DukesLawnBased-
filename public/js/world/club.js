@@ -174,7 +174,8 @@ export class Club {
       if (y > 0.02) this.deco('keepStone', 0, y / 2, z, 3.2, y, run + 0.01);
     }
     const L = Math.hypot(S.rise, S.zTop - S.zBot), ang = Math.atan2(S.rise, S.zTop - S.zBot);
-    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(ang, 0, 0));
+    // alta del lado de arriba (+Z, hacia zTop) y baja abajo: rotar en X negativo levanta la punta +Z
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-ang, 0, 0));
     this.phys.box(0, top / 2 - 0.1, (S.zTop + S.zBot) / 2, 1.6, 0.1, L / 2, 0, { rot: { x: q.x, y: q.y, z: q.z, w: q.w }, mat: 'stone' });
     // muros, techo alto y antorchas
     for (const x of [-1.8, 1.8]) this.wallZ('castleStone', x, -407.4, S.zBot, 9.8);
@@ -323,8 +324,9 @@ export class Club {
     const h = H.h;
     // piso negro brillante (la pista de LED va arriba, ver _led) y muros de ladrillo negro
     this.deco('blackTile', 0, 0.02, (H.z0 + H.z1) / 2, H.x1 - H.x0, 0.04, H.z1 - H.z0);
-    this.wallX('bunkerBrick', H.x0 - WT, H.x1 + WT, H.z0 + WT / 2 * 0, h, [[-C.door.w / 2, C.door.w / 2, 0, C.door.h]]);
-    this.wallX('bunkerBrick', H.x0 - WT, H.x1 + WT, H.z1 - WT / 2, h);
+    // la puerta blindada está en el muro sur (H.z1, el de la antesala); el del norte (atrás del escenario) es macizo
+    this.wallX('bunkerBrick', H.x0 - WT, H.x1 + WT, H.z1, h, [[-C.door.w / 2, C.door.w / 2, 0, C.door.h]]);
+    this.wallX('bunkerBrick', H.x0 - WT, H.x1 + WT, H.z0 - WT / 2, h);
     for (const x of [H.x0 - WT / 2, H.x1 + WT / 2]) this.wallZ('bunkerBrick', x, H.z0, H.z1, h);
     this.deco('black', 0, h + 0.15, (H.z0 + H.z1) / 2, H.x1 - H.x0 + 0.8, 0.3, H.z1 - H.z0 + 0.8);
     // estructura de reticulado en el techo (de donde cuelgan los cabezales) y columnas de hormigón
@@ -343,7 +345,8 @@ export class Club {
 
   _stage() {
     // escenario al fondo (norte): tarima, escalones, tres caños con sus pedestales, cortina roja y la cabina del DJ
-    const z0 = H.z1, z1 = H.z1 + 7, sh = 0.9;
+    // al fondo es el norte (H.z0); con H.z1 quedaba en la antesala, del otro lado de la puerta blindada
+    const z0 = H.z0, z1 = H.z0 + 7, sh = 0.9;
     this.box('blackTile', 0, sh / 2, (z0 + z1) / 2, 22, sh, z1 - z0);
     this.deco('neonRed', 0, sh + 0.01, z1 - 0.05, 22, 0.03, 0.06);
     for (let k = 0; k < 3; k++) this.box('blackTile', 0, (k + 1) * sh / 4 - sh / 8, z1 + 0.25 + (2 - k) * 0.35, 4, (k + 1) * sh / 4, 0.36);
