@@ -169,3 +169,16 @@ test('saltar corriendo no tropieza: cae y sigue corriendo',async()=>{
  assert.ok(p.speed>6,`después del salto va a ${p.speed.toFixed(2)}`);
  ph.world.free();
 });
+test('teclas configurables: la nueva hace la acción, la vieja queda libre y si choca se intercambian',async()=>{
+ const { keys } = await import('../public/js/core/keybinds.js');
+ keys.load(); keys.reset();
+ assert.equal(keys.map('KeyC'),'KeyC');
+ keys.set('crouch','KeyU');
+ assert.equal(keys.map('KeyU'),'KeyC','la tecla nueva no agacha');
+ assert.equal(keys.map('KeyC'),null,'la vieja sigue agachando');
+ const moved=keys.set('crouch','KeyX'); // X era "usar": pasa a U
+ assert.equal(moved,'use');
+ assert.equal(keys.map('KeyX'),'KeyC'); assert.equal(keys.map('KeyU'),'KeyX');
+ assert.equal(keys.set('use','Escape'),null); assert.equal(keys.of('use'),'KeyU','Esc no se puede asignar');
+ keys.reset(); assert.equal(keys.map('KeyX'),'KeyX');
+});

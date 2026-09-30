@@ -205,6 +205,25 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; border-radius: 5
 #act-list .t { font-weight: 700; font-size: 14px; }
 #act-list .w { font-size: 12px; color: var(--accent); }
 #act-list .h { font-size: 12px; color: var(--dim); line-height: 1.35; }
+/* pausa por secciones plegables */
+.pause-card { max-height: 92vh; }
+.psec { border: 1px solid var(--line); border-radius: 12px; margin: 8px 0; background: rgba(255, 255, 255, 0.025); }
+.psec > summary { cursor: pointer; list-style: none; padding: 10px 14px; font-weight: 800; font-size: 16px; user-select: none; }
+.psec > summary::-webkit-details-marker { display: none; }
+.psec > summary::after { content: '▸'; float: right; transition: transform 0.15s; }
+.psec[open] > summary::after { transform: rotate(90deg); }
+.psec[open] > summary { border-bottom: 1px solid var(--line); }
+.psec > :not(summary) { margin-left: 14px; margin-right: 14px; }
+.psec > :last-child { margin-bottom: 12px; }
+#keybinds { display: grid; gap: 2px; margin: 8px 14px; }
+#keybinds h4 { margin: 10px 0 4px; font-size: 13px; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; }
+#keybinds .kb { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 3px 0; font-size: 14px; }
+#keybinds .kb button { min-width: 92px; padding: 5px 10px; font-weight: 800; font-family: 'Courier New', monospace; }
+#keybinds .kb button.wait { background: var(--accent); color: #111; animation: kbpulse 0.8s infinite alternate; }
+#keybinds .kb.flash button { box-shadow: 0 0 0 2px #ff6b4a; }
+@keyframes kbpulse { from { opacity: 1; } to { opacity: 0.55; } }
+.mouse-help { font-size: 13px; opacity: 0.85; margin: 8px 14px; display: grid; gap: 3px; }
+
 /* El Búnker: portero, ritual y fundido */
 #bunker-modal, #ritual-modal { position: fixed; inset: 0; z-index: 12; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.55); }
 #bunker-modal.hidden, #ritual-modal.hidden { display: none; }

@@ -19,17 +19,23 @@ export class Input {
     this.enabled = true; // false cuando hay un input de texto o un menú abierto
     this.locked = false;
     this.onLockChange = null;
+    this.map = null; // (tecla física) => tecla del juego | null
 
     addEventListener('keydown', (e) => {
       if (this._typing(e)) return;
       if (!this.enabled) return;
       if (['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'F1', 'Quote', 'Slash'].includes(e.code) || (e.ctrlKey && ['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code)) || (this.locked && browserShortcut(e))) e.preventDefault();
-      if (!this.down.has(e.code)) this.pressed.add(e.code);
-      this.down.add(e.code);
+      // teclas configurables: la física se traduce a la que entiende el juego (ver keybinds.js)
+      const code = this.map ? this.map(e.code) : e.code;
+      if (code === null) return;
+      if (!this.down.has(code)) this.pressed.add(code);
+      this.down.add(code);
     });
     addEventListener('keyup', (e) => {
-      if (this.down.has(e.code)) this.released.add(e.code);
-      this.down.delete(e.code);
+      const code = this.map ? this.map(e.code) : e.code;
+      if (code === null) return;
+      if (this.down.has(code)) this.released.add(code);
+      this.down.delete(code);
     });
     addEventListener('blur', () => this.releaseAll());
     canvas.addEventListener('mousedown', (e) => {

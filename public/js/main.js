@@ -4,6 +4,7 @@ import { G, clamp } from './core/G.js';
 import { Physics, GR, groups } from './core/physics.js';
 import { Input } from './core/input.js';
 import { guard } from './core/browser-guard.js';
+import { keys, KEY_ACTIONS, keyName } from './core/keybinds.js';
 import { GRAPHICS, readGraphics, applyGraphics } from './core/graphics.js';
 import { readAtmosphere, applyAtmosphere } from './core/atmosphere.js';
 import { Net } from './net/net.js';
@@ -119,7 +120,7 @@ function setMode(mode) {
   if (mode !== 'chat') $('chat')?.classList.remove('open');
   if (G.input) { G.input.enabled = mode === 'game'; if (mode !== 'game') G.input.releaseAll(); }
   if (mode !== 'game') G.voice?.setPTT(false);
-  if (mode === 'pause') renderPlayerList();
+  if (mode === 'pause') { renderPlayerList(); renderKeybinds(); }
   G.media?.focus(mode === 'media' ? state.mediaScreen : null, mode === 'media' ? $('media-view') : null);
 }
 
@@ -532,7 +533,7 @@ function updatePrompt() {
   const itemHint = () => {
     if (it === 'beer') H.hint('beer', 'Click', 'Tomar');
     else if (it === 'smoke') H.hint('smoke', 'Click', 'Pitar');
-    else if (it === 'spray') H.hint('spray', 'Click', 'Pintar (sostenido) · B colores');
+    else if (it === 'spray') H.hint('spray', 'Click', `Pintar (sostenido) · ${keys.label('palette')} colores`);
   };
   const popcornHint = () => {
     const pl = state.props?.get(L.hands.l.prop)?.type === 'popcorn', pr = state.props?.get(L.hands.r.prop)?.type === 'popcorn';
@@ -541,20 +542,20 @@ function updatePrompt() {
   let canUse = false;
   if (L.vehicle) {
     state.promptAction = { kind: 'exitVehicle', item: L.vehicle, dist: 0 };
-    H.hint('veh-exit', 'X', 'Bajarse');
-    if (L.vehicle.type !== 'cart') H.hint('veh-blades', 'Espacio', L.vehicle.blades ? 'Apagar cuchillas' : 'Prender cuchillas: cortá y cobrá');
-    H.hint('veh-horn', 'H', 'Bocina');
+    H.hint('veh-exit', keys.label('use'), 'Bajarse');
+    if (L.vehicle.type !== 'cart') H.hint('veh-blades', keys.label('jump'), L.vehicle.blades ? 'Apagar cuchillas' : 'Prender cuchillas: cortá y cobrá');
+    H.hint('veh-horn', keys.label('horn'), 'Bocina');
     itemHint();
     H.crosshair(false);
     return;
   }
   if (L.seat) {
     state.promptAction = { kind: 'stand' };
-    H.hint('stand', 'X', L.seat.poker ? 'Levantarse de la mesa' : 'Levantarse');
+    H.hint('stand', keys.label('use'), L.seat.poker ? 'Levantarse de la mesa' : 'Levantarse');
     popcornHint();
     itemHint();
     const g = !L.hands.r.joint && grabbableFor(L);
-    if (g) H.hint('grab', 'E', `Agarrar ${g.prop.def.label}`);
+    if (g) H.hint('grab', keys.label('grabR'), `Agarrar ${g.prop.def.label}`);
     H.crosshair(!!g);
     return;
   }
@@ -571,17 +572,17 @@ function updatePrompt() {
   if (x) {
     state.promptAction = x;
     canUse = true;
-    if (x.kind === 'vehicle') H.hint('use-veh', 'X', `Subir a ${x.item.type === 'tractor' ? 'el tractor' : x.item.type === 'cart' ? 'el carrito' : 'la cortadora'}`);
-    else if (x.kind === 'seat') H.hint('use-seat', 'X', x.item.poker ? 'Sentarse a jugar al póker' : 'Sentarse');
-    else H.hint('use-' + x.item.k, 'X', x.item.label);
+    if (x.kind === 'vehicle') H.hint('use-veh', keys.label('use'), `Subir a ${x.item.type === 'tractor' ? 'el tractor' : x.item.type === 'cart' ? 'el carrito' : 'la cortadora'}`);
+    else if (x.kind === 'seat') H.hint('use-seat', keys.label('use'), x.item.poker ? 'Sentarse a jugar al póker' : 'Sentarse');
+    else H.hint('use-' + x.item.k, keys.label('use'), x.item.label);
   }
   // objetos al alcance
   const g = !L.hands.r.joint ? grabbableFor(L) : null;
-  if (g) { canUse = true; H.hint('grab', 'E / Q', `Agarrar ${g.prop.def.label} (der. / izq.)`); }
+  if (g) { canUse = true; H.hint('grab', `${keys.label('grabR')} / ${keys.label('grabL')}`, `Agarrar ${g.prop.def.label} (der. / izq.)`); }
   else if (L.hands.r.joint || L.hands.l.joint) {
     popcornHint();
-    H.hint('drop', 'E / Q', 'Soltar');
-    H.hint('throw', 'G', 'Revolear');
+    H.hint('drop', `${keys.label('grabR')} / ${keys.label('grabL')}`, 'Soltar');
+    H.hint('throw', keys.label('throw'), 'Revolear');
   }
   itemHint();
   H.crosshair(canUse);
@@ -1268,7 +1269,55 @@ async function joinGame() {
   } finally { state.reconnecting = false; state.preparingJoin = false; $('m-play').disabled = false; }
 }
 
+// ---------------------------------------------------------------- pausa: secciones plegables y teclas
+function setupPauseSections() {
+  let open = {};
+  try { open = JSON.parse(localStorage.getItem('dukes.pauseOpen') || '{}') || {}; } catch { open = {}; }
+  document.querySelectorAll('#pause details.psec').forEach((d) => {
+    const k = d.dataset.sec;
+    if (k in open) d.open = !!open[k];
+    d.addEventListener('toggle', () => { open[k] = d.open; try { localStorage.setItem('dukes.pauseOpen', JSON.stringify(open)); } catch { /* */ } });
+  });
+  $('keys-reset').addEventListener('click', () => { keys.reset(); renderKeybinds(); G.sfx?.trigger('ui-ok', null, 0.5); });
+  renderKeybinds();
+}
+function renderKeybinds(flash = null) {
+  const box = $('keybinds');
+  if (!box) return;
+  box.innerHTML = '';
+  let group = '';
+  for (const x of KEY_ACTIONS) {
+    if (x.g === 'El Diablo' && !G.owner?.active()) continue;
+    if (x.g !== group) { group = x.g; const h = document.createElement('h4'); h.textContent = group; box.appendChild(h); }
+    const row = document.createElement('div');
+    row.className = 'kb' + (flash === x.a ? ' flash' : '');
+    const lab = document.createElement('span'); lab.textContent = x.label;
+    const btn = document.createElement('button'); btn.type = 'button'; btn.textContent = keys.label(x.a);
+    btn.addEventListener('click', () => waitKey(x.a, btn));
+    row.append(lab, btn);
+    box.appendChild(row);
+  }
+}
+// espera la próxima tecla (en fase de captura: no la ve el juego)
+function waitKey(action, btn) {
+  if (state.waitKey) state.waitKey.cancel();
+  btn.classList.add('wait'); btn.textContent = 'Apretá…';
+  const onKey = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (e.code === 'Escape') { done(); return; }
+    if (keys.reserved(e.code)) { btn.textContent = 'Esa no'; return; }
+    const moved = keys.set(action, e.code);
+    done(moved);
+    G.sfx?.trigger('ui-select', null, 0.5);
+    if (moved) G.hud?.notify(`<b>${keyName(e.code)}</b> ya se usaba: esa acción pasó a <b>${keys.label(moved)}</b>.`, 3500);
+  };
+  const done = (moved = null) => { removeEventListener('keydown', onKey, true); state.waitKey = null; state.escT = performance.now(); renderKeybinds(moved); };
+  addEventListener('keydown', onKey, true);
+  state.waitKey = { cancel: () => done() };
+}
+
 function setupUIEvents() {
+  setupPauseSections();
   $('m-play').addEventListener('click', joinGame);
   // el nombre del dueño pide la clave (y sin clave no se puede entrar con ese nombre: lo reserva el servidor)
   $('m-name').addEventListener('input', () => {
@@ -1371,25 +1420,26 @@ function setupUIEvents() {
 
   addEventListener('keydown', (e) => {
     if (!G.inGame) return;
+    const kc = keys.map(e.code); // teclas configurables
     const typing = e.target?.matches?.('input, textarea, select, [contenteditable="true"]');
     if (!typing && !e.repeat && ['game', 'poker'].includes(state.mode)) {
-      if (e.code === 'KeyM') { G.sfx?.unlock(); G.voice?.toggleMic(); }
-      if (e.code === 'KeyV') { G.sfx?.unlock(); G.voice?.setPTT(true); }
+      if (kc === 'KeyM') { G.sfx?.unlock(); G.voice?.toggleMic(); }
+      if (kc === 'KeyV') { G.sfx?.unlock(); G.voice?.setPTT(true); }
     }
-    if (state.mode === 'activities' && (e.key === 'Escape' || e.code === 'KeyJ')) { e.preventDefault(); closeOverlayToGame(e.key === 'Escape'); return; }
+    if (state.mode === 'activities' && (e.key === 'Escape' || kc === 'KeyJ')) { e.preventDefault(); closeOverlayToGame(e.key === 'Escape'); return; }
     if (state.mode === 'club' && e.key === 'Escape') { e.preventDefault(); state.escT = performance.now(); if (state.clubUI === 'ritual') G.club?.closeRitual(); else G.club?.closePassword(); return; }
     if (state.mode === 'media' || state.mode === 'palette') {
-      if (e.key === 'Escape' || (state.mode === 'palette' && e.code === 'KeyR')) { e.preventDefault(); closeOverlayToGame(e.key === 'Escape'); }
+      if (e.key === 'Escape' || (state.mode === 'palette' && kc === 'KeyR')) { e.preventDefault(); closeOverlayToGame(e.key === 'Escape'); }
     } else if (state.mode === 'pause' && e.key === 'Escape' && !escJustClosed()) { e.preventDefault(); state.escT = performance.now(); resumeGame(); }
     else if (state.mode === 'poker' && !typing) {
       // póker: las teclas de la mesa primero (apostar, pasar, retirarse, ver jugadas); X se levanta; T/Enter chat
       if (G.poker?.key(e, true)) { e.preventDefault(); return; }
-      if (e.code === 'KeyX') { e.preventDefault(); G.poker?.leave(); }
-      else if ((e.code === 'KeyT' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); openChat(); }
+      if (kc === 'KeyX') { e.preventDefault(); G.poker?.leave(); }
+      else if ((kc === 'KeyT' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); openChat(); }
     }
   });
   addEventListener('keyup', (e) => {
-    if (e.code === 'KeyV') G.voice?.setPTT(false);
+    if (keys.map(e.code) === 'KeyV') G.voice?.setPTT(false);
     if (state.mode === 'poker' && G.poker?.key(e, false)) e.preventDefault();
   });
   addEventListener('blur', () => G.voice?.setPTT(false));
@@ -1719,7 +1769,7 @@ async function boot() {
       showHitMeter(speed);
     };
     G.fx.onBloodLand = (x, z, size) => G.blood.add(x, z, size);
-    G.input = new Input(canvas); G.input.enabled = false;
+    G.input = new Input(canvas); G.input.enabled = false; keys.load(); G.input.map = (c) => keys.map(c);
     state.radial = new RadialMenu($('radial'));
     // Esc con el menú de gestos abierto: lo cierra (el navegador suelta el mouse igual; no es para pausar)
     G.input.onLockChange = (locked) => {

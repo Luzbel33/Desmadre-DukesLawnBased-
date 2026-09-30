@@ -163,51 +163,85 @@
 
   <!-- Pausa / ajustes -->
   <div id="pause" class="hidden">
-    <div class="menu-card small">
+    <div class="menu-card small pause-card">
       <h2>PAUSA</h2>
       <button id="p-resume" class="big">Volver al desmadre</button>
-      <button id="p-fullscreen">Jugar en pantalla completa · proteger atajos</button>
-      <div id="pause-players"></div>
-      <div class="settings">
-        <label>Ayudas de controles
-          <select id="o-hints"><option value="siempre">Siempre</option><option value="primeras">Las primeras veces</option><option value="nunca">Nunca</option></select>
-        </label>
-        <label>Sensibilidad <input type="range" id="o-sens" min="0.2" max="3" step="0.05"></label>
-        <label>Campo de visión <input type="range" id="o-fov" min="55" max="100" step="1"></label>
-        <label>Volumen general <input type="range" id="o-vol" min="0" max="1" step="0.01"></label>
-        <label>Música / videos <input type="range" id="o-music" min="0" max="1" step="0.01"></label>
-        <label>Voces <input type="range" id="o-voice" min="0" max="2" step="0.01"></label>
-        <label>Ambiente <input type="range" id="o-ambient" min="0" max="1" step="0.01"></label>
-        <label class="chk"><input type="checkbox" id="o-mute"> Silenciar todo</label>
-        <label>Efectos <input type="range" id="o-sfx" min="0" max="1" step="0.01"></label>
-        <label>Atmósfera visual
-          <select id="o-atmosphere"><option value="natural">Natural</option><option value="calida">Tarde cálida</option><option value="bruma">Bruma suave</option></select>
-        </label>
-        <label>Preset gráfico
-          <select id="o-graphics"><option value="rendimiento">Rendimiento</option><option value="equilibrado">Equilibrado</option><option value="calidad">Calidad</option><option value="ultra">Ultra</option></select>
-        </label>
-        <label>Calidad del pasto
-          <select id="o-grass"><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option><option value="ultra">Ultra</option></select>
-        </label>
-        <label>Sombras
-          <select id="o-shadows"><option value="baja">Bajas</option><option value="media">Medias</option><option value="alta">Altas</option><option value="ultra">Ultra</option></select>
-        </label>
-        <label>Micrófono
-          <select id="o-voicemode"><option value="ptt">Mantener V para hablar</option><option value="open">Abierto siempre</option></select>
-        </label>
-        <label class="chk"><input type="checkbox" id="o-spatial"> Voz por proximidad (3D)</label>
-        <label class="chk"><input type="checkbox" id="o-invert"> Invertir mouse Y</label>
-        <label class="chk" title="Chrome solo deja frenar Ctrl+W, Ctrl+T, Ctrl+N en pantalla completa"><input type="checkbox" id="o-fullscreen"> Pantalla completa: bloquea Ctrl+W y otros atajos que cierran la pestaña</label>
-      </div>
-      <div class="row">
-        <button id="audio-test">Probar sonido</button>
-        <button id="p-media">Pantallas YouTube [P]</button>
-        <button id="p-desmadre">☠ Modo desmadre</button>
-        <button id="p-char">Cambiar personaje</button>
-        <button id="p-respawn">Reaparecer</button>
-      </div>
-      <p id="audio-state" role="status">Sonido: requiere clic</p>
-      <p class="hint">Compartí el link con amigos para que entren a tu sala.</p>
+      <details class="psec" data-sec="sala" open>
+        <summary>👥 En la sala</summary>
+        <div id="pause-players"></div>
+        <p class="hint">Compartí el link con amigos para que entren a tu sala.</p>
+      </details>
+      <details class="psec" data-sec="juego">
+        <summary>🎮 Juego</summary>
+        <div class="row">
+          <button id="p-media">Pantallas YouTube</button>
+          <button id="p-desmadre">☠ Modo desmadre</button>
+          <button id="p-char">Cambiar personaje</button>
+          <button id="p-respawn">Reaparecer</button>
+        </div>
+        <div class="settings">
+          <label>Ayudas de controles
+            <select id="o-hints"><option value="siempre">Siempre</option><option value="primeras">Las primeras veces</option><option value="nunca">Nunca</option></select>
+          </label>
+        </div>
+      </details>
+      <details class="psec" data-sec="controles">
+        <summary>⌨ Controles</summary>
+        <div class="settings">
+          <label>Sensibilidad del mouse <input type="range" id="o-sens" min="0.2" max="3" step="0.05"></label>
+          <label class="chk"><input type="checkbox" id="o-invert"> Invertir mouse Y</label>
+        </div>
+        <p class="hint">Hacé clic en una tecla y apretá la nueva. Si ya la usaba otra acción, se intercambian. Esc cancela.</p>
+        <div id="keybinds"></div>
+        <div class="mouse-help">
+          <div><b>Click izq. / der.</b> piña con esa mano; con algo en la mano, usarlo</div>
+          <div><b>Click sostenido + mouse</b> mover ese brazo · <b>rueda</b> estirar o acercar la mano</div>
+          <div><b>Los dos clicks</b> guardia · <b>click de la rueda</b> gestos</div>
+        </div>
+        <div class="row"><button id="keys-reset" type="button">Restaurar teclas de fábrica</button></div>
+      </details>
+      <details class="psec" data-sec="imagen">
+        <summary>🖥 Imagen</summary>
+        <div class="settings">
+          <label>Preset gráfico
+            <select id="o-graphics"><option value="rendimiento">Rendimiento</option><option value="equilibrado">Equilibrado</option><option value="calidad">Calidad</option><option value="ultra">Ultra</option></select>
+          </label>
+          <label>Atmósfera visual
+            <select id="o-atmosphere"><option value="natural">Natural</option><option value="calida">Tarde cálida</option><option value="bruma">Bruma suave</option></select>
+          </label>
+          <label>Calidad del pasto
+            <select id="o-grass"><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option><option value="ultra">Ultra</option></select>
+          </label>
+          <label>Sombras
+            <select id="o-shadows"><option value="baja">Bajas</option><option value="media">Medias</option><option value="alta">Altas</option><option value="ultra">Ultra</option></select>
+          </label>
+          <label>Campo de visión <input type="range" id="o-fov" min="55" max="100" step="1"></label>
+          <label class="chk" title="Chrome solo deja frenar Ctrl+W, Ctrl+T, Ctrl+N en pantalla completa"><input type="checkbox" id="o-fullscreen"> Pantalla completa al jugar (bloquea Ctrl+W y otros atajos que cierran la pestaña)</label>
+        </div>
+        <button id="p-fullscreen">Pasar a pantalla completa ahora</button>
+      </details>
+      <details class="psec" data-sec="sonido">
+        <summary>🔊 Sonido</summary>
+        <div class="settings">
+          <label>Volumen general <input type="range" id="o-vol" min="0" max="1" step="0.01"></label>
+          <label>Música / videos <input type="range" id="o-music" min="0" max="1" step="0.01"></label>
+          <label>Efectos <input type="range" id="o-sfx" min="0" max="1" step="0.01"></label>
+          <label>Ambiente <input type="range" id="o-ambient" min="0" max="1" step="0.01"></label>
+          <label class="chk"><input type="checkbox" id="o-mute"> Silenciar todo</label>
+        </div>
+        <div class="row"><button id="audio-test">Probar sonido</button></div>
+        <p id="audio-state" role="status">Sonido: requiere clic</p>
+      </details>
+      <details class="psec" data-sec="voz">
+        <summary>🎙 Voz</summary>
+        <div class="settings">
+          <label>Micrófono
+            <select id="o-voicemode"><option value="ptt">Mantener la tecla de hablar</option><option value="open">Abierto siempre</option></select>
+          </label>
+          <label>Voces de los demás <input type="range" id="o-voice" min="0" max="2" step="0.01"></label>
+          <label class="chk"><input type="checkbox" id="o-spatial"> Voz por proximidad (3D)</label>
+        </div>
+      </details>
     </div>
   </div>
 

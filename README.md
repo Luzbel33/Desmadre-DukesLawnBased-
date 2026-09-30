@@ -18,6 +18,8 @@ No hace falta `npm install`: las librerías y los modelos vienen incluidos. Si c
 
 ## Controles
 
+Todas las teclas se pueden cambiar en la pausa (Esc → Controles). Estas son las de fábrica:
+
 | Tecla | Acción |
 | --- | --- |
 | WASD / Shift | Caminar / correr |
