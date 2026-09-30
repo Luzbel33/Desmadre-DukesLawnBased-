@@ -552,7 +552,8 @@ export class Decor {
     b.geo('hemp', noose);
     for (const [x, z, yaw] of [[22, -83.2, 0.1], [23.3, -83.3, -0.1], [22.6, -83.3, 0], [42.4 - 1, -99, 1.5], [-42.4 + 1, -84, 1.6]]) b.box('hay', x, 0.3, z, 1.2, 0.6, 0.7, { yaw });
     b.box('hay', 22.6, 0.9, -83.3, 1.2, 0.6, 0.7, { yaw: 0.05 });
-    this.c.seats.push({ x: 22, y: 0.62, z: -84.1, yaw: Math.PI }, { x: 23.3, y: 0.62, z: -84.1, yaw: Math.PI });
+    // sentado ARRIBA de los fardos de abajo (a los costados del de arriba), no en el aire delante de ellos
+    this.c.seats.push({ x: 21.8, y: 0.62, z: -83.45, yaw: Math.PI }, { x: 23.5, y: 0.62, z: -83.55, yaw: Math.PI });
     // carro
     b.box('woodDark', 16.5, 0.95, -85.2, 3.0, 0.12, 1.6);
     for (const s of [-1, 1]) b.box('woodDark', 16.5, 1.3, -85.2 + s * 0.8, 3.0, 0.6, 0.08, { collide: false });

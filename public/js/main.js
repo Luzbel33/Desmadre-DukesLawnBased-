@@ -603,6 +603,9 @@ function nearestSeat() {
   const L = state.local;
   let best = null;
   for (const s of G.world?.seats || []) {
+    // el asiento tiene que estar a la altura de tus pies (s.y es el almohadón: sentado, los pies quedan 0.46 abajo);
+    // sin esto, desde la cripta, un balcón o el techo de algo te sentabas en una silla de otro piso
+    if (Math.abs(L.pos.y - (s.y - 0.46)) > 0.9) continue;
     const d = Math.hypot(L.pos.x - s.x, L.pos.z - s.z);
     if (s.poker && G.poker?.st?.seats?.[s.seatIndex]) continue; // silla de póker ocupada (jugador o parroquiano)
     if (d < 1.35 && (!best || d < best.dist) && !s.taken) best = { kind: 'seat', item: s, dist: d + 0.2 };

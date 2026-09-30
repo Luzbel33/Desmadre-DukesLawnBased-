@@ -330,6 +330,17 @@ test('sentarse no suelta lo que tenés en la mano y los brazos siguen andando', 
   ph.world.free();
 });
 
+test('asientos: solo los de tu piso, y al levantarte quedás a la altura de ese asiento', async () => {
+  const { p, ph } = await fixture();
+  p.sitAt({ x: 2, y: -5.5, z: 2, yaw: 0 }); // un asiento bajo tierra (el club)
+  p.standUp();
+  assert.ok(Math.abs(p.pos.y - (-5.5 - 0.44)) < 0.05, `se paró en y=${p.pos.y.toFixed(2)} (a la superficie)`);
+  ph.world.free();
+  const src = fs.readFileSync(new URL('../public/js/main.js', import.meta.url), 'utf8');
+  const near = src.slice(src.indexOf('function nearestSeat()'), src.indexOf('function puffFrom('));
+  assert.match(near, /Math\.abs\(L\.pos\.y - \(s\.y - 0\.46\)\) > 0\.9\) continue/, 'elige asientos de otro piso (sentarse desde el aire)');
+});
+
 // ------------------------------------------------------------------ vida
 test('la vida y la sangre se recuperan solas si nadie te pega', async () => {
   const { p, ph } = await fixture();

@@ -521,7 +521,8 @@ export class LocalPlayer {
     this.physMode = 'anim';
     this.rag.setKinematic(true);
     try { this.collider.setEnabled(true); } catch { /* */ }
-    const p = new THREE.Vector3(s.x + Math.sin(s.yaw) * 0.7, 0.02, s.z + Math.cos(s.yaw) * 0.7);
+    // te parás en el piso del asiento (no siempre en y=0: hay asientos bajo tierra y en pisos altos)
+    const p = new THREE.Vector3(s.x + Math.sin(s.yaw) * 0.7, s.y - 0.44, s.z + Math.cos(s.yaw) * 0.7);
     this.teleport(p, s.yaw);
   }
 
