@@ -323,8 +323,9 @@ export class Npc {
       if (this.deadT > this.respawnSecs) this.respawn();
       return;
     }
-    // prendido fuego no hace caso a su rol: corre en pánico (ver _burnStep)
-    if (!(this.burnT > 0)) this.role?.(this, dt);
+    // prendido fuego no hace caso a su rol: corre en pánico (ver _burnStep). Tirado, tampoco: antes el rol seguía
+    // andando con el cuerpo en el piso y la posición "lógica" perseguía y pegaba sola (el guardia invisible)
+    if (!(this.burnT > 0) && !(this.down > 0)) this.role?.(this, dt);
     this._resolveMove();
     // mirar a alguien: la cabeza primero, el cuerpo si hace falta
     let want = this.baseYaw, hy = 0;

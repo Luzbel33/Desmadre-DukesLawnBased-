@@ -423,8 +423,8 @@ P('trashcan', 96.5, 0, 42.5);
 P('bottle', -20.3, 0.9, -86.8);
 P('bottle', -20.7, 0.9, -87.1);
 P('bottle', -20.4, 0.9, -87.3);
-P('watermelon', -15.6, 0.4, -97.4);
-P('watermelon', -15.3, 0.4, -98.1);
+P('watermelon', -15.6, 0, -97.4); // en el piso, al lado de la parrilla (a 0.4 m flotaban)
+P('watermelon', -15.3, 0, -98.1);
 P('gnome', -18, 0, -71.5, 0.5);
 P('gnome', 18, 0, -71.5, -0.5);
 P('chair', -22.2, 0, -87.6, 1.9);

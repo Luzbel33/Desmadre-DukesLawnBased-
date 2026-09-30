@@ -24,8 +24,9 @@ bajar la calidad. Orden: primero bugs y lo importante, lo "random" al final.
       caerse el contador de "tirado" quedaba en -0.005 y el NPC era "tirado" para siempre (sin cápsula y, al
       morir, sin ragdoll: por eso se congelaban). Los NPC que caminan (guardias, el que pasea, los prendidos fuego)
       ahora chocan con paredes, autos y jugadores; el que se quema salta de la silla y corre en pánico.
-- [~] NPCs invisibles: no se pudo reproducir (todos se dibujan). Lo más probable: guardias de uniforme oscuro en la
-      noche de tormenta. Ahora llevan un farol encendido en la mano (llama y luz que siguen la mano).
+- [x] "Guardia invisible que te pega": con el guardia tirado (ragdoll), su rol seguía andando: la posición lógica
+      te perseguía y te pegaba sin cuerpo. Tirado ya no persigue ni pega. Además los guardias llevan un farol
+      encendido en la mano (de noche, con el uniforme oscuro, no se los veía).
 - [ ] El portero "cara de chancho": capucha pintada con orejas/hocico de cilindros (se ve hueco). Va con el
       rediseño de personajes (punto 2).
 - [ ] Rendimiento: el juego está pesado y el sonido se traba a veces.
@@ -43,7 +44,7 @@ bajar la calidad. Orden: primero bugs y lo importante, lo "random" al final.
 - [ ] Carro de calabazas: las calabazas lo atraviesan.
 - [ ] Ahorcado: soga que acompañe y calce en el cuello; escotilla abierta (que no la atraviese).
 - [ ] Tierra del calabazar y del espantapájaros redondeada y natural como las tumbas (nada de cajas).
-- [ ] Sandías flotando.
+- [x] Sandías flotando: estaban cargadas a 0,4 m del piso al lado de la parrilla (se ve al reiniciar el servidor).
 - [ ] Piso de arriba ampliado con más lugares.
 
 ### 4. Sensación de juego

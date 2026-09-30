@@ -321,6 +321,7 @@ export class Villagers {
   _brawl(npc, dt) {
     const L = this.getLocal();
     if (!L || L.dead) { npc.data.aggro = 0; return; }
+    if (npc.down > 0 || npc.dead || !npc.char) return; // pega el cuerpo que está parado, no un fantasma
     const dx = L.pos.x - npc.pos.x, dz = L.pos.z - npc.pos.z, dist = Math.hypot(dx, dz) || 1;
     npc.baseYaw = Math.atan2(dx, dz); npc.lookAt = null;
     if (dist > 1.2) { const v = dist > 6 ? 3.6 : 2; npc.speed = v; npc.pos.x += dx / dist * v * dt; npc.pos.z += dz / dist * v * dt; }
