@@ -3,7 +3,7 @@
 Cada capa de ropa sabe dónde va (máscara por posición/hueso en el cuerpo), cómo se pinta (color, rugosidad y
 transparencia del dibujo, p. ej. la red de las medias) y cuánto se separa de la piel (push, metros).
 Las posiciones están en metros, Y arriba, el personaje mira a +Z; x > 0 es su izquierda.
-Regla: lo que se pinta encima del pecho y de la entrepierna siempre es opaco (nada de desnudos).
+Las capas de vestuario del elenco respetan las opciones de vestuario definidas en cast.py.
 """
 import numpy as np
 

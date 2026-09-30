@@ -309,7 +309,7 @@ export class ClubGame {
       n.lookAt = near(n, 6);
     };
     const P = this.club.poles;
-    [['lilith', 'Lilith'], ['coneja', 'La Coneja'], ['venus', 'Venus']].forEach(([m, name], i) => { if (P[i]) add({ name, look: { model: m }, pos: P[i].clone(), role: pole(P[i], i * 2.1) }); });
+    [['lilith', 'Lilith'], ['coneja', 'La Coneja'], ['venus', 'Venus']].forEach(([m, name], i) => { if (P[i]) add({ name, look: { model: m, topless: true }, pos: P[i].clone(), role: pole(P[i], i * 2.1) }); });
     // gogós en las jaulas colgantes
     const cage = (c, phase) => (n, dt) => {
       n.pos.copy(c);
@@ -318,7 +318,7 @@ export class ClubGame {
       if (n.data.t <= 0) { n.data.t = 4 + Math.random() * 4; n.emote = ['dance2', 'dance3', 'dance1'][Math.floor(Math.random() * 3)]; n.emoteT = 0; }
     };
     const Gc = this.club.gogo || [];
-    [['raven', 'Raven'], ['emo', 'La Emo']].forEach(([m, name], i) => { if (Gc[i]) add({ name, look: { model: m }, pos: Gc[i].clone(), role: cage(Gc[i], i * 3) }); });
+    [['raven', 'Raven'], ['emo', 'La Emo']].forEach(([m, name], i) => { if (Gc[i]) add({ name, look: { model: m, topless: true }, pos: Gc[i].clone(), role: cage(Gc[i], i * 3) }); });
     // el DJ
     if (A.dj) add({ name: 'DJ Calavera', look: { model: 'dj' }, pos: A.dj.clone(), yaw: 0, role: (n, dt) => { n.emote = 'dance1'; n.lookAt = near(n, 8); } });
     // el bartender (atiende: ver use 'bar')
