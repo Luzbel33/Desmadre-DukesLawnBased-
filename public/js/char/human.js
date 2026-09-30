@@ -19,16 +19,16 @@ export const MODELS = {
   diablo: { file: 'assets/chars/diablo.glb', label: 'El Diablo', gender: 'm', devil: true, owner: true, voice: 'demon' },
   // la gente del Búnker (MakeHuman CC0 + ropa procedural: assets/blender/mh/build_npc.py). Se bajan recién cerca del club
   portero: { file: 'assets/chars/npc/portero.glb', label: 'El Portero', gender: 'm', npc: true },
-  lilith: { file: 'assets/chars/npc/lilith.glb', label: 'Lilith', gender: 'f', npc: true, skinColor: 0xDBB8A8 },
-  coneja: { file: 'assets/chars/npc/coneja.glb', label: 'La Coneja', gender: 'f', npc: true, skinColor: 0x5C3B2B },
+  lilith: { file: 'assets/chars/npc/lilith.glb', label: 'Lilith', gender: 'f', npc: true },
+  coneja: { file: 'assets/chars/npc/coneja.glb', label: 'La Coneja', gender: 'f', npc: true },
   dj: { file: 'assets/chars/npc/dj.glb', label: 'DJ Calavera', gender: 'm', npc: true },
-  venus: { file: 'assets/chars/npc/venus.glb', label: 'Venus', gender: 'f', npc: true, skinColor: 0x9E7052 },
-  raven: { file: 'assets/chars/npc/raven.glb', label: 'Raven', gender: 'f', npc: true, skinColor: 0xB88C6B },
+  venus: { file: 'assets/chars/npc/venus.glb', label: 'Venus', gender: 'f', npc: true },
+  raven: { file: 'assets/chars/npc/raven.glb', label: 'Raven', gender: 'f', npc: true },
   bartender: { file: 'assets/chars/npc/bartender.glb', label: 'El Bartender', gender: 'm', npc: true },
   toro: { file: 'assets/chars/npc/toro.glb', label: 'El Toro', gender: 'm', npc: true },
   chacal: { file: 'assets/chars/npc/chacal.glb', label: 'El Chacal', gender: 'm', npc: true },
   metalero: { file: 'assets/chars/npc/metalero.glb', label: 'El Metalero', gender: 'm', npc: true },
-  emo: { file: 'assets/chars/npc/emo.glb', label: 'La Emo', gender: 'f', npc: true, skinColor: 0xDBB8A8 },
+  emo: { file: 'assets/chars/npc/emo.glb', label: 'La Emo', gender: 'f', npc: true },
   raver: { file: 'assets/chars/npc/raver.glb', label: 'El Raver', gender: 'm', npc: true },
   gordo: { file: 'assets/chars/npc/gordo.glb', label: 'El Gordo', gender: 'm', npc: true },
   // la gente del castillo y del resto del mapa (assets/blender/mh/villagers_cast.py)
@@ -391,48 +391,31 @@ function buildMeta(scene) {
 }
 
 // ---------------------------------------------------------------- material con daño (moretones, sangre, heridas)
-function damageMaterial(base, dmgTex, bareChest = null) {
+function damageMaterial(base, dmgTex) {
   const mat = base.clone();
   mat.roughness = 1;
+  // Clean base-skin GLBs use vertex colors instead of a painted texture. Keep UVs
+  // active for the per-character damage overlay without tinting those colors.
+  if (!mat.map) {
+    const white = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, THREE.RGBAFormat);
+    white.magFilter = THREE.NearestFilter;
+    white.minFilter = THREE.NearestFilter;
+    white.generateMipmaps = false;
+    white.needsUpdate = true;
+    mat.map = white;
+  }
   const u = {
     uDmg: { value: dmgTex },
     uFlush: { value: 0 },
     uPale: { value: 0 },
-    uBareChest: { value: bareChest ? 1 : 0 },
-    uBareY0: { value: bareChest?.y0 || 0 },
-    uBareY1: { value: bareChest?.y1 || 0 },
-    uBareHalfWidth: { value: bareChest?.halfWidth || 0 },
-    uBareSkin: { value: bareChest?.skin || new THREE.Color(0xffffff) },
   };
   mat.userData.u = u;
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
-    sh.vertexShader = sh.vertexShader.replace(
-      '#include <common>',
-      '#include <common>\nvarying vec3 vBarePosition;',
-    ).replace(
-      '#include <begin_vertex>',
-      '#include <begin_vertex>\nvBarePosition = position;',
-    );
-    sh.fragmentShader = sh.fragmentShader.replace(
-      '#include <common>',
-      `#include <common>
-      varying vec3 vBarePosition;
-      uniform float uBareChest;
-      uniform float uBareY0;
-      uniform float uBareY1;
-      uniform float uBareHalfWidth;
-      uniform vec3 uBareSkin;`,
-    );
     sh.fragmentShader = 'uniform sampler2D uDmg;\nuniform float uFlush;\nuniform float uPale;\n' + sh.fragmentShader.replace(
       '#include <map_fragment>',
       /* glsl */ `#include <map_fragment>
       {
-        float bareY = smoothstep(uBareY0, uBareY0 + 0.018, vBarePosition.y)
-          * (1.0 - smoothstep(uBareY1 - 0.018, uBareY1, vBarePosition.y));
-        float bareX = 1.0 - smoothstep(uBareHalfWidth - 0.018, uBareHalfWidth, abs(vBarePosition.x));
-        float bareMask = uBareChest * bareY * bareX;
-        diffuseColor.rgb = mix(diffuseColor.rgb, uBareSkin, bareMask);
         vec4 dm = texture2D(uDmg, vMapUv);
         float bruise = clamp(dm.b, 0.0, 1.0);
         diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.55, 0.28, 0.42), bruise * 0.85);
@@ -452,7 +435,7 @@ function damageMaterial(base, dmgTex, bareChest = null) {
       }`,
     );
   };
-  mat.customProgramCacheKey = () => 'human-dmg-bare-v1';
+  mat.customProgramCacheKey = () => 'human-dmg-v1';
   return mat;
 }
 
@@ -610,21 +593,7 @@ export class HumanCharacter {
     this.dmgTex.minFilter = THREE.LinearFilter;
     this.dmgTex.needsUpdate = true;
     this.model.updateMatrixWorld(true);
-    let bareChest = null;
-    if (this.look.topless) {
-      this.skinned.updateMatrixWorld(true);
-      const meshFromWorld = this.skinned.matrixWorld.clone().invert();
-      const bindPos = (name) => this.bones[name].getWorldPosition(new THREE.Vector3()).applyMatrix4(meshFromWorld);
-      const hip = bindPos('hip'), neck = bindPos('neck');
-      const shL = bindPos('upperarm_l'), shR = bindPos('upperarm_r');
-      bareChest = {
-        y0: hip.y + 0.045,
-        y1: neck.y - 0.045,
-        halfWidth: Math.abs(shL.x - shR.x) * 0.43,
-        skin: new THREE.Color(MODELS[this.modelKey].skinColor || 0xffffff),
-      };
-    }
-    this.material = damageMaterial(this.skinned.material, this.dmgTex, bareChest);
+    this.material = damageMaterial(this.skinned.material, this.dmgTex);
     this.skinned.material = this.material;
     // esqueleto virtual (no se dibuja): recibe animación o ragdoll
     this.jointRest = this.meta.jointRest.map((v) => v.clone());
