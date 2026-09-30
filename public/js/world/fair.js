@@ -254,11 +254,12 @@ export class Fair {
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * Math.PI * 2 + 0.4, R = 2.4;
       const lx = x + Math.sin(a) * R, lz = z + Math.cos(a) * R, yaw = a + Math.PI; // mirando al fuego
-      d.place('c_logbench', lx, 0, lz, yaw + Math.PI / 2, 1);
-      this.phys.box(lx, 0.22, lz, 0.9, 0.22, 0.22, yaw + Math.PI / 2, { paint: false, mat: 'wood' });
+      // el tronco va de costado al fuego (su largo es el eje X del modelo)
+      d.place('c_logbench', lx, 0, lz, yaw, 1);
+      this.phys.box(lx, 0.2, lz, 0.9, 0.2, 0.22, yaw, { paint: false, mat: 'wood' });
       for (const off of [-0.45, 0.45]) {
         const sx = lx + Math.cos(yaw) * off, sz = lz - Math.sin(yaw) * off;
-        const seat = { x: sx, y: 0.48, z: sz, yaw };
+        const seat = { x: sx, y: 0.44, z: sz, yaw };
         this.c.seats.push(seat);
         this.spots.bonfire.push(seat);
       }

@@ -10,6 +10,7 @@ import { Ragdoll, PART } from './ragdoll.js';
 import { GR } from '../core/physics.js';
 import { goreFor, branchOf } from './gore.js';
 import { EquipmentView } from './equipment.js';
+import { stepSound } from '../audio/surface.js';
 
 const V1 = new THREE.Vector3();
 const V2 = new THREE.Vector3();
@@ -189,6 +190,9 @@ export class Npc {
       this.char = new HumanCharacter(this.look);
       this.char.root.name = 'npc:' + this.name;
       if (this.heightK !== 1) this.char.root.scale.setScalar(this.heightK);
+      // los NPC no entran en las sombras de antorchas y velas (capa 1): son muchos y cada sombra de luz puntual los
+      // dibuja seis veces; la del sol/luna la deciden los que los manejan (villagers.js: solo cerca)
+      this.char.skinned?.layers.disable(1);
       this.scene.add(this.char.root);
     } catch (e) { console.warn('npc', this.name, e); this.char = null; }
     return !!this.char;
@@ -246,6 +250,17 @@ export class Npc {
     if (this.emote) this.emoteT += dt;
     if (this.action) { this.actionT += dt; if (this.actionT > (this.actionEnd || 1.6)) this.action = null; }
     this.talk = Math.max(0, this.talk - dt);
+    // pasos (según el piso), solo si está cerca
+    if (this.speed > 0.3 && !this.sit && !this.down) {
+      this._stepD = (this._stepD || 0) + this.speed * dt;
+      if (this._stepD > (this.speed > 2.5 ? 1.2 : 0.85)) {
+        this._stepD = 0;
+        if (camera && camera.position.distanceToSquared(this.pos) < 400) {
+          const [s, r, v] = stepSound(this.pos.x, this.pos.y, this.pos.z);
+          G.sfx?.trigger(s, this.pos, 0.45 * v, { rate: r * (0.94 + Math.random() * 0.12), full: 2, max: 20 });
+        }
+      }
+    }
     const ch = this.char;
     ch.talk = this.talk > 0 ? 0.5 + 0.5 * Math.sin(G.time * 18) : 0;
     if (this.down > 0) {
@@ -286,7 +301,8 @@ export class Npc {
     if (this.prop) {
       ch.root.updateWorldMatrix(true, true);
       ch.handR.getWorldPosition(this.prop.position);
-      this.prop.rotation.set(this.action === 'swing' ? -0.8 + Math.sin(this.actionT * 5) * 0.6 : 0.3, this.yaw, 0, 'YXZ');
+      // la pala cuelga de la mano con la hoja para abajo (el modelo viene parado, con el mango arriba)
+      this.prop.rotation.set(Math.PI - (this.action === 'swing' ? 0.9 - Math.sin(this.actionT * 5) * 0.6 : 0.35), this.yaw, 0, 'YXZ');
       this.prop.visible = this.visible && !this.down;
     }
     // globo

@@ -124,8 +124,8 @@ export class Villagers {
     const w2 = add('dj2', 'Un pibe', 'dj', [-18.3, 0, -63.3], 0, (n) => this._chatter(n));
     this._pair(w1, w2, 'well');
     // guardias del portón
-    add('guardia1', 'Guardia', 'v_guardia', [-4.3, 0, -76.3], 0, (n) => this._guard(n));
-    add('guardia2', 'Guardia', 'v_guardia', [4.3, 0, -76.3], 0, (n) => this._guard(n, true));
+    add('guardia1', 'Guardia', 'v_guardia', [-4.1, 0, -73.5], 0, (n) => this._guard(n));
+    add('guardia2', 'Guardia', 'v_guardia', [4.1, 0, -73.5], 0, (n) => this._guard(n, true));
     // el sepulturero cava la tumba abierta; el granjero anda por la huerta
     add('sepul', 'El Sepulturero', 'v_sepulturero', [38.4, 0, -125.7], Math.PI, (n) => this._digger(n));
     add('granjero', 'Don Aníbal', 'v_granjero', [-35, 0, -110], 0, (n) => this._farmer(n));
@@ -325,6 +325,7 @@ export class Villagers {
       if (d > FAR) {
         // lejos: ni se baja el modelo; si ya estaba, se esconde
         if (n.char && n.visible) n.update(0, camera, false);
+        if (n.bubble) n.bubble.style.display = 'none'; // si habló de lejos, el globo no queda pegado en la pantalla
         n._acc = 0;
         continue;
       }
@@ -333,6 +334,7 @@ export class Villagers {
       if (!wantPhys && n.rag && !n.down && !n.dead) { n.rag.destroy(); n.rag = null; }
       n.physical = wantPhys;
       if (d > NEAR && ((this.frame + i) & 3)) continue; // a media distancia, uno de cada cuatro cuadros
+      if (n.char?.skinned) n.char.skinned.castShadow = d < 25;
       n.update(Math.min(0.2, n._acc), camera, true);
       n._acc = 0;
     }

@@ -1,5 +1,5 @@
 import { synthesize } from './synthesis.js';
-import { zoneAt } from '../shared/mapdata.js';
+import { stepSound } from './surface.js';
 import { ZoneMusic } from './music.js';
 const clamp=(x,a=0,b=1)=>Math.min(b,Math.max(a,Number.isFinite(+x)?+x:0));
 const DEFAULTS={vol:.8,volSfx:.8,volAmbient:.35,volMusic:.7,muted:false};
@@ -166,7 +166,7 @@ export class AudioEngine {
           if(ground&&moved<2){
             old.dist+=moved;
             if(old.dist>((isMe?p.speed:st.sp)>5?1.25:.88)){
-              old.dist=0;const floor=zoneAt(pos.x,pos.z);const step=floor==='bar'?'step-wood':floor==='cine'?'step-carpet':['pasto','saltos','autocine',null].includes(floor)?'step-grass':'step-hard';this.trigger(step,soundPos,isMe?.4:.55);
+              old.dist=0;const [step,rate,vol]=stepSound(pos.x,pos.y,pos.z);this.trigger(step,soundPos,(isMe?.4:.55)*vol,{rate:rate*(.94+Math.random()*.12)});
             }
           }else old.dist=0;
           if(ACTIONS[action] && (action!==old.action || at+.35<old.at))this.trigger(ACTIONS[action],soundPos,.65);
