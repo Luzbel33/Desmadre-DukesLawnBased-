@@ -13,9 +13,9 @@ import { VolumePass } from './volume.js';
 // contraste en curva, tinte de sombras y luces, viñeta, grano de película, aberración cromática suave en los bordes
 // y dithering (en las escenas oscuras con niebla, sin esto se ven escalones de color).
 export const GRADES = {
-  day: { exposure: 0.9, white: [1.0, 0.99, 0.97], sat: 1.1, contrast: 0.22, lift: [0.0, 0.004, 0.012], gamma: 1.0, gain: [1.02, 1.0, 0.97], shadow: [-0.01, 0.02, 0.05], high: [0.05, 0.025, -0.01], vignette: 0.26, grain: 0.022, ca: 0.55 },
-  storm: { exposure: 1.7, white: [0.9, 0.97, 1.08], sat: 0.74, contrast: 0.3, lift: [0.006, 0.012, 0.024], gamma: 1.04, gain: [0.95, 0.99, 1.06], shadow: [-0.02, 0.02, 0.07], high: [0.1, 0.045, -0.02], vignette: 0.5, grain: 0.05, ca: 1.0 },
-  indoor: { exposure: 1.85, white: [1.06, 0.99, 0.9], sat: 0.84, contrast: 0.32, lift: [0.004, 0.004, 0.009], gamma: 1.0, gain: [1.05, 0.98, 0.9], shadow: [0.0, 0.0, 0.05], high: [0.12, 0.05, -0.03], vignette: 0.6, grain: 0.06, ca: 1.1 },
+  day: { exposure: 0.9, white: [1.0, 0.99, 0.97], sat: 1.02, contrast: 0.16, lift: [0.0, 0.004, 0.012], gamma: 1.0, gain: [1.02, 1.0, 0.97], shadow: [-0.01, 0.02, 0.05], high: [0.05, 0.025, -0.01], vignette: 0.16, grain: 0.007, ca: 0.08 },
+  storm: { exposure: 1.7, white: [0.9, 0.97, 1.08], sat: 0.74, contrast: 0.2, lift: [0.006, 0.012, 0.024], gamma: 1.04, gain: [0.95, 0.99, 1.06], shadow: [-0.02, 0.02, 0.07], high: [0.1, 0.045, -0.02], vignette: 0.25, grain: 0.012, ca: 0.12 },
+  indoor: { exposure: 1.85, white: [1.06, 0.99, 0.9], sat: 0.84, contrast: 0.18, lift: [0.004, 0.004, 0.009], gamma: 1.0, gain: [1.05, 0.98, 0.9], shadow: [0.0, 0.0, 0.05], high: [0.12, 0.05, -0.03], vignette: 0.28, grain: 0.012, ca: 0.1 },
 };
 const GradeShader = {
   uniforms: {
@@ -229,6 +229,8 @@ export class Post {
     this.grade = new GradePass();
     this.gradeState = { ...GRADES.day };
     if (useAO) {
+      this.renderPass.enabled = false;
+      this.composer.addPass(this.renderPass);
       // N8AO: sombra de contacto en rincones, pies de muebles y paredes (lo que más "asienta" la escena)
       const w = size.x * pr, h = size.y * pr;
       const ao = new N8AOPass(scene, camera, w, h);
@@ -278,6 +280,18 @@ export class Post {
     this.u = this.intox.uniforms;
     this.exposure = renderer.toneMappingExposure || 1;
   }
+  setQuality(preset) {
+    if (this.bloom) this.bloom.enabled = preset.bloom;
+    if (this.ao) {
+      this.ao.enabled = preset.aoSamples > 0;
+      this.renderPass.enabled = !this.ao.enabled;
+      this.ao.configuration.aoSamples = Math.max(4, preset.aoSamples);
+      if (this.ao.beautyRenderTarget.samples !== preset.msaa) {
+        this.ao.beautyRenderTarget.samples = preset.msaa;
+        this.ao.beautyRenderTarget.dispose();
+      }
+    }
+  }
   // gradación: se mezcla entre día, tormenta y adentro (0..1 cada factor)
   setZone(storm = 0, indoor = 0, flash = 0, time = 0) {
     let g = mixGrade(GRADES.day, GRADES.storm, storm);
@@ -285,8 +299,8 @@ export class Post {
     const u = this.grade.uniforms;
     u.uExposure.value = g.exposure * (this.exposure / 0.86);
     u.uWhite.value.set(...g.white);
-    u.uSat.value = g.sat;
-    u.uContrast.value = g.contrast;
+    u.uSat.value = g.sat * (this.atmosphere?.saturation || 1);
+    u.uContrast.value = g.contrast * (this.atmosphere?.contrast || 1);
     u.uLift.value.set(...g.lift);
     u.uGamma.value = g.gamma;
     u.uGain.value.set(...g.gain);
@@ -298,7 +312,7 @@ export class Post {
     u.uFlash.value = flash;
     u.uTime.value = time;
     // la oclusión ambiental pesa más de noche y adentro (rincones oscuros)
-    if (this.ao) this.ao.configuration.intensity = 2.2 + storm * 0.3;
+    if (this.ao) this.ao.configuration.intensity = 1.35 + storm * 0.2;
     if (this.vol) this.vol.time = time;
   }
   setSize(w, h) {
@@ -308,6 +322,9 @@ export class Post {
     this.composer.setPixelRatio(pr);
   }
   render(dt) {
+    // El contador cubre TODOS los pases, no sólo el triángulo del filtro final.
+    this.composer.renderer.info.autoReset = false;
+    this.composer.renderer.info.reset();
     const u = this.u;
     const active = u.uDrunk.value > 0.01 || u.uHigh.value > 0.01 || u.uHurt.value > 0.01 || u.uLowBlood.value > 0.01 || u.uBlack.value > 0.001 || u.uSmoke.value > 0.01;
     this.intox.enabled = active;

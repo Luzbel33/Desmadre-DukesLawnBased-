@@ -3,7 +3,7 @@
 // murciélagos, cuervos y el espantapájaros. Todo lo repetido va instanciado.
 import * as THREE from 'three';
 import { G, rng } from '../core/G.js';
-import { whenAsset, assetModel, instanceModel } from '../game/assets.js';
+import { whenAsset, assetModel, instanceModel, artwork } from '../game/assets.js';
 import { Builder, getMat } from './builder.js';
 import { CASTLE, CLUB } from '../shared/mapdata.js';
 import { stainCastle } from './castle-stains.js';
@@ -220,15 +220,16 @@ export class Decor {
       this.c.flame(x, y + 0.1 * s, z, 0.22 * s, 0.34 * s, { intensity: 0.95 });
       if (light) this.c.light(x, y + 0.45 * s, z, 0xff8a30, 1.8, 5.5, { flicker: true, priority: 0.8 });
     };
-    // camino al portón: calabazas talladas a los dos lados, mirando al camino
-    for (let i = 0; i < 6; i++) for (const sd of [-1, 1]) {
-      const z = -59.5 - i * 2.8;
-      put(sd * (3.1 + r() * 0.25), 0.03, z, 0.6 + r() * 0.15, true, sd > 0 ? -Math.PI / 2 : Math.PI / 2, i % 2 === 0);
-    }
-    // escalinata del torreón: una en cada tanto de escalones, mirando al patio
-    for (let i = 2; i < 20; i += 4) for (const sd of [-1, 1]) {
-      const z = -95.6 - (i + 0.5) * (6.6 / 20), y = (i + 1) * (3.5 / 20);
-      put(sd * 3.65, y, z, 0.46, true, 0, false);
+    // Three arranged groups mark the threshold. Sizes and orientations are
+    // authored around a focal lantern, leaving the walking route clear.
+    for (const [x,z,s,lit,yaw] of [
+      [-4.1,-72.6,.95,true,.3],[-4.95,-72.85,.57,false,1.4],[-4.35,-71.75,.4,false,2.2],
+      [4.15,-70.9,.72,true,-.45],[4.85,-71.4,.48,false,.8],
+      [-3.55,-61.7,.64,true,.15],[-4.15,-62.15,.37,false,2.4],
+    ]) put(x,.07,z,s,lit,yaw,lit);
+    for (const [x,z,i,s,lit] of [[-3.65,-96.43,2,.62,true],[-3.65,-96.76,3,.35,false],
+      [3.65,-99.72,12,.53,true],[3.65,-100.05,13,.31,false],[-3.65,-101.87,18,.42,true]]) {
+      put(x,(i+1)*3.5/20,z,s,lit,0.12*(x<0?1:-1));
     }
     // galpón del fogón: en las esquinas
     for (const [x, z, sc, lit] of [[-39.4, -85.3, 0.72, true], [-14.7, -85.1, 0.62, true], [-14.8, -99.8, 0.8, false], [-39.3, -99.8, 0.6, true]]) put(x, 0.05, z, sc, lit, Math.PI, lit);
@@ -302,7 +303,7 @@ export class Decor {
     // cuarto secreto: altar
     this.candleCluster(13, y0 + 1.05, -125.1, 6, 0.3, 1.3);
     // ventanas del torreón (vistas desde afuera, en los alféizares de adentro)
-    for (const x of [-20.5, -12.5, 12.5]) this.candle(x - 0.3, y0 + 1.46, -104.5, 0.22, 0.03, 0);
+    for (const x of [-20.5, -12.5, 12.5]) this.candle(x - 0.3, 5.0, -104.2, 0.22, 0.03, 0);
     // cementerio: velas sobre las tumbas
     for (const [x, z] of [[29.2, -110.8], [33.9, -114.2], [38.6, -110.2], [30.4, -121.2], [37.2, -124.3]]) this.candleCluster(x, 0.04, z, 3, 0.15, 0);
     // fogón: sobre barriles
@@ -368,10 +369,25 @@ export class Decor {
         b.geo('keepStone', cap);
       }
       // tierra removida delante
-      b.box('mud', x, 0.08, z + 1.0, 1.0, 0.16, 1.9, { yaw, collide: false, noShadow: true });
+      const mound = new THREE.SphereGeometry(1, 14, 7, 0, Math.PI*2, 0, Math.PI/2);
+      const mp = mound.attributes.position;
+      for (let j=0;j<mp.count;j++) {
+        const px=mp.getX(j), pz=mp.getZ(j);
+        const k=1+0.055*Math.sin(px*13+pz*9);
+        mp.setXYZ(j,px*.56*k,mp.getY(j)*(.12+.045*Math.cos(px*5+pz*7)),pz*1.02*k);
+      }
+      mound.rotateY(yaw); mound.translate(x,.045,z+1); mound.computeVertexNormals();
+      b.geo('mud', mound);
     }
     // tumba abierta con la pala
-    b.box('mud', 40.2, 0.35, -127.2, 1.6, 0.7, 1.1, { collide: true });
+    const pile=new THREE.SphereGeometry(1,16,8,0,Math.PI*2,0,Math.PI/2);
+    const pp=pile.attributes.position;
+    for(let i=0;i<pp.count;i++) {
+      const x=pp.getX(i),y=pp.getY(i),z=pp.getZ(i),j=1+.12*Math.sin(x*7+z*9);
+      pp.setXYZ(i,x*.86*j,y*.46*j,z*.61*j);
+    }
+    pile.translate(40.2,.025,-127.2);pile.computeVertexNormals();b.geo('mud',pile);
+    this.c.phys.box(40.2,.18,-127.2,.7,.18,.45,0);
     b.box('black', 38.4, 0.01, -127.2, 1.2, 0.02, 2.2, { collide: false, noShadow: true });
     this.anchors = this.anchors || {};
     this.c.anchors.openGrave = new THREE.Vector3(38.4, 0, -127.2);
@@ -418,32 +434,68 @@ export class Decor {
   }
 
   // ---------------------------------------------------------------- estandartes del portón y el cartel
+  // Paños de lana hechos en Blender (assets/blender/artpass/banner.py): cuelgan de anillas en una vara con ménsulas y
+  // traen sus pliegues; acá solo se mecen con el viento (nada en la vara, más en la cola). El cartel es de tablones con
+  // "Castillo del Terror" tallado (sign.py), colgado de dos cadenas bajo la cornisa, entre los dos estandartes.
   _banners() {
     if (!HAS_DOM) return;
-    const t = tex(sigilCanvas());
-    const mat = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95 });
+    const Z = -74.6; // cara del portón que da a la explanada
     const U = { uT: { value: 0 } };
-    mat.onBeforeCompile = (sh) => {
-      sh.uniforms.uT = U.uT;
-      sh.vertexShader = 'uniform float uT;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
-        float k = (1.0 - uv.y);
-        transformed.z += sin(uT * 2.3 + position.x * 2.0 + position.y * 1.4) * 0.14 * k * k + sin(uT * 5.1 + position.y * 3.0) * 0.03 * k;
-        transformed.x += sin(uT * 1.7 + position.y) * 0.05 * k;`);
+    let swayReady = false;
+    const sway = (m) => {
+      m.traverse((o) => {
+        if (!o.isMesh || !/banner_cloth/.test(o.material?.name || '') || swayReady) return;
+        swayReady = true;
+        const mat = o.material;
+        mat.onBeforeCompile = (sh) => {
+          sh.uniforms.uT = U.uT;
+          sh.vertexShader = 'uniform float uT;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+            float bk = clamp(-position.y / 4.3, 0.0, 1.0);
+            bk *= bk;
+            transformed.z += (sin(uT * 1.3 + position.x * 1.7 + position.y * 0.8) * 0.05 + sin(uT * 2.9 + position.y * 2.3 + position.x) * 0.014) * bk;
+            transformed.x += sin(uT * 0.9 + position.y * 0.6) * 0.03 * bk;`);
+        };
+        mat.customProgramCacheKey = () => 'banner-cloth-sway';
+        mat.needsUpdate = true;
+      });
     };
-    mat.customProgramCacheKey = () => 'banner-sway';
+    // la vara de cada estandarte queda justo debajo de la cornisa del portón (y = 11.03)
     for (const s of [-1, 1]) {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 3.6, 6, 12), mat);
-      m.position.set(s * 5.5, 10.4, -74.35);
-      m.castShadow = true;
-      this.scene.add(m);
-      this.c.deco('iron', s * 5.5, 12.25, -74.4, 2.1, 0.08, 0.08, {});
+      whenAsset('c_banner', () => {
+        const m = assetModel('c_banner');
+        if (!m) return;
+        const k = 0.86;
+        m.scale.setScalar(k);
+        const top = new THREE.Box3().setFromObject(m).max.y; // punta de los remates de la vara
+        m.position.set(s * 4.3, 10.93 - (top - 0.035 * k), Z);
+        m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+        this.scene.add(m);
+        m.updateMatrixWorld(true);
+        m.traverse((o) => { o.matrixAutoUpdate = false; });
+        sway(m);
+      });
     }
     this.anim.push((time) => { U.uT.value = time; });
-    // cartel colgado sobre el arco
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 1.15), new THREE.MeshStandardMaterial({ map: tex(signCanvas()), roughness: 0.85 }));
-    sign.position.set(0, 9.05, -74.42);
-    this.scene.add(sign);
-    for (const s of [-1, 1]) this.c.deco('iron', s * 1.9, 9.85, -74.45, 0.03, 0.6, 0.03, {});
+    // cartel: las argollas de la pared a 10,85 m
+    whenAsset('c_gate_sign', () => {
+      const m = assetModel('c_gate_sign');
+      if (!m) return;
+      const top = new THREE.Box3().setFromObject(m).max.y;
+      m.position.set(0, 10.85 - (top - 0.05), Z);
+      this.scene.add(m);
+      m.updateMatrixWorld(true);
+      m.traverse((o) => { o.matrixAutoUpdate = false; });
+    });
+  }
+
+  // vidrio del farol encendido: brilla cálido (lo toma el bloom) y no tapa la luz
+  _glowLantern(m) {
+    if (!this._lanternGlass) {
+      this._lanternGlass = new THREE.MeshStandardMaterial({ color: 0x2a1808, emissive: 0xffa040, emissiveIntensity: 1.8, roughness: 0.3, transparent: true, opacity: 0.9, depthWrite: false });
+    }
+    m.traverse((o) => {
+      if (o.isMesh && /glass/i.test(o.material?.name || '')) { o.material = this._lanternGlass; o.castShadow = false; }
+    });
   }
 
   // ---------------------------------------------------------------- calaveras (cripta, cuarto secreto, cementerio)
@@ -568,7 +620,7 @@ export class Decor {
     for (let i = 0; i < 6; i++) cart.push(this.mat4(15.5 + (i % 3) * 0.8, 1.01, -85.6 + Math.floor(i / 3) * 0.8, i * 1.3, 0.62));
     this.instances('c_pumpkin_b', cart);
     // caldero con brebaje verde que burbujea (y la luz verde)
-    const cauldron = new THREE.LatheGeometry([[0.05, 0], [0.4, 0.05], [0.5, 0.3], [0.46, 0.6], [0.4, 0.66]].map(([r2, y]) => new THREE.Vector2(r2, y)), 16);
+    const cauldron = new THREE.LatheGeometry([[0, 0], [.36, .04], [.5, .3], [.46, .6], [.4, .66], [.37, .66], [.43, .58], [.46, .3], [.34, .09], [0, .09]].map(([r2, y]) => new THREE.Vector2(r2, y)), 32);
     const cm = new THREE.Mesh(cauldron, getMat('iron'));
     cm.position.set(-22.7, F0 + 0.42, -123.2);
     this.scene.add(cm);
@@ -840,6 +892,7 @@ export class Decor {
       if (still) m.traverse((o) => { o.matrixAutoUpdate = false; });
       onReady?.(m);
     });
+    if ((type === 'c_chair' || type === 'c_armchair') && y >= F0 - .05) this.c.seats.push({ x, y: y + (type === 'c_armchair' ? .48 : .46) * scale, z, yaw });
   }
   // puntas de llama de los candelabros (los modelos traen llamas quietas: se esconden y se ponen las nuestras)
   flamesOf(m, size = 1, light = 0) {
@@ -870,6 +923,9 @@ export class Decor {
   }
 
   _models() {
+    this.place('c_facade', 0, 0, -103);
+    this.place('c_gate_relief', 0, 0, -74.6);
+    for (const x of [-5.6, 5.6]) this.place('c_brazier', x, 1.1, -95);
     const c = this.c;
     // --- salón
     this.place('c_chandelier', 0, 12.4, -110, 0, 1, { onReady: (m) => {
@@ -888,10 +944,10 @@ export class Decor {
     } });
     this.chandelierLight = c.light(0, 12.2, -110, 0xffc080, 26, 24, { flicker: true, priority: 2.4, shadow: true, decay: 1.5 });
     // candeleros de pared en el salón: dan una luz útil y dibujan las paredes
-    for (const [x, z, nx] of [[-7.62, -105.8, 1], [7.62, -108.6, -1], [7.62, -115.2, -1], [-7.62, -116.0, 1]]) {
+    for (const [x, z, nx] of [[-7.62, -104.25, 1], [7.62, -112.0, -1], [7.62, -115.2, -1], [-7.62, -116.0, 1]]) {
       (c.soot = c.soot || []).push([x - nx * 0.08, F0 + 2.1, z, nx, 0, 0]);
-      c.b.box('iron', x + nx * 0.12, F0 + 2.05, z, 0.24, 0.05, 0.05, {});
-      c.b.box('iron', x + nx * 0.05, F0 + 1.85, z, 0.05, 0.45, 0.05, {});
+      c.b.box('iron', x + nx * 0.12, F0 + 2.05, z, 0.24, 0.05, 0.05, { collide: false });
+      c.b.box('iron', x + nx * 0.05, F0 + 1.85, z, 0.05, 0.45, 0.05, { collide: false });
       this.candle(x + nx * 0.24, F0 + 2.08, z, 0.2, 0.03, 0);
       c.light(x + nx * 0.45, F0 + 2.5, z, 0xffb060, 3.2, 8, { flicker: true, priority: 1.1 });
     }
@@ -915,11 +971,11 @@ export class Decor {
     c.b.finish(this.scene);
     // retratos: subiendo por la escalera, en la sala de los retratos, el comedor y la biblioteca
     const frames = [
-      [-7.65, F0 + 2.5, -108.9, Math.PI / 2, 0], [-7.65, F0 + 3.4, -111.2, Math.PI / 2, 1], [-7.65, F0 + 4.3, -113.5, Math.PI / 2, 4],
+      [-7.65, F0 + 2.5, -109.3, Math.PI / 2, 0], [-7.65, F0 + 3.4, -111.9, Math.PI / 2, 1], [-7.65, F0 + 4.3, -114.5, Math.PI / 2, 4],
       [0, F0 + 9.3, -116.45, 0, 3],
-      [-7.65, F0 + 1.7, -119.2, Math.PI / 2, 2], [-7.65, F0 + 1.7, -124.1, Math.PI / 2, 5], [7.65, F0 + 1.7, -119.8, -Math.PI / 2, 1], [7.65, F0 + 1.7, -123.6, -Math.PI / 2, 4],
-      [-3.9, F0 + 1.7, -125.75, 0, 0], [3.9, F0 + 1.7, -125.75, 0, 3], [-5.6, F0 + 1.8, -117.15, Math.PI, 2],
-      [-16, F0 + 2.1, -104.25, Math.PI, 4], [-16, F0 + 2.1, -114.7, 0, 1], [23.75, F0 + 2.55, -111.5, -Math.PI / 2, 0],
+      [-7.65, F0 + 1.7, -118.3, Math.PI / 2, 2], [-7.65, F0 + 1.7, -124.1, Math.PI / 2, 5], [7.65, F0 + 1.7, -120.1, -Math.PI / 2, 1], [7.65, F0 + 1.7, -123.6, -Math.PI / 2, 4],
+      [0, F0 + 1.7, -125.75, 0, 0], [-5.6, F0 + 1.8, -117.15, Math.PI, 2],
+      [-20.1, F0 + 2.1, -114.7, 0, 1],
     ];
     frames.forEach(([x, y, z, yaw, kind], i) => this.place('c_frame', x, y, z, yaw, 1, { onReady: (m) => this._portrait(m, kind, i) }));
     // --- comedor: sillas alrededor de la mesa, el sillón del anfitrión (vacío... por ahora)
@@ -1001,7 +1057,7 @@ export class Decor {
     for (let k = -1; k <= 1; k++) this.c.seats.push({ x: -19.3, y: 0.52, z: -92.5 + k * 0.72, yaw: -Math.PI / 2 });
     this.phys.box(-19.1, 0.45, -92.5, 0.5, 0.45, 1.3, 0, { paint: false });
     for (const [x, z] of [[-34.2, -89.1], [-24.6, -89.1], [-34.2, -95.9], [-24.6, -95.9]]) {
-      this.place('c_lantern', x, 4.25, z, this.r() * 3, 1, { onReady: () => {} });
+      this.place('c_lantern', x, 4.25, z, this.r() * 3, 1, { onReady: (m) => this._glowLantern(m) });
       c.deco('iron', x, 5.0, z, 0.02, 1.1, 0.02, {});
       this.c.flame(x, 4.42, z, 0.05, 0.1, {});
       this.c.light(x, 4.5, z, 0xffb060, 2.4, 8, { flicker: true, priority: 1.2 });
@@ -1012,12 +1068,15 @@ export class Decor {
     this.phys.box(33.5, 1.0, -117.5, 0.9, 1.0, 0.9, 0, { paint: false });
     this.place('c_iron_gate', 33.5, 0, -103, 0, 1, { still: false, onReady: (m) => this._openGate(m) });
     this.place('c_spade', 39.4, -0.25, -126.7, 0.4, 1, {});
-    for (const [x, z] of [[27.5, -113.5], [40.5, -121.5], [-27.5, -113], [-3.4, -62], [3.4, -62], [-3.4, -71], [3.4, -71]]) {
-      c.b.box('iron', x, 1.25, z, 0.08, 2.5, 0.08, {});
-      c.b.box('iron', x + 0.3, 2.45, z, 0.6, 0.05, 0.05, { collide: false });
-      this.place('c_lantern', x + 0.55, 1.95, z, 0, 1);
-      this.c.flame(x + 0.55, 2.12, z, 0.05, 0.1, {});
-      this.c.light(x + 0.55, 2.2, z, 0xffa050, 1.8, 7, { flicker: true, priority: 0.9 });
+    // faroles de camino (portón, cementerio, huerta): poste de hierro forjado con el farol colgado del brazo, que
+    // apunta al camino; la llama y la luz van donde el modelo marca "flame" (assets/blender/artpass/lamp_post.py)
+    for (const [x, z, yaw] of [[27.5, -113.5, 0], [40.5, -121.5, Math.PI], [-27.5, -113, 0], [-3.4, -62, 0], [3.4, -62, Math.PI], [-3.4, -71, 0], [3.4, -71, Math.PI]]) {
+      this.place('c_lamppost', x, 0, z, yaw, 1, { onReady: (m) => this._glowLantern(m) });
+      this.phys.box(x, 0.17, z, 0.22, 0.17, 0.22, 0, { paint: false });
+      this.phys.box(x, 1.7, z, 0.05, 1.4, 0.05, 0, { paint: false });
+      const fx = x + Math.cos(yaw) * 0.59, fz = z - Math.sin(yaw) * 0.59;
+      this.c.flame(fx, 2.39, fz, 0.045, 0.1, {});
+      this.c.light(fx, 2.5, fz, 0xffa050, 3.6, 10, { flicker: true, priority: 1.1 });
     }
     c.b.finish(this.scene);
     // --- aljibe: el balde colgando de la soga
@@ -1028,6 +1087,22 @@ export class Decor {
 
   _openGate(m) {
     // re-pivotear las hojas del portón de rejas sobre sus bisagras y dejarlas entreabiertas
+    // Parent all auxiliary meshes (lock, latch, rings) to the correct leaf
+    // before opening it. Moving only door meshes left the fittings in mid-air.
+    m.updateMatrixWorld(true);
+    const leavesForHardware=[];
+    m.traverse(o=>{if(o.isMesh && /left_door|right_door/.test(o.name)) leavesForHardware.push(o);});
+    const fittings=[];
+    m.traverse(o=>{if(o.isMesh && !leavesForHardware.includes(o)) fittings.push(o);});
+    for(const o of fittings){
+      const p=new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3());
+      const leaf=leavesForHardware.reduce((best,candidate)=>{
+        const c=new THREE.Box3().setFromObject(candidate).getCenter(new THREE.Vector3());
+        const distance=Math.abs(c.x-p.x);
+        return !best||distance<best.distance?{o:candidate,distance}:best;
+      },null);
+      leaf?.o.attach(o);
+    }
     const box = new THREE.Box3().setFromObject(m);
     const half = (box.max.x - box.min.x) / 2;
     const leaves = [];
@@ -1048,14 +1123,18 @@ export class Decor {
     let canvasMesh = null;
     m.traverse((o) => { if (o.isMesh && /canvas/i.test(o.material?.name || '')) canvasMesh = o; });
     if (!canvasMesh) return;
-    const normal = tex(portraitCanvas(kind, i * 7 + 3));
+    const paintings = ['aic-11.jpg','aic-15708.jpg','aic-95998.jpg','aic-94840.jpg','aic-88632.jpg',
+      'aic-146701.jpg','aic-84709.jpg','aic-131407.jpg','aic-100829.jpg','portrait-artist.jpg','landscape.jpg'];
+    const normal = artwork('assets/art/' + paintings[i % paintings.length]);
     const skull = tex(portraitCanvas(kind, i * 7 + 3, true));
-    const mat = new THREE.MeshStandardMaterial({ map: normal, roughness: 0.55 });
+    const mat = new THREE.MeshStandardMaterial({ map: normal, roughness: 0.88 });
     canvasMesh.material = mat;
     this.portraits.push({ mat, normal, skull, m });
   }
 
   update(t, dt) {
+    const water = this.c.wellWater;
+    if (water) { water.uniforms.uWaterTime.value = t; water.uniforms.uWaterImpact.value = water.pulseAt; }
     for (const a of this.anim) a(t, dt);
     this.corpse?.update(dt);
     // ratas: van y vienen a lo largo de la pared

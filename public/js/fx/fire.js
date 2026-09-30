@@ -12,8 +12,8 @@ export class FireSet {
     this.dirty = true;
   }
   // (x, y, z): centro de la base; hx, hz: medio ancho; h: alto. wind: 1 afuera (se inclina con el viento)
-  add(x, y, z, hx, hz, h, { intensity = 1, wind = 0, speed = 1 } = {}) {
-    this.list.push({ x, y, z, hx, hz, h, intensity, wind, speed, seed: Math.random() * 100, k: 1 });
+  add(x, y, z, hx, hz, h, { intensity = 1, wind = 0, speed = 1, hazard = true } = {}) {
+    this.list.push({ x, y, z, hx, hz, h, intensity, wind, speed, hazard, seed: Math.random() * 100, k: 1 });
     this.dirty = true;
     return this.list.length - 1;
   }
@@ -21,6 +21,14 @@ export class FireSet {
   scale(i, k) { const f = this.list[i]; if (f && f.k !== k) { f.k = k; this.dirty = true; } }
   set(i, intensity) { const f = this.list[i]; if (f && f.intensity !== intensity) { f.intensity = intensity; this.dirty = true; } }
   move(i, x, y, z) { const f = this.list[i]; if (f) { f.x = x; f.y = y; f.z = z; this.dirty = true; } }
+
+  // Candle flames and cosmetic flames on an already burning body don't ignite
+  // the player. Test the actual fire volume, including its current scale.
+  touching(p, r = 0) {
+    return this.list.filter(f => f.hazard && f.k > .05 && f.intensity > 0 && f.hx + f.hz > .4
+      && Math.abs(p.x - f.x) < f.hx * f.k + r && Math.abs(p.z - f.z) < f.hz * f.k + r
+      && p.y + r > f.y && p.y - r < f.y + f.h * f.k);
+  }
 }
 
 // ---------------------------------------------------------------- ruido 3D en textura (valor, suavizado por hardware)
@@ -144,7 +152,7 @@ export class FireMesh {
             acc += ramp(T) * d * (0.3 + 1.5 * T);
           }
           float len = dt / max(0.2, vBox.w * 0.35);
-          vec3 col = acc * len * vPar.z * 4.2;
+          vec3 col = acc * len * vPar.z * 1.45;
           float fd = fogDensity * t0;
           col *= exp(-fd * fd);
           if (max(col.r, col.g) < 0.002) discard;

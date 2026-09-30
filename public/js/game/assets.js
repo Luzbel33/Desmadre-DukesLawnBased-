@@ -6,6 +6,29 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // tipo -> { url, height (m) | width | length | scale, rotX/Y/Z, yOff, center (default true), tint }
 export const MANIFEST = {};
 const LIB = new Map();
+const BOUNDS = new Map();
+const ART = new Map();
+
+export function artwork(url) {
+  if (!ART.has(url)) {
+    const texture = new THREE.TextureLoader().load(url, undefined, undefined, err => console.warn('cuadro', url, err));
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.flipY = false; // los UV de GLTF ya llevan la orientación de la imagen
+    texture.anisotropy = 4;
+    ART.set(url, texture);
+  }
+  return ART.get(url);
+}
+
+export function assetBounds(type) {
+  if (!LIB.has(type)) return null;
+  if (!BOUNDS.has(type)) {
+    const source = LIB.get(type);
+    source.updateMatrixWorld(true);
+    BOUNDS.set(type, new THREE.Box3().setFromObject(source));
+  }
+  return BOUNDS.get(type);
+}
 
 export function registerManifest(entries) { Object.assign(MANIFEST, entries); }
 
@@ -37,7 +60,18 @@ function normalize(scene, e) {
     const mats = Array.isArray(o.material) ? o.material : [o.material];
     for (const m of mats) {
       if (!m) continue;
+      if (e.artwork && m.name.endsWith('_artwork') && typeof document !== 'undefined') {
+        m.map = artwork(e.artwork);
+        m.color.setHex(0xffffff); m.roughness = 0.88;
+      }
       if (e.roughness !== undefined) m.roughness = e.roughness;
+      if (e.lit && m.name.endsWith('_bulb')) {
+        m.color.setHex(0xffe4aa); m.emissive.setHex(0xffcb75); m.emissiveIntensity=2.2;
+      }
+      if (e.lit && m.name.endsWith('_glass')) {
+        m.color.setHex(0xffd9a0); m.emissive.setHex(0xffb85e); m.emissiveIntensity=.16;
+        m.opacity=.3; m.depthWrite=false;
+      }
       // la transmisión (vidrio real) fuerza un render extra de toda la escena: la cambiamos por transparencia común
       if (m.transmission > 0) {
         m.transmission = 0;
@@ -65,7 +99,7 @@ export async function preloadAssets(onProgress) {
   const loader = new GLTFLoader();
   const keys = Object.keys(MANIFEST);
   let done = 0;
-  await Promise.all(keys.map(async (k) => {
+  await loadInBatches(keys, async (k) => {
     const e = MANIFEST[k];
     try {
       const gltf = await loader.loadAsync(e.url);
@@ -75,7 +109,7 @@ export async function preloadAssets(onProgress) {
     }
     done++;
     onProgress && onProgress(done, keys.length);
-  }));
+  });
 }
 
 export function hasAsset(type) { return LIB.has(type); }
@@ -83,26 +117,49 @@ export function hasAsset(type) { return LIB.has(type); }
 // Modelos que no hacen falta para arrancar (los del castillo): se cargan en segundo plano después de construir
 // el mundo; whenAsset(tipo, fn) corre fn apenas el modelo está (o enseguida si ya estaba).
 const WAIT = new Map();
+const DEFERRED = new Map();
+const INFLIGHT = new Map();
+const QUEUE = [];
+let activeLoads = 0;
+function queuedLoad(fn) {
+  return new Promise((resolve, reject) => { QUEUE.push({ fn, resolve, reject }); pumpLoads(); });
+}
+function pumpLoads() {
+  while (activeLoads < 4 && QUEUE.length) {
+    const job = QUEUE.shift(); activeLoads++;
+    Promise.resolve().then(job.fn).then(job.resolve, job.reject).finally(() => { activeLoads--; pumpLoads(); });
+  }
+}
+async function loadInBatches(keys, fn) { await Promise.all(keys.map(key => queuedLoad(() => fn(key)))); }
+function loadDeferred(type) {
+  if (INFLIGHT.has(type)) return INFLIGHT.get(type);
+  const entry = DEFERRED.get(type);
+  if (!entry || typeof document === 'undefined') return Promise.resolve();
+  const job = queuedLoad(async () => {
+    try {
+      const gltf = await new GLTFLoader().loadAsync(entry.url);
+      LIB.set(type, normalize(gltf.scene, entry));
+      BOUNDS.delete(type);
+    } catch (err) { console.warn('No se pudo cargar el modelo', type, entry.url, err?.message || err); }
+    const callbacks = WAIT.get(type) || [];
+    WAIT.delete(type);
+    if (LIB.has(type)) for (const fn of callbacks) { try { fn(); } catch (e) { console.warn('modelo', type, e); } }
+  });
+  INFLIGHT.set(type, job);
+  return job;
+}
 export function whenAsset(type, fn) {
   if (LIB.has(type)) { fn(); return; }
   if (!WAIT.has(type)) WAIT.set(type, []);
   WAIT.get(type).push(fn);
+  if (DEFERRED.has(type)) loadDeferred(type);
 }
 export function loadAssetsLater(entries) {
   registerManifest(entries);
-  if (typeof document === 'undefined') return Promise.resolve(); // Node (tests): sin modelos
-  const loader = new GLTFLoader();
-  return Promise.all(Object.keys(entries).map(async (k) => {
-    try {
-      const gltf = await loader.loadAsync(entries[k].url);
-      LIB.set(k, normalize(gltf.scene, entries[k]));
-    } catch (err) {
-      console.warn('No se pudo cargar el modelo', k, entries[k].url, err?.message || err);
-    }
-    const w = WAIT.get(k);
-    WAIT.delete(k);
-    if (w && LIB.has(k)) for (const fn of w) { try { fn(); } catch (e) { console.warn('modelo', k, e); } }
-  }));
+  for (const [type, entry] of Object.entries(entries)) DEFERRED.set(type, entry);
+  // Sólo los modelos pedidos por el mapa, cuatro cargas simultáneas. Los demás
+  // quedan disponibles para whenAsset sin ocupar texturas y geometría en GPU.
+  return Promise.all(Object.keys(entries).filter(type => WAIT.has(type)).map(loadDeferred));
 }
 
 // Clon del modelo (comparte geometría y materiales)
@@ -141,6 +198,8 @@ export function instanceModel(scene, type, matrices, glassTints = null, filter =
     im.castShadow = o.castShadow;
     im.receiveShadow = true;
     im.computeBoundingSphere();
+    im.userData.asset = type;
+    im.name = `instances-${type}`;
     scene.add(im);
     out.push(im);
   });

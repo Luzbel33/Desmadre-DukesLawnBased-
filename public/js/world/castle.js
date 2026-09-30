@@ -10,6 +10,8 @@
 import * as THREE from 'three';
 import { Builder, getMat } from './builder.js';
 import { PROXY_LAYER } from './lightpool.js';
+import { rope, wellWater } from './rope.js';
+import { groundCastle } from './castle-ground.js';
 import { rng } from '../core/G.js';
 import { CASTLE, STORM, MOON } from '../shared/mapdata.js';
 
@@ -189,13 +191,14 @@ export class Castle {
   // fuego de verdad (volumétrico): base en (x, y, z), medio ancho hx/hz y alto h. En calidad baja, llamas planas
   fire3d(x, y, z, hx, hz, h, { intensity = 1, wind = 0, speed = 1 } = {}) {
     const w = this.world;
-    if (w.fires && w.quality !== 'baja') return w.fires.add(x, y, z, hx, hz, h, { intensity, wind, speed });
+    const fire = w.fires ? w.fires.add(x, y, z, hx, hz, h, { intensity, wind, speed }) : -1;
     const n = Math.max(1, Math.round((hx + hz) / 0.35));
     for (let k = 0; k < n; k++) {
       const a = (k / n) * Math.PI * 2;
-      this.flame(x + Math.cos(a) * hx * 0.4 * (n > 1 ? 1 : 0), y, z + Math.sin(a) * hz * 0.4 * (n > 1 ? 1 : 0), Math.min(hx, hz) * 1.6, h * (k === 0 ? 1 : 0.8), { wind });
+      const index = this.flame(x + Math.cos(a) * hx * 0.4 * (n > 1 ? 1 : 0), y, z + Math.sin(a) * hz * 0.4 * (n > 1 ? 1 : 0), Math.min(hx, hz) * 1.6, h * (k === 0 ? 1 : 0.8), { wind, intensity: w.fires ? 0 : intensity });
+      (w.fireFallback ||= []).push({ index, intensity });
     }
-    return -1;
+    return fire;
   }
 
   // ================================================================ armado
@@ -209,6 +212,7 @@ export class Castle {
     this.room(8, F0 - 0.2, IZ0, IX1, KTOP, -115, 106);
     this.room(8.3, -0.5, IZ0, IX1, F0 - 0.25, IZ1, 201);
     this._grounds();
+    groundCastle();
     this._curtain();
     this._gatehouse();
     this._keep();
@@ -366,12 +370,7 @@ export class Castle {
       g.translate(-2.95 + i * 0.454, 5.76, z1 - 0.9);
       this.geo('iron', g);
     }
-    // hojas del portón, abiertas contra las paredes del pasaje (madera con herrajes)
-    for (const s of [-1, 1]) {
-      const x = s * 2.95;
-      this.box('doorWood', x, 3.1, z0 + 2.4, 0.24, 6.2, 3.1, { tileU: 1.8, tileV: 1.8 });
-      for (const y of [1.0, 3.0, 5.2]) this.deco('iron', x - s * 0.14, y, z0 + 2.4, 0.04, 0.16, 3.1, { mask: false });
-    }
+    // (las hojas de madera abiertas contra el pasaje se sacaron: más altas que la bóveda, se metían en la piedra)
     // torres que flanquean
     for (const s of [-1, 1]) this._tower(s * 8.6, -75.8, 3.4, 16, 7.5);
     this.anchors.gate = new THREE.Vector3(0, 0, -76);
@@ -820,15 +819,13 @@ export class Castle {
       this.box('keepStone', x, 0.7, zb - 0.2, 0.8, 1.4, 0.8);
       // braseros al pie de la escalinata
       this.cyl('keepStone', s * 5.6, 0.55, zb + 0.6, 0.45, 0.55, 1.1, 10, { collide: true });
-      const bowl = new THREE.LatheGeometry([[0.05, 0], [0.55, 0.05], [0.7, 0.35], [0.72, 0.42]].map(([r, y]) => new THREE.Vector2(r, y)), 14);
-      bowl.translate(s * 5.6, 1.1, zb + 0.6);
-      this.geo('iron', bowl);
+      // The closed Blender bowl is placed by Decor; this base and fire stay here.
       this.brazier(s * 5.6, 1.45, zb + 0.6);
     }
   }
   brazier(x, y, z, big = 1) {
     const w = this.world;
-    this.fire3d(x, y - 0.12, z, 0.44 * big, 0.44 * big, 1.25 * big, { wind: 1 });
+    this.fire3d(x, y - 0.12, z, 0.34 * big, 0.34 * big, .85 * big, { wind: 1, intensity:.8 });
     w.embers?.add(x, y + 0.2, z, 14, { radius: 0.25, height: 2.6, strength: 0.8 });
     this.light(x, y + 0.9, z, 0xff7a2e, 6 * big, 12, { flicker: true, priority: 1.4 });
   }
@@ -961,20 +958,28 @@ export class Castle {
   _well() {
     const x = -21, z = -66.5;
     this.cyl('castleStone', x, 0.5, z, 1.25, 1.35, 1.0, 20, { collide: true, open: true });
-    this.cyl('castleStone', x, 0.5, z, 0.95, 0.95, 1.0, 20, { open: true, mask: false });
+    const lining = new THREE.CylinderGeometry(.95,.95,.88,32,1,true);
+    const indices=lining.index, normals=lining.attributes.normal,uv=lining.attributes.uv;
+    // Inside-facing triangles share the live PBR material with the well rim.
+    for(let i=0;i<indices.count;i+=3){const a=indices.getX(i+1);indices.setX(i+1,indices.getX(i+2));indices.setX(i+2,a);}
+    for(let i=0;i<normals.count;i++) {
+      normals.setXYZ(i,-normals.getX(i),-normals.getY(i),-normals.getZ(i));
+      uv.setXY(i,uv.getX(i)*Math.PI*1.9/3.2,uv.getY(i)*.88/3.2);
+    }
+    lining.translate(x,.56,z);this.geo('keepStone',lining);
     const lip = new THREE.RingGeometry(0.93, 1.3, 20);
     lip.rotateX(-Math.PI / 2);
     lip.translate(x, 1.0, z);
     this.geo('keepStone', lip);
-    const water = new THREE.CircleGeometry(0.95, 20);
-    water.rotateX(-Math.PI / 2);
-    water.translate(x, 0.12, z);
-    this.geo('black', water);
+    this.wellWater = wellWater(this.scene, x, z, .38);
     for (const s of [-1, 1]) this.box('woodDark', x + s * 1.15, 1.35, z, 0.18, 2.7, 0.18, { pmat: 'wood' });
     this.deco('woodDark', x, 2.62, z, 2.6, 0.16, 0.16, {});
     this.b.cylinder('woodDark', x, 2.05, z, 0.09, 0.09, 2.2, 10, { rz: Math.PI / 2 });
     this.deco('woodDark', x + 1.32, 2.05, z, 0.05, 0.05, 0.45, {});
-    this.b.cylinder('hemp', x, 1.35, z, 0.014, 0.014, 1.4, 5, {});
+    rope(this.scene, [[x,2.09,z+.08],[x+.015,1.63,z+.08],[x,1.11,z]], .018);
+    const winding=[];
+    for(let i=0;i<=48;i++) { const a=i/48*Math.PI*8; winding.push([x-.11+i/48*.22,2.05+Math.cos(a)*.106,z+Math.sin(a)*.106]); }
+    rope(this.scene,winding,.015);
     for (const s of [1, -1]) this.box('slate', x, 3.0, z + s * 0.5, 2.9, 0.08, 1.2, { rx: s * 0.6 });
     this.anchors.well = new THREE.Vector3(x, 0, z);
     this.interact.push({ id: 'aljibe', k: 'haunt', ev: 'well', p: [x, 1.0, z], r: 2.3, label: 'Asomarse al aljibe' });

@@ -1,0 +1,59 @@
+[
+  {
+    "file": "landscape.jpg",
+    "source": "https://www.artic.edu/artworks/874",
+    "download": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bc/Jean_Charles_Cazin_-_Landscape_-_1894.1037_-_Art_Institute_of_Chicago.jpg/960px-Jean_Charles_Cazin_-_Landscape_-_1894.1037_-_Art_Institute_of_Chicago.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "license": "Public domain - Art Institute of Chicago Open Access",
+    "verified": "2026-09-29",
+    "metadata": {
+      "id": 874,
+      "title": "Landscape",
+      "date_display": "c. 1895",
+      "artist_display": "Jean Charles Cazin (French, 1841–1901)",
+      "is_public_domain": true,
+      "copyright_notice": null,
+      "image_id": "3a34f988-f779-2e96-1786-8945b6b9c87d"
+    },
+    "sha256": "EF6640B81FDAE7FC1D5A4E805A073FE569D9C70E111FFDCD701C3804D6E4D794",
+    "imageSource": "https://commons.wikimedia.org/wiki/File:Jean_Charles_Cazin_-_Landscape_-_1894.1037_-_Art_Institute_of_Chicago.jpg",
+    "imageLicense": "Public domain"
+  },
+  {
+    "file": "portrait-artist.jpg",
+    "source": "https://www.artic.edu/artworks/862",
+    "download": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/34/Follower_of_Frans_Hals_-_Portrait_of_an_Artist_-_1894.1023_-_Art_Institute_of_Chicago.jpg/960px-Follower_of_Frans_Hals_-_Portrait_of_an_Artist_-_1894.1023_-_Art_Institute_of_Chicago.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "license": "Public domain - Art Institute of Chicago Open Access",
+    "verified": "2026-09-29",
+    "metadata": {
+      "id": 862,
+      "title": "Portrait of an Artist",
+      "date_display": "1644",
+      "artist_display": "Follower of Frans Hals (Dutch, 1582–1666)",
+      "is_public_domain": true,
+      "copyright_notice": null,
+      "image_id": "c95d58bf-fe9e-e5bb-2c71-ab8bad984759"
+    },
+    "sha256": "11C6480990EEA29AAE971CDFD2B74F3E04CC8FBC667F1F9D43C8F5FE2D2E1EC0",
+    "imageSource": "https://commons.wikimedia.org/wiki/File:Follower_of_Frans_Hals_-_Portrait_of_an_Artist_-_1894.1023_-_Art_Institute_of_Chicago.jpg",
+    "imageLicense": "Public domain"
+  },
+  {
+    "file": "madame-pastoret.jpg",
+    "source": "https://www.artic.edu/artworks/27307",
+    "download": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d5/Jacques_Louis_David_-_Madame_de_Pastoret_and_Her_Son_-_1967.228_-_Art_Institute_of_Chicago.jpg/960px-Jacques_Louis_David_-_Madame_de_Pastoret_and_Her_Son_-_1967.228_-_Art_Institute_of_Chicago.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "license": "Public domain - Art Institute of Chicago Open Access",
+    "verified": "2026-09-29",
+    "metadata": {
+      "id": 27307,
+      "title": "Madame de Pastoret and Her Son",
+      "date_display": "1791–92",
+      "artist_display": "Jacques-Louis David (French, 1748–1825)",
+      "is_public_domain": true,
+      "copyright_notice": null,
+      "image_id": "72227c9e-413c-8930-477d-5a90e0a2123c"
+    },
+    "sha256": "778C2B479B3173260A2BC6F02912BBD35FAD82987FE39F72B042489520D38979",
+    "imageSource": "https://commons.wikimedia.org/wiki/File:Jacques_Louis_David_-_Madame_de_Pastoret_and_Her_Son_-_1967.228_-_Art_Institute_of_Chicago.jpg",
+    "imageLicense": "Public domain"
+  }
+]

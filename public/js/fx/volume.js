@@ -358,7 +358,10 @@ export class VolumePass extends Pass {
 
   render(renderer, writeBuffer, readBuffer) {
     const st = this.storm, cam = this.camera, z = this.zone;
-    if (!st || st.s < 0.02) return;
+    if (!st) return;
+    const atmosphere = st.s >= 0.02;
+    const visibleFire = this.fireSet?.list.some(f => f.intensity > 0 && Math.hypot(f.x - cam.position.x, f.z - cam.position.z) < 65);
+    if (!atmosphere && !visibleFire) return;
     const depth = this.getDepth();
     if (!depth) return;
     const c = this.common;
@@ -381,12 +384,13 @@ export class VolumePass extends Pass {
     renderer.autoClear = false;
     renderer.setRenderTarget(readBuffer);
     // bruma (primero: los haces y el polvo van encima)
-    if (this.lightsFor) {
+    if (atmosphere && this.lightsFor) {
       const u = this.fogU;
       const fx = st.flash || 0;
-      u.uDens.value = 0.085 * (0.35 + 0.65 * st.s);
-      u.uAmb.value.setRGB(0.009, 0.011, 0.015).addScalar(fx * 0.2);
-      u.uMoonCol.value.setRGB(0.5, 0.6, 0.85).multiplyScalar(0.03 * Math.min(3, st.flashLight.intensity) + fx * 0.5);
+      // bruma de luna: más rala y más clara que antes (se ven las lápidas recortadas contra ella, no un velo oscuro)
+      u.uDens.value = 0.062 * (0.35 + 0.65 * st.s);
+      u.uAmb.value.setRGB(0.02, 0.025, 0.034).addScalar(fx * 0.2);
+      u.uMoonCol.value.setRGB(0.5, 0.6, 0.85).multiplyScalar(0.045 * Math.min(3, st.flashLight.intensity) + fx * 0.5);
       u.uWind.value.copy(st.wind);
       let n = 0;
       for (const l of this.lightsFor()) {
@@ -402,7 +406,7 @@ export class VolumePass extends Pass {
       this.fogQuad.render(renderer);
     }
     // fuego (encima de la bruma: la atraviesa con su luz)
-    if (this.fire && this.fireSet?.list.length) {
+    if (this.fire && visibleFire) {
       this.fire.sync(this.fireSet);
       this.fireFog.value = this.fogDensityOf ? this.fogDensityOf() : 0;
       this.fire.uniforms.uWind.value.copy(st.wind);
@@ -410,7 +414,7 @@ export class VolumePass extends Pass {
     }
     // haces y polvo: solo cerca del torreón
     const near = !z || (p.x > z.x0 && p.x < z.x1 && p.z > z.z0 && p.z < z.z1);
-    if (near && this.shafts.length) renderer.render(this.vscene, cam);
+    if (atmosphere && near && this.shafts.length) renderer.render(this.vscene, cam);
     renderer.autoClear = ac;
   }
 }

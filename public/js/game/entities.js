@@ -4,6 +4,7 @@ import { RAPIER, GR, groups } from '../core/physics.js';
 import { VEHICLES, MAP_BOUNDS, LAWN } from '../shared/mapdata.js';
 import { buildVehicleModel } from './vehicle-models.js';
 import { CHOPPABLE } from './props.js';
+import { mowerSweep } from '../shared/mower.js';
 
 const VDEF = new Map(VEHICLES.map((v) => [v.id, v]));
 const TMPV = new THREE.Vector3();
@@ -17,7 +18,24 @@ function vehicleMesh(def) {
 }
 
 // medio ancho, medio alto, medio largo, centro y, centro z (espacio del vehículo)
-const VDIMS = { mower: [0.72, 0.42, 0.95, 0.42, 0.2], tractor: [0.8, 0.7, 1.2, 0.6, 0.1], cart: [0.75, 0.62, 1.35, 0.65, 0] };
+// Each solid matches a visible component. Driving and walking use these same
+// parts, so a narrow hood no longer behaves like a roof-height opaque box.
+// [half x, half y, half z, center x, center y, center z]
+export const VEHICLE_SOLIDS = {
+  mower: [[.65,.065,.39,0,.2,.3],[.32,.19,.45,0,.62,.67],[.43,.09,.31,0,.72,-.5],
+    [.27,.22,.07,0,1.1,-.61],[.11,.30,.30,-.6,.32,-.45],[.11,.30,.30,.6,.32,-.45],
+    [.065,.17,.17,-.46,.19,.8],[.065,.17,.17,.46,.19,.8]],
+  tractor: [[.7,.06,.36,0,.2,.35],[.29,.4,.65,0,.84,.7],[.45,.04,.48,0,.98,-.45],
+    [.25,.24,.08,0,1.5,-.76],[.04,.43,.04,.16,1.62,1],
+    [.18,.60,.60,-.8,.62,-.45],[.18,.60,.60,.8,.62,-.45],
+    [.09,.32,.32,-.46,.34,1.05],[.09,.32,.32,.46,.34,1.05]],
+  cart: [[.65,.15,1.25,0,.52,0],[.61,.21,.31,0,.84,1],[.58,.19,.28,0,.9,-.24],
+    [.56,.22,.05,0,1.28,-.52],[.68,.03,.9,0,2.02,.08],
+    ...[-.6,.6].flatMap(x=>[-.68,.78].map(z=>[.025,.5,.025,x,1.5,z])),
+    ...[-.66,.66].flatMap(x=>[-.85,.85].map(z=>[.09,.23,.23,x,.25,z]))],
+};
+const DRIVE_GROUPS = groups(GR.VEHICLE, GR.WORLD | GR.VEHICLE | GR.PAWN | GR.REMOTE);
+const VEHICLE_GROUPS = groups(GR.VEHICLE, GR.WORLD | GR.VEHICLE | GR.PAWN | GR.REMOTE | GR.RAGDOLL | GR.PROP | GR.DEBRIS | GR.ME);
 
 export class VehicleManager {
   constructor(net, local) {
@@ -26,6 +44,7 @@ export class VehicleManager {
     this.items = new Map();
     this._sendT = 0;
     this._cutT = 0;
+    this._pendingCuts = [];
   }
 
   load(rows = []) {
@@ -42,14 +61,14 @@ export class VehicleManager {
           owner: r.o || 0, seats: r.seats || [],
         };
         // cuerpo cinemático: atropella, empuja objetos y cuerpos, bloquea el paso
-        const dims = VDIMS[def.type] || VDIMS.mower;
         v.body = G.phys.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(r.p[0], r.p[1], r.p[2]));
-        v.collider = G.phys.world.createCollider(
-          RAPIER.ColliderDesc.cuboid(dims[0], dims[1], dims[2]).setTranslation(0, dims[3], dims[4])
-            .setFriction(0.8).setActiveCollisionTypes(15 | 52224).setCollisionGroups(groups(GR.VEHICLE, GR.RAGDOLL | GR.PROP | GR.DEBRIS | GR.ME)),
-          v.body,
-        );
-        G.phys.tag(v.collider, { kind: 'vehicle', ref: v });
+        v.driveParts = (VEHICLE_SOLIDS[def.type] || VEHICLE_SOLIDS.mower).map(([hx,hy,hz,x,y,z])=> {
+          const collider = G.phys.world.createCollider(RAPIER.ColliderDesc.cuboid(hx,hy,hz).setTranslation(x,y,z)
+            .setFriction(.8).setActiveCollisionTypes(15 | 52224).setCollisionGroups(VEHICLE_GROUPS),v.body);
+          G.phys.tag(collider,{kind:'vehicle',ref:v});
+          return { shape:new RAPIER.Cuboid(hx,hy,hz), center:{x,y,z}, collider };
+        });
+        v.collider = v.driveParts[0].collider;
         this.items.set(v.id, v);
       }
       v.pos.set(...r.p);
@@ -59,6 +78,7 @@ export class VehicleManager {
       v.yaw = new THREE.Euler().setFromQuaternion(v.quat, 'YXZ').y;
       v.owner = r.o || 0; v.seats = r.seats || [];
       v.group.position.copy(v.pos); v.group.quaternion.copy(v.quat);
+      v.body.setTranslation(v.pos, true); v.body.setRotation(v.quat, true);
     }
     this._syncLocalSeat();
   }
@@ -122,7 +142,8 @@ export class VehicleManager {
       const driven = !!v.seats?.[0];
       if (v.owner !== G.myId && u.length >= 9) v.speed = driven ? +u[8] || 0 : 0;
       if (v.owner !== G.myId && u.length >= 10) v.steer = driven ? +u[9] || 0 : 0;
-      if (u.length >= 11) v.blades = driven && !!u[10];
+      // El conductor simula su vehículo; un eco atrasado no revierte su encendido.
+      if (v.owner !== G.myId && u.length >= 11) v.blades = driven && !!u[10];
     }
   }
 
@@ -130,7 +151,8 @@ export class VehicleManager {
     const v = this.items.get(m.id); if (!v) return;
     v.pos.set(...m.p); v.targetPos.copy(v.pos);
     v.quat.set(...m.q); v.targetQuat.copy(v.quat);
-    v.speed = 0; v.owner = 0; v.seats = v.seats.map(() => 0);
+    v.speed = 0; v.blades = false; v.owner = 0; v.seats = v.seats.map(() => 0);
+    this._lastCut = null;
     v.group.position.copy(v.pos); v.group.quaternion.copy(v.quat);
     this._syncLocalSeat();
   }
@@ -152,47 +174,45 @@ export class VehicleManager {
       // giro cerrado como una cortadora de verdad (radio de 2 a 4 m): se puede volver al lado de la pasada
       const sp = Math.abs(localV.speed);
       const rate = Math.min(localV.type === 'cart' ? 1.5 : 2.1, sp * (localV.type === 'tractor' ? 0.42 : 0.55));
+      const yawBefore = localV.yaw;
       localV.yaw += localV.steer * Math.sign(localV.speed) * rate * dt;
-      if (input.hit('Space') && localV.type !== 'cart') { localV.blades = !localV.blades; G.sfx?.trigger('pickup', null, .3); }
+      if (Math.abs(localV.yaw-yawBefore)>1e-5 && this._blockedTurn(localV)) localV.yaw = yawBefore;
+      if (localV.type !== 'cart' && input.consume('Space')) {
+        localV.blades = !localV.blades;
+        this._sendT = 1; // publicar el cambio en este mismo cuadro
+        G.sfx?.trigger('pickup', null, .3);
+      }
 
       const dist = localV.speed * dt;
       const dx = Math.sin(localV.yaw) * dist, dz = Math.cos(localV.yaw) * dist;
-      const sign = dist >= 0 ? 1 : -1;
-      const hit = G.phys.raycast(localV.pos.x, 0.62, localV.pos.z, Math.sin(localV.yaw) * sign, 0, Math.cos(localV.yaw) * sign,
-        Math.abs(dist) + 0.9, groups(0xffff, GR.WORLD));
-      if (!hit || hit.dist > 0.7) {
-        localV.pos.x = clamp(localV.pos.x + dx, MAP_BOUNDS.x0 + 1, MAP_BOUNDS.x1 - 1);
-        localV.pos.z = clamp(localV.pos.z + dz, MAP_BOUNDS.z0 + 1, MAP_BOUNDS.z1 - 1);
-      } else {
+      const rotation = TMPQ.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, localV.yaw);
+      let hit = null;
+      if (Math.abs(dist)>1e-6) for (const part of localV.driveParts) {
+        const candidate = G.phys.world.castShape(this._driveOrigin(localV,part.center), rotation, {x:dx,y:0,z:dz},
+          part.shape,.008,1,false,RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,DRIVE_GROUPS,null,localV.body,
+          collider=>!localV.seats.includes(G.phys.info(collider)?.ref?.id));
+        if (candidate && (!hit || candidate.time_of_impact<hit.time_of_impact)) hit=candidate;
+      }
+      const fraction = hit ? Math.max(0, hit.time_of_impact - 0.002 / Math.abs(dist)) : 1;
+      localV.pos.x = clamp(localV.pos.x + dx * fraction, MAP_BOUNDS.x0 + 1, MAP_BOUNDS.x1 - 1);
+      localV.pos.z = clamp(localV.pos.z + dz * fraction, MAP_BOUNDS.z0 + 1, MAP_BOUNDS.z1 - 1);
+      if (hit) {
         const sp = Math.abs(localV.speed);
         if (sp > 2.5) G.sfx?.trigger('hit', null, Math.min(1, sp / 9));
-        this.onCrash?.(localV, sp, null);
-        localV.speed *= -0.18;
+        if (sp > 1.5 && (localV.crashT || 0) <= G.time) {
+          localV.crashT = G.time + 0.35;
+          this.onCrash?.(localV, sp, G.phys.info(hit.collider)?.ref || null);
+        }
+        localV.speed = 0; // contact stops motion; repeated throttle must not bounce the camera
       }
       localV.pos.y = VDEF.get(localV.id)?.p?.[1] ?? localV.pos.y;
-      // choque con otros vehículos
-      for (const o of this.items.values()) {
-        if (o === localV) continue;
-        const dx = localV.pos.x - o.pos.x, dz = localV.pos.z - o.pos.z;
-        const d = Math.hypot(dx, dz);
-        const minD = 1.9;
-        if (d < minD && d > 0.01) {
-          localV.pos.x += (dx / d) * (minD - d);
-          localV.pos.z += (dz / d) * (minD - d);
-          const sp = Math.abs(localV.speed);
-          if (sp > 1.5) {
-            this.onCrash?.(localV, sp, o);
-            localV.speed *= -0.3;
-          }
-        }
-      }
       localV.quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), localV.yaw);
       localV.targetPos.copy(localV.pos); localV.targetQuat.copy(localV.quat);
       localV.group.position.copy(localV.pos); localV.group.quaternion.copy(localV.quat);
       this.local.setSeatPose(localV);
 
-      const cutting = localV.blades && localV.type !== 'cart' && Math.abs(localV.speed) > 0.8;
-      if (cutting && this._cutT > 0.1) {
+      const cutting = localV.blades && localV.type !== 'cart';
+      if (cutting && this._cutT >= 1 / 30) {
         this._cutT = 0;
         this._stamp(localV);
       } else if (!cutting) this._lastCut = null;
@@ -202,6 +222,11 @@ export class VehicleManager {
         const q = localV.quat, p = localV.pos;
         this.net.send({ t: 'vu', u: [[localV.id, p.x, p.y, p.z, q.x, q.y, q.z, q.w, localV.speed, localV.steer, localV.blades ? 1 : 0, 0]] });
       }
+    }
+    if (!localV || localV.seats?.[0] !== G.myId) this._lastCut = null;
+    // Corte local inmediato, red agrupada: no depende del eco ni manda un paquete por brizna.
+    if (this._pendingCuts.length && (this._sendT === 0 || !localV)) {
+      this.net.send({ t: 'cut', s: this._pendingCuts.splice(0, 64) });
     }
 
     for (const v of this.items.values()) {
@@ -221,22 +246,39 @@ export class VehicleManager {
     for (const v of this.items.values()) this._animate(v, dt);
   }
 
-  // Estampado de corte (cada ~0.1 s): cubre todo lo recorrido desde el anterior, así a mucha velocidad
+  _driveOrigin(v, center) {
+    const s=Math.sin(v.yaw),c=Math.cos(v.yaw);
+    return {x:v.pos.x+c*center.x+s*center.z,y:v.pos.y+center.y,z:v.pos.z-s*center.x+c*center.z};
+  }
+
+  _blockedTurn(v) {
+    const rotation = TMPQ.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, v.yaw);
+    let blocked = false;
+    for (const part of v.driveParts) {
+    const origin=this._driveOrigin(v,part.center);
+    G.phys.world.intersectionsWithShape(origin, rotation, part.shape, collider => {
+      // No bloquea un roce con el suelo; sí una penetración de la esquina.
+      const contact = collider.contactShape(part.shape, origin, rotation, 0);
+      if (contact && contact.distance < -0.015) blocked = true;
+      return !blocked;
+    }, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, DRIVE_GROUPS, null, v.body,
+    collider => !v.seats.includes(G.phys.info(collider)?.ref?.id));
+    if (blocked) break;
+    }
+    return blocked;
+  }
+
+  // Estampado de corte (30 Hz): cubre todo lo recorrido desde el anterior, así a mucha velocidad
   // no quedan huecos en la franja. Las cuchillas pican lo que agarran (enanos, sandías, botellas...).
   _stamp(v) {
     const fx = Math.sin(v.yaw), fz = Math.cos(v.yaw);
     const hw = v.type === 'tractor' ? 1.15 : 0.78;
     const cx = v.pos.x + fx * 0.45, cz = v.pos.z + fz * 0.45; // las cuchillas van adelante del centro
-    const last = this._lastCut;
-    let mx = cx, mz = cz, hl = 0.7;
-    if (last) {
-      const seg = Math.hypot(cx - last.x, cz - last.z);
-      if (seg < 5) { mx = (cx + last.x) / 2; mz = (cz + last.z) / 2; hl = Math.max(0.7, seg / 2 + 0.45); }
-    }
-    this._lastCut = { x: cx, z: cz };
-    const stamp = [+mx.toFixed(3), +mz.toFixed(3), +v.yaw.toFixed(4), +hw.toFixed(3), +hl.toFixed(3)];
-    const cut = G.grass.cut([stamp], false);
-    this.net.send({ t: 'cut', s: [stamp] });
+    const next = { x: cx, z: cz, yaw: v.yaw, id: v.id };
+    const stamps = mowerSweep(this._lastCut, next, hw);
+    this._lastCut = next;
+    const cut = G.grass.cut(stamps, false);
+    this._pendingCuts.push(...stamps);
     if (cut > 2 && G.fx) {
       TMPV.set(fx, 0.2, fz);
       G.fx.clippings(new THREE.Vector3(v.pos.x, 0.2, v.pos.z), TMPV, Math.min(10, 3 + Math.floor(cut / 20)));
@@ -246,9 +288,11 @@ export class VehicleManager {
       if (!CHOPPABLE.has(p.type)) continue;
       const t = p.body.translation();
       if (t.y > 0.75) continue;
-      const dx = t.x - mx, dz = t.z - mz;
-      const along = dx * fx + dz * fz, side = dx * fz - dz * fx;
-      if (Math.abs(along) > hl + 0.2 || Math.abs(side) > hw + 0.12) continue;
+      const caught = stamps.some(([x, z, yaw, sw, sl]) => {
+        const dx = t.x - x, dz = t.z - z, s = Math.sin(yaw), c = Math.cos(yaw);
+        return Math.abs(dx * s + dz * c) <= sl + 0.2 && Math.abs(dx * c - dz * s) <= sw + 0.12;
+      });
+      if (!caught) continue;
       G.props.chop(p);
     }
   }
@@ -275,7 +319,7 @@ export class VehicleManager {
     v._roll += (clamp(-steer * sp * 0.007, -0.07, 0.07) - v._roll) * k2;
     const running = !!v.seats?.some(Boolean) || Math.abs(sp) > 0.3;
     const t = G.time + v.id * 1.7;
-    const vib = running ? Math.sin(t * 57) * 0.0028 + Math.sin(t * 33) * 0.0018 : 0;
+    const vib = running && v.type !== 'cart' ? Math.sin(t * 19) * 0.0008 : 0;
     const rough = Math.min(1, Math.abs(sp) / 4);
     const bump = (Math.sin(v._dist * 2.3) * 0.006 + Math.sin(v._dist * 5.3 + 1) * 0.004) * rough;
     b.rotation.set(v._pitch + bump * 1.2, 0, v._roll + Math.sin(v._dist * 1.7) * 0.006 * rough);

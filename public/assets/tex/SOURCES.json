@@ -1,0 +1,38 @@
+[
+ {
+  "id": "stony_dirt_path",
+  "source": "https://polyhaven.com/a/stony_dirt_path",
+  "license": "CC0",
+  "maps": [
+   "color",
+   "normal",
+   "rough"
+  ],
+  "resolution": "1k",
+  "date": "2026-09-29"
+ },
+ {
+  "id": "mud_forest",
+  "source": "https://polyhaven.com/a/mud_forest",
+  "license": "CC0",
+  "maps": [
+   "color",
+   "normal",
+   "rough"
+  ],
+  "resolution": "1k",
+  "date": "2026-09-29"
+ },
+ {
+  "id": "forrest_ground_01",
+  "source": "https://polyhaven.com/a/forrest_ground_01",
+  "license": "CC0",
+  "maps": [
+   "color",
+   "normal",
+   "rough"
+  ],
+  "resolution": "1k",
+  "date": "2026-09-29"
+ }
+]

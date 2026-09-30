@@ -15,6 +15,7 @@ import { G, clamp, dampAngle, angleDiff } from '../core/G.js';
 import { RAPIER, GR, groups } from '../core/physics.js';
 import { HumanCharacter } from '../char/human.js';
 import { PoseRig } from '../char/rig.js';
+import { PoseContact } from './pose-contact.js';
 import { Ragdoll, PART } from './ragdoll.js';
 import { HitReact, ROLL } from './react.js';
 import { EquipmentView } from './equipment.js';
@@ -25,15 +26,15 @@ import {
 } from './arms.js';
 import { MAP_BOUNDS, SPAWN, isPvpAt, inClub } from '../shared/mapdata.js';
 
-const BODY_Y = 0.80;
-const CAPSULE_HALF = 0.50;
+const BODY_Y = 0.91;
+const CAPSULE_HALF = 0.61;
 const CAPSULE_RADIUS = 0.28;
 function movementSize(meta) {
   const scale=(meta.height||1.8)/1.8;
   return {bodyY:BODY_Y*scale,capsuleHalf:CAPSULE_HALF*scale,capsuleRadius:CAPSULE_RADIUS*scale};
 }
 export const RAG_FILTER = GR.WORLD | GR.PROP | GR.VEHICLE | GR.REMOTE | GR.DEBRIS;
-export const PROXY_FILTER = GR.RAGDOLL | GR.PROP | GR.DEBRIS;
+export const PROXY_FILTER = GR.RAGDOLL | GR.PROP | GR.DEBRIS | GR.VEHICLE;
 // umbral de impacto por parte (cambio de velocidad en m/s) para que duela (tirado en el piso)
 const HIT_DV = [5.2, 5.2, 3.4, 6.5, 6.5, 6.5, 6.5, 7.5, 9, 7.5, 9];
 const PART_DMG = [0.9, 1, 1.7, 0.45, 0.35, 0.45, 0.35, 0.55, 0.4, 0.55, 0.4];
@@ -366,6 +367,7 @@ export class LocalPlayer {
       this.meta = this.char.meta;
       this.rig = new PoseRig(this.meta.jointRest, this.meta.clavPivot, this.meta.gripLocal);
       Object.assign(this,movementSize(this.meta));
+      this.crouched = false; this.slideT = 0; this._poseContacts = null;
       this.collider.setShape(new RAPIER.Capsule(this.capsuleHalf,this.capsuleRadius));
       const center={x:this.pos.x,y:this.pos.y+this.bodyY,z:this.pos.z};
       this.body.setTranslation(center,true);this.body.setNextKinematicTranslation(center);
@@ -393,15 +395,56 @@ export class LocalPlayer {
     this.action = name;
     this.actionT = 0;
     this.actionDur = duration;
+    if (name === 'eat') { this.guard = false; startScript(this.arm.r, 'eat', duration); }
   }
   setEmote(name) { this.emote = name || null; this.emoteT = 0; }
-  queueJump() { if (this.state === 'active') this.jumpBuffer = 0.12; }
+  // se puede saltar agachado solo desde la barrida (se para y salta con envión)
+  queueJump() { if (this.state === 'active' && (!this.crouched || this.mv.slideT > 0)) this.jumpBuffer = 0.12; }
   _endDive() { this.mv.dive = 0; this.mv.diveT = 0; this.mv.v = 0; }
   // cuánto bajan los ojos (la cámara de tercera persona acompaña): agachado, barriendo o tirado del dive
   get eyeDrop() { const m = this.mv; return m.dive === 2 ? 1.25 : m.dive === 3 ? 0.7 : m.dive === 1 ? 0.35 : m.slideT > 0 ? 0.8 : this.crouching ? 0.45 : 0; }
+  
+  _crouch(want) {
+    if (!!this.crouched === want) return;
+    const size = movementSize(this.meta), lower = .38 * ((this.meta.height || 1.8) / 1.8);
+    if (!want) {
+      const tr = this.body.translation(), standing = { x: tr.x, y: tr.y + lower / 2, z: tr.z };
+      let blocked = false;
+      G.phys.world.intersectionsWithShape(standing, { x: 0, y: 0, z: 0, w: 1 }, new RAPIER.Capsule(size.capsuleHalf, size.capsuleRadius), col => {
+        const hit = col.contactShape(new RAPIER.Capsule(size.capsuleHalf, size.capsuleRadius), standing, { x: 0, y: 0, z: 0, w: 1 }, 0);
+        if (hit && hit.distance < -.003 && hit.normal1.y < .65) blocked = true;
+        return !blocked;
+      }, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, KCC_GROUPS, this.collider, this.body);
+      if (blocked) return;
+    }
+    const oldY = this.bodyY;
+    this.crouched = want;
+    this.bodyY = size.bodyY - (want ? lower / 2 : 0);
+    this.collider.setShape(new RAPIER.Capsule(size.capsuleHalf - (want ? lower / 2 : 0), size.capsuleRadius));
+    const tr = this.body.translation();
+    const center = { x: tr.x, y: tr.y + this.bodyY - oldY, z: tr.z };
+    this.body.setTranslation(center, true); this.body.setNextKinematicTranslation(center);
+    this._poseContacts = null;
+  }
+
+  // porrazo: el cuerpo sale revoleado (ragdoll) hacia dir. Lo usa el dive cuando termina contra una pared
+  tumble(dir, speed = 8, up = 2.1) {
+    if (this.state !== 'active') return false;
+    this.releaseAll(true); this.guard = false; this._crouch(false);
+    this.state = 'ko'; this.koT = .9; this.strength = .02; this.jumpBuffer = 0;
+    this._toRag();
+    for (const b of this.rag.bodies) {
+      b.setLinvel({ x: dir.x * speed, y: up, z: dir.z * speed }, true);
+      b.setAngvel({ x: dir.z * 2.8, y: 0, z: -dir.x * 2.8 }, true);
+    }
+    for (const i of LEGS) this.rag.setPartFilter(i, RAG_FILTER);
+    return true;
+  }
 
   // ---------------------------------------------------------------- teletransporte / respawn
   teleport(pos, yaw = this.yaw) {
+    this._poseContacts = null;
+    this.slideT = 0;
     this.pos.copy(pos);
     this.previousPos.copy(pos);
     this.renderPos.copy(pos);
@@ -884,8 +927,8 @@ export class LocalPlayer {
   _attacking(i) {
     if ((i === PART.FARM_R || i === PART.UARM_R) && this.arm.r.armed > 0) return true;
     if ((i === PART.FARM_L || i === PART.UARM_L) && this.arm.l.armed > 0) return true;
-    if ((i === PART.SHIN_R || i === PART.THIGH_R) && this.action === 'kick') return true;
-    if (i === PART.HEAD && this.action === 'headbutt') return true;
+    if ((i === PART.SHIN_R || i === PART.THIGH_R) && this.action === 'kick' && this.actionT >= .13 && this.actionT <= .26) return true;
+    if (i === PART.HEAD && this.action === 'headbutt' && this.actionT >= .035 && this.actionT <= .18) return true;
     return false;
   }
   // arma en la mano de la parte i (para que el otro calcule un golpe con arma)
@@ -1165,6 +1208,13 @@ export class LocalPlayer {
       h.part = -1;
     }
     return true;
+  }
+
+  // G libera ambos agarres del mismo objeto; E/Q sigue soltando una sola mano.
+  releaseForThrow(side) {
+    const id = this.hands[side].prop, other = side === 'l' ? 'r' : 'l';
+    if (id && this.hands[other].prop === id) this.release(other, false);
+    return this.release(side, false);
   }
 
   // keepItems: la birra/el faso/el aerosol quedan en la mano (solo se sueltan los objetos físicos)
@@ -1713,6 +1763,31 @@ export class LocalPlayer {
     this.onEvent?.('whack', { x: pt.x, y: pt.y, z: pt.z, s: speed, metal: METAL.has(w.type) });
   }
 
+  // Contacto del volumen del miembro antes de que el hueso atraviese la superficie.
+  _limbContact(hit, desired, previous, dt) {
+    const i = hit.part;
+    if (!this._attacking(i)) return;
+    const cap = this.meta.caps[i];
+    const tip = cap.b.clone().applyQuaternion(desired.q).add(desired.p);
+    const old = cap.b.clone().applyQuaternion(previous.q).add(previous.p);
+    const velocity = tip.clone().sub(old).multiplyScalar(1 / dt);
+    const n = new THREE.Vector3(hit.contact.normal1.x, hit.contact.normal1.y, hit.contact.normal1.z);
+    const speed = -velocity.dot(n);
+    const leg = i >= 7, head = i === PART.HEAD;
+    if (speed < (head ? 1.2 : 2) || (leg && velocity.dot(new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw))) < 1.5)) return;
+    const key = hit.collider.handle * 16 + i, now = performance.now();
+    if (now - (this.hitCd.get(key) ?? -1000) < 220) return;
+    this.hitCd.set(key, now);
+    const point = hit.contact.point1 || tip, info = hit.info;
+    const kind = leg ? 'k' : head ? 'h' : 'p';
+    if (info?.kind === 'remote') this._claimHit(info.id, info.part ?? 1, speed, point, this._weaponOf(i), kind);
+    else if (info?.kind === 'prop' && info.ref) {
+      this._whack(info.ref, n.clone().negate(), Math.min(speed, 14), point, { mass: leg ? 6 : head ? 4 : 1 });
+    } else if (info?.kind === 'bag') info.ref?.punch(speed, point, n.clone().negate(), leg ? 6 : 1);
+    else this.onEvent?.('handwall', { x: point.x, y: point.y, z: point.z, s: speed });
+    this.hitStop = Math.max(this.hitStop, .035);
+  }
+
   // Un paso de física de las dos manos (el rig ya está ubicado en la pose de este paso)
   _stepArms(dt) {
     const canUse = this._canUseArms();
@@ -1787,7 +1862,7 @@ export class LocalPlayer {
       return info.kind === 'world' || info.kind === 'vehicle' || info.kind === 'remote' || info.kind === 'bag';
     });
     // sin choque, o la mano ya estaba adentro (pegado a alguien): que siga, no se traba
-    if (!hit || hit.dist < 0.005) return;
+    if (!hit) return;
     const body = hit.info?.kind === 'remote';
     const bag = hit.info?.kind === 'bag';
     // contra un cuerpo la mano queda apoyada en la piel (antes entraba 3.5 cm y desde adentro ya no chocaba más)
@@ -1819,7 +1894,10 @@ export class LocalPlayer {
     if (a.w < 0.3) return;
     const sh = this.rig.shoulderWorld(side, V1);
     const to = V3.copy(a.p).applyAxisAngle(UP, this.yaw).add(sh);
-    const pr = G.phys.nearest?.(to.x, to.y, to.z, BODY_Q);
+    const pr = G.phys.nearest?.(to.x, to.y, to.z, HAND_BLOCK, col => {
+      const info = G.phys.info(col);
+      return info?.kind !== 'prop' || info.ref?.heldBy !== G.myId;
+    });
     if (!pr) return;
     const n = V4.set(to.x - pr.x, to.y - pr.y, to.z - pr.z);
     let d = n.length();
@@ -1897,6 +1975,9 @@ export class LocalPlayer {
         }
       }
       this.crouching = st === 'active' && cDown && this.grounded && !mo.slideT && !mo.dive;
+      // la cápsula se achica de verdad (pasás por abajo de las cosas); al pararte, solo si hay lugar arriba
+      this._crouch(this.crouching || mo.slideT > 0 || mo.dive === 2 || mo.dive === 3);
+      if (this.crouched && !mo.slideT && !mo.dive) this.crouching = true; // bajo un techo sigue agachado aunque sueltes C
       const targetSpeed = (run && !this.guard && !legGone && !this.crouching ? 6.8 : 3.9) * (this.crouching ? 0.5 : 1) * (1 - clamp(this.drunk, 0, 1) * 0.2) * slow * load * limp;
       const blend = 1 - Math.exp(-(length ? 14 : 20) * dt);
       this.velocity.x += (dx * targetSpeed - this.velocity.x) * blend;
@@ -1992,8 +2073,8 @@ export class LocalPlayer {
       // dive contra una pared: te la comés (el tropezón de siempre, ahora solo si te lo ganaste)
       if (mo.dive === 1 && mo.diveT > 0.08 && this.speed < mo.v * 0.35) {
         this._endDive();
-        this.stun(0.6, V2.set(-mo.dx * 2.5, 0, -mo.dz * 2.5));
         this.react.hit(PART.HEAD, -mo.dx, -mo.dz, 0.8, 0, 0, this.yaw);
+        this.tumble(V2.set(-mo.dx, 0, -mo.dz), 3.5);
         this.onEvent?.('move', { k: 'bonk' });
       }
       this.fwdSpeed = ((nx - tr.x) * fx + (nz - tr.z) * fz) / dt;
@@ -2052,6 +2133,8 @@ export class LocalPlayer {
       const t = this._armWorld(side, V4, alpha);
       if (t) this.rig.reach(side, t);
     }
+    if (!this._poseContacts || this._poseContactMeta !== this.meta) { this._poseContacts = new PoseContact(this); this._poseContactMeta = this.meta; }
+    this._poseContacts.limit(dt);
   }
 
   // Ajustes de pose que no están en el animador (peso, respingos, trastabillar, cabezazo, brazos)
@@ -2204,7 +2287,7 @@ export class LocalPlayer {
     this.high = Math.max(0, this.high - dt * 0.004);
     this.headYaw = clamp(angleDiff(this.yaw, this.viewYaw), -1.35, 1.35);
     // animación objetivo
-    const rigAction = this.action === 'drink-arm' || this.action === 'headbutt' ? null : this.action;
+    const rigAction = ['drink-arm', 'headbutt', 'eat'].includes(this.action) ? null : this.action;
     this.rig.animate({
       speed: this.state === 'ko' || this.state === 'dead' ? 0 : this.speed,
       fwdSpeed: this.fwdSpeed,
@@ -2399,7 +2482,7 @@ export class RemotePlayer {
     // cápsula de movimiento (como la mía): mi controlador choca contra ella, así no nos atravesamos
     this.body = G.phys.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, -50, 0));
     this.pawn = G.phys.world.createCollider(RAPIER.ColliderDesc.capsule(this.capsuleHalf, this.capsuleRadius - 0.02)
-      .setCollisionGroups(groups(GR.PAWN, GR.ME)), this.body);
+      .setCollisionGroups(groups(GR.PAWN, GR.ME | GR.VEHICLE)), this.body);
     G.phys.tag(this.pawn, { kind: 'pawn', ref: this });
     this.vel = new THREE.Vector3(); // velocidad (de la cápsula) para el empujón entre cuerpos
     this.react = new HitReact(); // reacción a los golpes (la simulo yo: al instante si el golpe es mío)

@@ -21,25 +21,28 @@ export function floorTopAt(x, z) {
 // Texturas PBR reales (Poly Haven, CC0) que reemplazan a las procedurales cuando terminan de cargar
 // size: metros reales que cubre una repetición de la textura
 const PBR = {
-  brick: { id: 'brick_wall_001', tint: 0xf0e6e0, size: 3 },
-  plaster: { id: 'painted_plaster_wall', tint: 0xf2e9dc, size: 2 },
+  brick: { id: 'brick_wall_001', tint: 0xf0e6e0, size: 3, weather: [0.35, 0.3, 0.1, 0.4], wet: 0.35 },
+  plaster: { id: 'painted_plaster_wall', tint: 0xf2e9dc, size: 2, weather: [0.2, 0.18, 0, 0.22], wet: 0.15 },
   wood: { id: 'wood_floor_worn', tint: 0xffffff, size: 2 },
   woodDark: { id: 'brown_planks_03', tint: 0x9a7a62, size: 1 },
   carpet: { id: 'dirty_carpet', tint: 0xc05060, size: 0.6 },
   asphalt: { id: 'asphalt_02', tint: 0xffffff, size: 3 },
   concrete: { id: 'concrete_floor_01', tint: 0xffffff, size: 2 },
   gravel: { id: 'gravel_floor', tint: 0xffffff, size: 2.25 },
+  // explanada del castillo: tierra pedregosa (se mezcla con barro y pasto en ground-blend.js)
+  plaza: { id: 'stony_dirt_path', tint: 0xcfc6ba, size: 2.6 },
   paving: { id: 'cobblestone_floor_01', tint: 0xffffff, size: 1 },
   roof: { id: 'grey_roof_tiles', tint: 0xffffff, size: 3 },
   metal: { id: 'rusty_corrugated_iron', tint: 0xffffff, size: 2 },
+  dumpsterMetal: { id: 'rusty_corrugated_iron', tint: 0x577954, size: 2, weather: [0.35, 0.3, 0, 0.4], wet: 0.3 },
   dirt: { id: 'dirt', tint: 0xffffff, size: 2 },
-  stone: { id: 'stacked_stone_wall', tint: 0xffffff, size: 2 },
+  stone: { id: 'stacked_stone_wall', tint: 0xffffff, size: 2, weather: [0.25, 0.2, 0.25, 0.4], wet: 0.35 },
   // castillo del terror (rough: multiplica el mapa de rugosidad; < 1 = mojado por la lluvia)
   castleStone: { id: 'stone_wall_04', tint: 0xa4a7a2, size: 3.4, ao: 1, disp: 0.055, weather: [0.9, 0.8, 0.5, 0.8], wet: 0.5 },
   keepStone: { id: 'castle_wall_varriation', tint: 0x9c9c94, size: 3.2, ao: 1, disp: 0.05, weather: [0.8, 0.9, 0.35, 0.8], wet: 0.45 },
   slate: { id: 'roof_slates_03', tint: 0x9aa2ac, size: 2.4, rough: 0.7, ao: 1, disp: 0.025, weather: [0, 0.4, 0.35, 0.6], wet: 0.6 },
-  cobble: { id: 'mossy_cobblestone', tint: 0x9a9a92, size: 2.6, rough: 0.55, ao: 1, disp: 0.04, weather: [0.4, 0, 0.7, 0.7], wet: 0.9 },
-  mud: { id: 'brown_mud_leaves_01', tint: 0x8c7c6c, size: 3.2, rough: 0.75, ao: 1, disp: 0.035, weather: [0, 0, 0, 0.6], wet: 0.8 },
+  cobble: { id: 'mossy_cobblestone', tint: 0xaaa69b, size: 2.6, rough: 0.94, ao: 1, disp: 0.04, weather: [0.4, 0, 0.7, 0.7], wet: 0.55 },
+  mud: { id: 'brown_mud_leaves_01', tint: 0x8c7c6c, size: 3.2, rough: 0.9, ao: 1, disp: 0.035, weather: [0, 0, 0, 0.6], wet: 0.6 },
   flagstone: { id: 'monastery_stone_floor', tint: 0xa8a298, size: 2.8, ao: 1, disp: 0.022, weather: [0.25, 0, 0.1, 0.5], wet: 0 },
   oldWood: { id: 'old_wood_floor', tint: 0xa88c74, size: 2.4, ao: 1, disp: 0.008, weather: [0.2, 0, 0, 0.5], wet: 0 },
   moldy: { id: 'rough_plaster_brick_02', tint: 0x8e8478, size: 2.8, ao: 1, disp: 0.025, weather: [0.6, 0.6, 0.2, 0.7], wet: 0 },
@@ -54,6 +57,7 @@ const PBR = {
 const loader = new THREE.TextureLoader();
 // cargas en curso: la pantalla de carga espera a que terminen (si no, al entrar se ven las texturas provisorias)
 const PENDING = [];
+const MAP_CACHE = new Map();
 export function pbrReady() { return Promise.allSettled(PENDING); }
 export function pbrMaps(id, repeatFrom = null, cb = null, extra = {}) {
   if (typeof document === 'undefined') return Promise.resolve({}); // Node (tests): sin imágenes
@@ -62,15 +66,25 @@ export function pbrMaps(id, repeatFrom = null, cb = null, extra = {}) {
   return p;
 }
 function pbrMapsLoad(id, repeatFrom, cb, extra) {
-  const load = (kind, srgb) => new Promise((resolve) => {
-    loader.load(`assets/tex/${id}_${kind}.jpg`, (t) => {
-      t.wrapS = t.wrapT = THREE.RepeatWrapping;
-      if (srgb) t.colorSpace = THREE.SRGBColorSpace;
-      t.anisotropy = 8;
-      if (repeatFrom) t.repeat.copy(repeatFrom);
-      resolve(t);
-    }, undefined, () => resolve(null));
-  });
+  const load = (kind, srgb) => {
+    const url = `assets/tex/${id}_${kind}.jpg`;
+    if (!MAP_CACHE.has(url)) MAP_CACHE.set(url, new Promise(resolve => {
+      loader.load(url, t => {
+        t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+        t.anisotropy = 4;
+        resolve(t);
+      }, undefined, () => resolve(null));
+    }));
+    return MAP_CACHE.get(url).then(source => {
+      if (!source) return null;
+      // Compartir Source evita repetir imagen y textura GPU; cada material
+      // conserva su escala de UV sin cambiar el piso o muro de otro ambiente.
+      const texture = source.clone();
+      if (repeatFrom) texture.repeat.copy(repeatFrom);
+      return texture;
+    });
+  };
   const none = () => Promise.resolve(null);
   return Promise.all([load('color', true), load('normal', false), load('rough', false), extra.ao ? load('ao', false) : none(), extra.disp ? load('disp', false) : none()]).then(([map, normalMap, roughnessMap, aoMap, dispMap]) => {
     const r = { map, normalMap, roughnessMap, aoMap, dispMap };
@@ -107,6 +121,7 @@ const TEXMATS = {
   tiles: { tex: 'tiles', rough: 0.5, tile: 2.4 },
   roof: { tex: 'roof', rough: 0.85, tile: 3 },
   metal: { tex: 'metal', rough: 0.6, metal: 0.4, tile: 3 },
+  dumpsterMetal: { tex: 'metal', rough: 0.9, metal: 0.3, tile: 2 },
   concrete: { tex: 'concrete', rough: 0.95, tile: 4 },
   carpet: { tex: 'carpet', rough: 1, tile: 2 },
   paving: { tex: 'paving', rough: 0.9, tile: 4 },
@@ -115,6 +130,7 @@ const TEXMATS = {
   hedge: { tex: 'hedge', rough: 1, tile: 2 },
   asphalt: { tex: 'asphalt', rough: 0.95, tile: 6 },
   gravel: { tex: 'gravel', rough: 1, tile: 4 },
+  plaza: { tex: 'dirt', rough: 1, tile: 2.6 },
   dirt: { tex: 'dirt', rough: 1, tile: 5 },
   facade: { tex: 'mansionFacade', rough: 0.9, tileU: 4, tileV: 14 },
   castleStone: { tex: 'stone', rough: 0.9, tile: 3.4 },

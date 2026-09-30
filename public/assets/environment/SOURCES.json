@@ -1,0 +1,41 @@
+[
+  {
+    "id": "fern_02",
+    "source": "https://polyhaven.com/a/fern_02",
+    "license": "CC0",
+    "resolution": "1k",
+    "date": "2026-09-29"
+  },
+  {
+    "id": "periwinkle_plant",
+    "source": "https://polyhaven.com/a/periwinkle_plant",
+    "license": "CC0",
+    "resolution": "1k",
+    "date": "2026-09-29"
+  },
+  {
+    "id": "rock_moss_set_01",
+    "source": "https://polyhaven.com/a/rock_moss_set_01",
+    "license": "CC0",
+    "resolution": "1k",
+    "date": "2026-09-29"
+  },
+  {
+    "id": "kloofendal_48d_partly_cloudy_puresky",
+    "file": "day.hdr",
+    "source": "https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky",
+    "license": "CC0",
+    "resolution": "2k",
+    "sha256": "5244534e9cf5b606f2ff513aa00ddb161b0a4826ffd88a0d3bd03ac29247d198",
+    "date": "2026-09-29"
+  },
+  {
+    "id": "kloofendal_overcast_puresky",
+    "file": "storm.hdr",
+    "source": "https://polyhaven.com/a/kloofendal_overcast_puresky",
+    "license": "CC0",
+    "resolution": "2k",
+    "sha256": "312b1b04b7f10057a4f1418abc59d1166c8933cc93fc72051502edaf8d6b2fcd",
+    "date": "2026-09-29"
+  }
+]

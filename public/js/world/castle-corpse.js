@@ -5,7 +5,7 @@
 // Del brazo que cuelga por el borde de la mesa (antebrazo y mano del modelo de Eric, pálidos y con sangre) gotea sangre
 // al charco del piso.
 import * as THREE from 'three';
-import { assetModel, hasAsset } from '../game/assets.js';
+import { assetModel, hasAsset, whenAsset } from '../game/assets.js';
 import { CASTLE } from '../shared/mapdata.js';
 import { G } from '../core/G.js';
 
@@ -27,9 +27,11 @@ export class Corpse {
     this.drop = null;
     this.wait = 1.2;
     this.ring = null;
+    whenAsset('c_corpse', () => this._build());
   }
 
   _build() {
+    if (this.root) return true;
     const model = assetModel('c_corpse');
     if (!model) return false;
     model.position.set(TX, 0, TZ);

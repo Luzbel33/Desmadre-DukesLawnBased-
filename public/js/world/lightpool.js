@@ -41,6 +41,7 @@ export class LightPool {
       light.shadow.camera.layers.enable(PROXY_LAYER);
       // el mapa de sombra se rehace a ~20 Hz: el fuego no se mueve, solo la gente (a 60 Hz costaba 6 ms)
       light.shadow.autoUpdate = false;
+      light.shadow.needsUpdate = true;
       scene.add(light);
       this.hero = { light, src: null, next: null, k: 0, tick: 0 };
     }

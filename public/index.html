@@ -5,6 +5,7 @@
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DESMADRE</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='9' fill='%23171914'/%3E%3Cpath d='M10 30V10h9c16 0 16 20 0 20Zm6-6h3c8 0 8-8 0-8h-3Z' fill='%23d5b859'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Creepster&family=Metal+Mania&family=Rubik:wght@400;600;800&display=swap" rel="stylesheet">
@@ -165,6 +166,7 @@
     <div class="menu-card small">
       <h2>PAUSA</h2>
       <button id="p-resume" class="big">Volver al desmadre</button>
+      <button id="p-fullscreen">Jugar en pantalla completa · proteger atajos</button>
       <div id="pause-players"></div>
       <div class="settings">
         <label>Ayudas de controles
@@ -178,6 +180,12 @@
         <label>Ambiente <input type="range" id="o-ambient" min="0" max="1" step="0.01"></label>
         <label class="chk"><input type="checkbox" id="o-mute"> Silenciar todo</label>
         <label>Efectos <input type="range" id="o-sfx" min="0" max="1" step="0.01"></label>
+        <label>Atmósfera visual
+          <select id="o-atmosphere"><option value="natural">Natural</option><option value="calida">Tarde cálida</option><option value="bruma">Bruma suave</option></select>
+        </label>
+        <label>Preset gráfico
+          <select id="o-graphics"><option value="rendimiento">Rendimiento</option><option value="equilibrado">Equilibrado</option><option value="calidad">Calidad</option><option value="ultra">Ultra</option></select>
+        </label>
         <label>Calidad del pasto
           <select id="o-grass"><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option><option value="ultra">Ultra</option></select>
         </label>

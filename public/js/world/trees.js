@@ -1,5 +1,6 @@
 // Árboles realistas generados con ez-tree (MIT) + impostores para los lejanos (rendimiento).
 import * as THREE from 'three';
+import { yieldToBrowser } from '../core/startup.js';
 
 const VARIANTS = [
   { preset: 'Oak Large', seed: 1311, h: 13.5 },
@@ -50,7 +51,7 @@ function texturesReady(mats) {
   return texs.every((t) => t.image && (t.image.complete === undefined || t.image.complete) && (t.image.width || t.image.naturalWidth));
 }
 
-function renderImpostor(renderer, tree, size) {
+async function renderImpostor(renderer, tree, size) {
   // saca una "foto" del árbol de frente (fondo transparente) para usarla de lejos
   const scene = new THREE.Scene();
   scene.add(new THREE.HemisphereLight(0xdfeaff, 0x3a4a22, 1.6));
@@ -70,6 +71,10 @@ function renderImpostor(renderer, tree, size) {
   const prevRT = renderer.getRenderTarget();
   const prevClear = renderer.getClearAlpha();
   const prevTone = renderer.toneMapping;
+  // Wait for shader linking before the first draw; never force a driver wait.
+  renderer.setRenderTarget(rt);
+  try { await renderer.compileAsync(scene, cam); } finally { renderer.setRenderTarget(prevRT); }
+  await yieldToBrowser();
   renderer.setRenderTarget(rt);
   renderer.setClearColor(0x000000, 0);
   renderer.clear();
@@ -86,25 +91,33 @@ export class Forest {
   static async create(scene, renderer, points) {
     // import diferido: ez-tree carga sus texturas al importarse (necesita navegador)
     const { Tree } = await import('../../vendor/ez-tree/ez-tree.es.js');
-    const trees = VARIANTS.map((def) => {
+    const trees = [];
+    for (const def of VARIANTS) {
+      await yieldToBrowser();
       const t = new Tree();
       t.loadPreset(def.preset);
       t.options.seed = def.seed;
       t.generate();
-      return t;
-    });
+      trees.push(t);
+    }
     const t0 = performance.now();
     while (!texturesReady(trees.flatMap((t) => [t.branchesMesh.material, t.leavesMesh.material])) && performance.now() - t0 < 5000) {
       await new Promise((r) => setTimeout(r, 50));
     }
-    return new Forest(scene, renderer, points, trees);
+    const forest = new Forest(scene, points);
+    await forest.prepare(renderer, trees);
+    return forest;
   }
 
-  constructor(scene, renderer, points, trees) {
+  constructor(scene, points) {
     this.scene = scene;
     this.points = points;
     this.variants = [];
     this.timer = 0;
+  }
+
+  async prepare(renderer, trees) {
+    const scene = this.scene, points = this.points;
     for (let v = 0; v < VARIANTS.length; v++) {
       const def = VARIANTS[v];
       const t = trees[v];
@@ -128,7 +141,7 @@ export class Forest {
         scene.add(im);
       }
       // impostor: dos planos cruzados con la foto del árbol
-      const imp = renderImpostor(renderer, t, 512);
+      const imp = await renderImpostor(renderer, t, 512);
       const pg = new THREE.PlaneGeometry(imp.width, imp.height);
       pg.translate(0, imp.height / 2, 0);
       const g2 = pg.clone();
@@ -141,6 +154,8 @@ export class Forest {
       far.castShadow = false;
       far.receiveShadow = false;
       scene.add(far);
+      pg.dispose(); g2.dispose();
+      await yieldToBrowser();
       this.variants.push({ tree: t, scale: k, pts, branches, leaves, far, impBottom: imp.bottom });
     }
     this.update(new THREE.Vector3(0, 0, -60), 0, true);

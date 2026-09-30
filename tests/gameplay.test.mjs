@@ -16,8 +16,130 @@ import { PoseRig } from '../public/js/char/rig.js';
 import { HitReact } from '../public/js/game/react.js';
 import { PokerView } from '../public/js/game/poker.js';
 import { fakeMeta } from './ragdoll-bench.mjs';
+import { Input } from '../public/js/core/input.js';
+import { VehicleManager } from '../public/js/game/entities.js';
+import { mowerSweep } from '../public/js/shared/mower.js';
+import { supportedMatrix } from '../public/js/game/placement.js';
+import { GRASSMAP, GRASS } from '../public/js/shared/mapdata.js';
+import { VEHICLES } from '../public/js/shared/mapdata.js';
+import { cutRect } from '../public/js/shared/raster.js';
+import { Culler } from '../public/js/world/culler.js';
+import { prepareScene } from '../public/js/core/startup.js';
 
 TEX.grass = () => new THREE.Texture();
+
+test('arranque: prepara GPU dejando respirar al navegador y conserva los objetos del mundo', async () => {
+  const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera();
+  const texture = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+  const material = new THREE.MeshStandardMaterial({ map: texture });
+  const geometry = new THREE.BoxGeometry();
+  for (let i = 0; i < 65; i++) scene.add(new THREE.Mesh(geometry, material));
+  scene.children[0].visible = false; // también se prepara el objeto que aparecerá después
+  const originals = [...scene.children], compiled = new Set(), uploads = new Set();
+  let active = 0, maxActive = 0, browserTick = false;
+  setTimeout(() => { browserTick = true; }, 0);
+  const renderer = {
+    initTexture(t) { uploads.add(t); },
+    async compileAsync(batch, cam, target) {
+      assert.ok(uploads.has(texture), 'no se suben texturas durante el primer dibujo');
+      assert.equal(target, scene); assert.equal(cam, camera);
+      for (const object of batch.children) { compiled.add(object); assert.equal(object.parent, scene); }
+      maxActive = Math.max(maxActive, ++active);
+      await new Promise(resolve => setTimeout(resolve, 8)); active--;
+    },
+  };
+  await prepareScene(renderer, scene, camera);
+  assert.equal(compiled.size, originals.length);
+  assert.ok(browserTick, 'la preparación monopolizó el hilo');
+  assert.ok(maxActive <= 4, 'cola de compilación sin límite');
+  assert.deepEqual(scene.children, originals);
+  assert.equal(originals[0].visible, false);
+  geometry.dispose(); material.dispose(); texture.dispose();
+});
+
+test('arranque: un fallo de compilación se informa sin quitar objetos del mapa', async () => {
+  const scene = new THREE.Scene(), mesh = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial());
+  scene.add(mesh);
+  const renderer = { initTexture() {}, compileAsync() { return Promise.reject(new Error('GPU no disponible')); } };
+  await assert.rejects(prepareScene(renderer, scene, new THREE.PerspectiveCamera()), /GPU no disponible/);
+  assert.equal(mesh.parent, scene); assert.deepEqual(scene.children, [mesh]);
+  mesh.geometry.dispose(); mesh.material.dispose();
+});
+
+test('cortadora: un toque enciende, el eco viejo no apaga y corta quieta', async () => {
+  const ph = new Physics(); await ph.init();
+  const packets = [], stamps = [];
+  G.phys = ph; G.scene = new THREE.Scene(); G.myId = 1; G.time = 0;
+  G.fx = null; G.props = null; G.sfx = null;
+  G.grass = { cut(batch) { stamps.push(...batch); return 0; } };
+  G.input = Object.assign(Object.create(Input.prototype), { enabled: true, down: new Set(), pressed: new Set(['Space']) });
+  const local = { vehicle: null, setVehicle(v) { this.vehicle = v; }, setSeatPose() {} };
+  const manager = new VehicleManager({ send(m) { packets.push(m); } }, local);
+  manager.load([{ id: 1, p: [20, 0, 20], q: [0, 0, 0, 1], o: 1, seats: [1] }]);
+  const v = local.vehicle;
+  manager.update(1 / 60);
+  assert.equal(v.blades, true);
+  assert.equal(packets.find(m => m.t === 'vu').u[0][10], 1, 'encendido publicado sin esperar otro cuadro');
+  manager.handleSnap([[1, 20, 0, 20, 0, 0, 0, 1, 0, 0, 0]]);
+  manager.update(1 / 60); // la misma pulsación puede alcanzar más de un paso
+  assert.equal(v.blades, true, 'ni el eco ni un segundo paso revierte la pulsación');
+  assert.ok(stamps.length > 0, 'la plataforma corta aun sin acelerar');
+  G.input.pressed.add('Space'); manager.update(1 / 60);
+  assert.equal(v.blades, false);
+  v.owner = 2; v.seats = [2]; local.vehicle = null;
+  manager.handleSnap([[1, 20, 0, 20, 0, 0, 0, 1, 0, 0, 1]]);
+  assert.equal(v.blades, true, 'un observador sí recibe el estado remoto');
+  ph.world.free();
+});
+
+test('corte rasterizado continuo al girar y retroceder, sin unir teleports', () => {
+  const h = new Uint8Array(GRASSMAP.w * GRASSMAP.h).fill(240), d = new Uint8Array(h.length);
+  const at = (x, z) => h[Math.floor((z - GRASSMAP.z0) / GRASSMAP.cell) * GRASSMAP.w + Math.floor((x - GRASSMAP.x0) / GRASSMAP.cell)];
+  let prev = null;
+  const path = [{ id: 1, x: 20, z: 20, yaw: 0 }, { id: 1, x: 20, z: 22, yaw: 0 }, { id: 1, x: 21, z: 23, yaw: Math.PI / 2 }, { id: 1, x: 19, z: 23, yaw: Math.PI / 2 }];
+  for (const next of path) {
+    for (const s of mowerSweep(prev, next, 0.78)) cutRect(h, d, ...s, GRASS.cutHeight);
+    prev = next;
+  }
+  for (const [x, z] of [[20, 20], [20, 21], [20, 22], [20.5, 22.5], [21, 23], [20, 23], [19, 23]]) assert.equal(at(x, z), GRASS.cutHeight, `hueco en ${x},${z}`);
+  assert.equal(at(23, 21), 240, 'la curva no corta una caja ajena a la plataforma');
+  const reset = mowerSweep(prev, { id: 1, x: 40, z: 40, yaw: 0 }, 0.78);
+  assert.equal(reset.length, 1);
+  assert.equal(mowerSweep(prev, { ...prev, id: 2 }, 0.78).length, 1);
+});
+
+test('objetos acostados apoyan su límite real y conservan el centro de la huella', () => {
+  const bounds = new THREE.Box3(new THREE.Vector3(-0.2, -0.1, -0.5), new THREE.Vector3(0.7, 2.3, 0.2));
+  for (const opts of [{ rz: Math.PI / 2 }, { rx: -Math.PI / 2 }, { rz: 1.3, sx: 0.8, sy: 1.1, sz: 0.5 }]) {
+    const placed = bounds.clone().applyMatrix4(supportedMatrix(bounds, 3, 8.02, -115.5, 0.6, 1, opts));
+    const center = placed.getCenter(new THREE.Vector3());
+    assert.ok(Math.abs(placed.min.y - 8.02) < 1e-9);
+    assert.ok(Math.abs(center.x - 3) < 1e-9 && Math.abs(center.z + 115.5) < 1e-9);
+  }
+});
+
+test('una tanda amplia de adornos se descarta lejos y reaparece al acercarse', () => {
+  const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera();
+  const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.2, 0.3, 0.2), new THREE.MeshBasicMaterial(), 2);
+  mesh.setMatrixAt(0, new THREE.Matrix4().makeTranslation(-20, 0, -110));
+  mesh.setMatrixAt(1, new THREE.Matrix4().makeTranslation(20, 0, -110));
+  mesh.userData.asset = 'fixture-cup'; scene.add(mesh);
+  const culler = new Culler(scene);
+  camera.position.set(106, 1.6, -26.5); culler.update(camera, true);
+  assert.equal(mesh.visible, false, 'la extensión de la tanda no la vuelve un edificio');
+  camera.position.set(0, 5, -110); culler.update(camera, true);
+  assert.equal(mesh.visible, true, 'recupera visibilidad al entrar al salón');
+});
+
+test('foliage batch spanning the town and castle remains visible inside its castle bounds', () => {
+  const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera();
+  const mesh=new THREE.InstancedMesh(new THREE.BoxGeometry(.3,.5,.3),new THREE.MeshBasicMaterial(),2);
+  mesh.setMatrixAt(0,new THREE.Matrix4().makeTranslation(23,2,-102.8));
+  mesh.setMatrixAt(1,new THREE.Matrix4().makeTranslation(122.8,2,-19));
+  mesh.userData.asset='fixture-foliage';scene.add(mesh);
+  camera.position.set(21,2,-99);new Culler(scene).update(camera,true);
+  assert.equal(mesh.visible,true,'distant town instances cannot hide the nearby castle plant');
+});
 
 test('póker conserva el reparto privado que llega antes del estado público', () => {
   const view = Object.assign(Object.create(PokerView.prototype), {
@@ -48,6 +170,63 @@ async function fixture(keys = new Set()) {
   return { p, ph };
 }
 function frame(p, ph, dt = 1 / 60, yaw = 0) { ph.step(dt, (d) => p.physicsStep(d, yaw), () => p.afterPhysics()); G.time += dt; p.update(dt); }
+
+test('cabeza y piernas encuentran una pared durante el golpe sin penetrarla', async () => {
+  for (const attack of ['headbutt', 'kick']) {
+    const { p, ph } = await fixture();
+    const wall = ph.box(0, 1, .45, 2, 1, .08);
+    for (let k = 0; k < 20; k++) frame(p, ph);
+    p[attack]();
+    let deepest = 0;
+    for (let k = 0; k < 36; k++) {
+      frame(p, ph);
+      for (const i of [1, 2, 9, 10]) {
+        const c = p.rag.colliders[i].contactCollider(wall, .01);
+        if (c) deepest = Math.min(deepest, c.distance);
+      }
+    }
+    assert.ok(deepest > -.012, `${attack}: penetración ${deepest}`);
+    ph.world.free();
+  }
+});
+
+test('la preparación y el retroceso de la patada no cuentan como golpes', async () => {
+  const { p, ph } = await fixture();
+  p.kick();
+  for (const [t, armed] of [[.08, false], [.19, true], [.34, false]]) {
+    p.actionT = t; assert.equal(p._attacking(PART.SHIN_R), armed);
+  }
+  ph.world.free();
+});
+
+test('agachado pasa bajo un techo y no se levanta dentro de él', async () => {
+  const keys = new Set(['KeyC', 'KeyW']), { p, ph } = await fixture(keys);
+  ph.box(0, 1.7, 1, 2, .15, 1);
+  for (let k = 0; k < 38; k++) frame(p, ph);
+  assert.ok(p.crouched && p.pos.z > .5, 'no atravesó el pasaje agachado');
+  keys.clear();
+  for (let k = 0; k < 12; k++) frame(p, ph);
+  assert.ok(p.crouched, 'se paró dentro del techo');
+  keys.add('KeyW');
+  for (let k = 0; k < 70; k++) frame(p, ph);
+  keys.clear(); frame(p, ph);
+  assert.equal(p.crouched, false, 'no recuperó la altura al salir');
+  ph.world.free();
+});
+
+test('el porrazo (dive contra una pared) usa cuerpos dinámicos y vuelve al control sin perder vida en terreno libre', async () => {
+  const { p, ph } = await fixture(new Set(['KeyA']));
+  for (let k = 0; k < 15; k++) frame(p, ph);
+  const x = p.pos.x;
+  assert.equal(p.tumble(new THREE.Vector3(1, 0, 0)), true);
+  assert.equal(p.physMode, 'rag');
+  assert.ok(p.rag.bodies.every(b => b.isDynamic()));
+  for (let k = 0; k < 125; k++) frame(p, ph);
+  assert.ok(p.pos.x > x + 1, 'no se tiró hacia su izquierda');
+  assert.equal(p.state, 'active');
+  assert.ok(p.hp > 90 && Number.isFinite(p.pos.y), `vida ${p.hp} y ${p.pos.y}`);
+  ph.world.free();
+});
 
 // ------------------------------------------------------------------ brazos (arms.js)
 function armCtx(mass = 0) { return { L: 0.6, mass, mouth: new THREE.Vector3(0.15, 0.2, 0.12), wheel: null, guard: false }; }
@@ -389,6 +568,29 @@ test('los carteles de actividades se esconden detrás de las paredes', async () 
 });
 
 // ------------------------------------------------------------------ vehículos
+test('cart: solid roof, open cabin and stable wall contact use the actual Rapier geometry', async () => {
+  const ph=new Physics();await ph.init();G.phys=ph;G.scene=new THREE.Scene();G.myId=1;G.time=0;
+  G.fx=null;G.props=null;G.sfx=null;G.grass={cut(){return 0;}};
+  G.input={key:k=>k==='KeyW',consume:()=>false};
+  const local={vehicle:null,setVehicle(v){this.vehicle=v;},setSeatPose(){}};
+  const manager=new VehicleManager({send(){}},local),def=VEHICLES.find(v=>v.type==='cart');
+  manager.load([{id:def.id,p:[20,0,20],q:[0,0,0,1],o:1,seats:[1]}]);
+  const v=local.vehicle;ph.world.step();
+  const ray=(x,y,z,dy)=>ph.world.castRay(new RAPIER.Ray({x,y,z},{x:0,y:dy,z:0}),5,true,
+    RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,groups(0xffff,GR.VEHICLE));
+  assert.ok(Math.abs(ray(20,4,20,-1).timeOfImpact-1.95)<.015,'roof follows model top at 2.05m');
+  let cabinBlocked=false;
+  ph.world.intersectionsWithShape({x:20,y:1.5,z:20},v.quat,new RAPIER.Ball(.08),()=>{cabinBlocked=true;return false;},
+    RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,groups(0xffff,GR.VEHICLE));
+  assert.equal(cabinBlocked,false,'empty cabin is not a full-height box');
+  ph.box(20,1.5,25,3,1.5,.1);ph.world.step();
+  const contact=[];
+  for(let i=0;i<240;i++){G.time+=1/60;manager.update(1/60);ph.world.step();if(i>180)contact.push(v.pos.z);}
+  assert.ok(v.pos.z<23.61 && v.pos.z>23.5,`front stopped at ${v.pos.z}`);
+  assert.ok(Math.max(...contact)-Math.min(...contact)<.002,'continued throttle does not bounce away and return');
+  assert.equal(v.speed,0);ph.world.free();
+});
+
 test('los vehículos tienen volante que gira, ruedas que doblan y pocas mallas', async () => {
   const { buildVehicleModel } = await import('../public/js/game/vehicle-models.js');
   for (const type of ['mower', 'tractor', 'cart']) {

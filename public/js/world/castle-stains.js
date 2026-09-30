@@ -161,7 +161,7 @@ export function stainCastle(castle) {
   B(S.hands, IX1 - 0.06, 1.3, -106.4, -1, 0, 0, 0.9, 0.9, { opacity: 0.8 });
   B(S.pool, 14.2, 0.07, -117.2, 0, 1, 0, 1.4, 1.1, { opacity: 0.7 });
   // patio: la horca
-  B(S.pool, 31.4, 0.515, -90, 0, 1, 0, 1.3, 1.1, { opacity: 0.85 });
+  B(S.pool, 30.9, 0.515, -90, 0, 1, 0, .95, 1.1, { opacity: 0.85 });
   B(S.drips, 30.4, 0.25, -88.39, 0, 0, 1, 1.4, 0.45, { off: 0.006, opacity: 0.8 });
 
   castle.stains = st.finish();

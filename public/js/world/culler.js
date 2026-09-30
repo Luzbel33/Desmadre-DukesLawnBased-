@@ -29,8 +29,20 @@ export class Culler {
       BOX.setFromObject(o);
       if (BOX.isEmpty()) continue;
       BOX.getBoundingSphere(S);
-      if (S.radius > 9) continue; // lo grande (edificios, estatuas enormes) queda siempre
-      this.items.push({ o, c: S.center.clone(), r: S.radius, hidden: false, far: o.userData.cullDist ?? Math.min(220, Math.max(45, 40 + S.radius * 30)), p0: o.position.clone(), dyn: false });
+      if (S.radius > 9 && !o.isInstancedMesh) continue; // edificios, estatuas enormes
+      let size = S.radius;
+      if (o.isInstancedMesh) {
+        // Una tanda de botellas puede ocupar 50 m: esa extensión no convierte
+        // cada botella en un edificio visible a 220 m. Conservamos la esfera
+        // de toda la tanda para la proximidad y la pieza para la distancia.
+        o.geometry.computeBoundingSphere();
+        let scale = 0;
+        const matrix = new THREE.Matrix4();
+        for (let i = 0; i < o.count; i++) { o.getMatrixAt(i, matrix); scale = Math.max(scale, matrix.getMaxScaleOnAxis()); }
+        size = o.geometry.boundingSphere.radius * scale * o.matrixWorld.getMaxScaleOnAxis();
+      }
+      this.items.push({ o, c: S.center.clone(), r: S.radius, bounds:o.isInstancedMesh?BOX.clone():null,
+        hidden: false, far: o.userData.cullDist ?? Math.min(220, Math.max(45, 40 + size * 30)), p0: o.position.clone(), dyn: false });
     }
   }
   update(cam, force = false) {
@@ -55,13 +67,17 @@ export class Culler {
         const outside = c.x < CASTLE.x0 - 3 || c.x > CASTLE.x1 + 3 || c.z < CASTLE.z0 - 3 || c.z > CASTLE.z1 + 3;
         // por el portón se ve la explanada: una franja hacia el sur
         const gate = c.x > -14 && c.x < 14 && c.z > CASTLE.z1 - 2 && c.z < CASTLE.z1 + 45;
-        if (outside && !gate) show = false;
+        const overlaps=it.bounds && it.bounds.min.x<CASTLE.x1+3 && it.bounds.max.x>CASTLE.x0-3 &&
+          it.bounds.min.z<CASTLE.z1+3 && it.bounds.max.z>CASTLE.z0-3;
+        if (outside && !gate && !overlaps) show = false;
       }
       if (show && inKeep) {
         const inKeepBox = c.x > CASTLE.keep.x0 - 1 && c.x < CASTLE.keep.x1 + 1 && c.z > CASTLE.keep.z0 - 1 && c.z < CASTLE.keep.z1 + 1;
         // desde adentro del torreón: lo de afuera solo por la puerta (el frente del patio)
         const front = c.x > -10 && c.x < 10 && c.z > CASTLE.keep.z1 && c.z < CASTLE.z1 + 30;
-        if (!inKeepBox && !front) show = false;
+        const overlaps=it.bounds && it.bounds.min.x<CASTLE.keep.x1+1 && it.bounds.max.x>CASTLE.keep.x0-1 &&
+          it.bounds.min.z<CASTLE.keep.z1+1 && it.bounds.max.z>CASTLE.keep.z0-1;
+        if (!inKeepBox && !front && !overlaps) show = false;
       }
       if (show === !it.hidden) continue;
       o.visible = show;
