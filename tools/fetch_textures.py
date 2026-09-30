@@ -47,7 +47,7 @@ def main():
         ledger = [e for e in ledger if e.get('id') != tid]
         ledger.append({'id': tid, 'source': 'https://polyhaven.com/a/' + tid, 'license': 'CC0', 'maps': got, 'resolution': res, 'date': datetime.date.today().isoformat()})
         print('ok', tid, got)
-    json.dump(ledger, open(LEDGER, 'w', encoding='utf-8'), indent=1)
+    json.dump(ledger, open(LEDGER, 'w', encoding='utf-8', newline='\n'), indent=1)
 
 
 main()

@@ -65,9 +65,13 @@ export const CLUB = {
   doorman: { x: 2.3, z: -441.2, yaw: -Math.PI / 2 - 0.35 },
   hall: { x0: -24, x1: 24, z0: -478, z1: -444, h: 7.5 }, // el club
   throne: { x: 17.6, z: -449.8, y: 0.62, yaw: -Math.PI / 2 - 0.55 }, // el trono del Diablo (sobre la tarima)
-  arrive: { x: 14.4, z: -452.4, yaw: Math.PI / 2 + 0.4 }, // adonde llegan los del ritual (frente al trono, entre el humo)
+  // el pentagrama del Búnker (en el piso del club, a la vista del trono): adonde llega el ritual y desde donde el
+  // Diablo se vuelve al castillo con los que elija. Antes se llegaba al borde de la tarima del trono y los que
+  // venían con él quedaban metidos adentro de la tarima.
+  pentagram2: { x: 9.8, z: -456.6, r: 1.7 },
+  arrive: { x: 9.8, z: -456.6, yaw: 0.85 }, // mirando al trono
   // pentagrama del cuarto secreto (castillo, piso F0): parado adentro, el Diablo abre el ritual
-  pentagram: { x: 13, z: -120.3, r: 1.85 },
+  pentagram: { x: 13, z: -120.3, r: 1.85, yaw: 0.58 }, // yaw: al volver del Búnker, mirando a la puerta secreta
   // la tumba de la cripta que tiene la escalera (y adónde volvés al subir)
   tomb: { x: 10.5, z: -119.5, back: { x: 11.9, z: -119.5, yaw: -Math.PI / 2 } },
 };

@@ -49,6 +49,14 @@ function printed(draw, w = 512, h = 256) {
   draw(g, w, h);
   return new THREE.MeshStandardMaterial({ map: ctex(cv), roughness: 0.85, transparent: true });
 }
+// caja con UV en metros / tile (como las del Builder) y corrida en u: la chapa de las puertas no se estira y las
+// dos hojas continúan el mismo dibujo
+function boxUV(w, h, d, tile, u0 = 0) {
+  const g = new THREE.BoxGeometry(w, h, d);
+  const uv = g.attributes.uv, dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
+  for (let f = 0; f < 6; f++) for (let k = 0; k < 4; k++) { const i = f * 4 + k; uv.setXY(i, uv.getX(i) * dims[f][0] / tile + u0, uv.getY(i) * dims[f][1] / tile); }
+  return g;
+}
 function hazardTex() {
   const cv = canvas(256, 64), g = cv.getContext('2d');
   g.fillStyle = '#d8b020'; g.fillRect(0, 0, 256, 64);
@@ -237,12 +245,14 @@ export class Club {
   _lift() {
     const L = C.lift, h = L.h;
     // cabina de acero con piso de chapa semillada, pasamanos, tablero y el visor de pisos
-    this.deco('bunkerIron', 0, 0.03, (L.z0 + L.z1) / 2, L.x1 - L.x0, 0.06, L.z1 - L.z0);
-    for (const x of [L.x0 - 0.1, L.x1 + 0.1]) this.box('steel', x, h / 2, (L.z0 + L.z1) / 2, 0.2, h, L.z1 - L.z0);
-    this.deco('steel', 0, h + 0.1, (L.z0 + L.z1) / 2, L.x1 - L.x0 + 0.4, 0.2, L.z1 - L.z0);
+    this.deco('treadPlate', 0, 0.03, (L.z0 + L.z1) / 2, L.x1 - L.x0, 0.06, L.z1 - L.z0);
+    for (const x of [L.x0 - 0.1, L.x1 + 0.1]) this.box('liftPanel', x, h / 2, (L.z0 + L.z1) / 2, 0.2, h, L.z1 - L.z0);
+    this.deco('liftPanel', 0, h + 0.1, (L.z0 + L.z1) / 2, L.x1 - L.x0 + 0.4, 0.2, L.z1 - L.z0);
     for (const x of [L.x0 + 0.06, L.x1 - 0.06]) this.deco('chrome', x, 0.95, (L.z0 + L.z1) / 2, 0.04, 0.04, 2.6);
-    this.deco('fluo', 0, h - 0.02, (L.z0 + L.z1) / 2, 1.8, 0.03, 0.18);
-    this.liftLight = this.light(0, h - 0.3, (L.z0 + L.z1) / 2, 0xfff4e0, 3.5, 6, { priority: 1.6 });
+    // plafón de tubos (la cabina tiene que verse bien iluminada: contrasta con el pasillo a oscuras)
+    this.deco('darkgray', 0, h - 0.015, (L.z0 + L.z1) / 2, 1.5, 0.03, 0.8);
+    for (const dx of [-0.25, 0.25]) this.deco('fluo', dx, h - 0.04, (L.z0 + L.z1) / 2, 0.08, 0.03, 0.7);
+    this.liftLight = this.light(0, h - 0.35, (L.z0 + L.z1) / 2, 0xfff1dc, 6.5, 7, { priority: 1.8 });
     // tablero (del lado este, adentro)
     this.deco('darkgray', L.x1 - 0.02, 1.3, -431.6, 0.04, 0.6, 0.34);
     for (let k = 0; k < 4; k++) this.deco(k === 3 ? 'redLamp' : 'gold', L.x1 - 0.05, 1.12 + k * 0.12, -431.6, 0.02, 0.06, 0.06);
@@ -253,14 +263,53 @@ export class Club {
       this.floorTex = ctex(this.floorCanvas);
       const m = new THREE.MeshBasicMaterial({ map: this.floorTex, toneMapped: false });
       m.color.setScalar(1.6);
-      for (const [z, yaw] of [[L.z1 - 0.12, Math.PI], [L.z0 + 0.12, 0]]) this.mesh(new THREE.PlaneGeometry(0.5, 0.19), m, 0, 2.66, z, { yaw });
+      // adentro, arriba de cada puerta; y afuera, arriba de la puerta del pasillo y de la de la antesala
+      for (const [z, yaw] of [[L.z1 - 0.43, Math.PI], [L.z0 + 0.03, 0], [L.z1 + 0.01, 0], [L.z0 - 0.41, Math.PI]]) this.mesh(new THREE.PlaneGeometry(0.5, 0.19), m, 0, 2.66, z, { yaw });
       this.setFloor('P.B.');
     }
-    // puertas corredizas: sur (pasillo) y norte (antesala); dos hojas cada una
-    const leaves = (z) => [-1, 1].map((s) => this.mesh(new THREE.BoxGeometry(0.62, 2.4, 0.06), getMat('steel'), s * 0.3, 1.2, z));
-    this.doors.liftS = { leaves: leaves(L.z1 - 0.05), collider: this.phys.box(0, 1.2, L.z1 - 0.05, 1.2, 1.2, 0.05, 0, { paint: false }), open: 0, target: 0, kind: 'lift' };
-    this.doors.liftN = { leaves: leaves(L.z0 + 0.05), collider: this.phys.box(0, 1.2, L.z0 + 0.05, 1.2, 1.2, 0.05, 0, { paint: false }), open: 0, target: 0, kind: 'lift' };
+    // la cara de adentro de los muros del frente y del fondo también es de acero (antes se veía el hormigón del
+    // pasillo y el ladrillo de la antesala: parecía un hueco entre dos cuartos, no una cabina)
+    // centro de los muros con las puertas: el del pasillo (z -430, ocupa -430.2..-429.8) y el de la antesala
+    const zS = L.z1 - 0.2, zN = L.z0 - 0.2;
+    for (const [z, dz] of [[L.z1 - 0.412, -1], [L.z0 + 0.012, 1]]) {
+      for (const s of [-1, 1]) this.deco('liftPanel', s * 1.4, h / 2, z, 0.4, h, 0.02);
+      this.deco('liftPanel', 0, 2.4 + (h - 2.4) / 2, z, 2.4, h - 2.4, 0.02);
+      // marco de la puerta (jambas y dintel de acero cepillado, un poco salidos)
+      for (const s of [-1, 1]) this.deco('chrome', s * 1.23, 1.2, z + dz * 0.02, 0.06, 2.42, 0.04);
+      this.deco('chrome', 0, 2.43, z + dz * 0.02, 2.52, 0.06, 0.04);
+    }
+    // puertas corredizas: sur (pasillo) y norte (antesala). Dos hojas que tapan TODO el vano (2.4 m) y se guardan
+    // adentro del muro al abrirse. Antes eran de 0.62 y quedaban dos huecos de 0.6 m a los costados: se veía la
+    // antesala desde el pasillo y el "viaje" no engañaba a nadie.
+    const panel = getMat('liftPanel'), tile = panel.userData.tileU || 2.4;
+    const leaves = (z) => [-1, 1].map((s) => this.mesh(boxUV(1.22, 2.4, 0.06, tile, s > 0 ? 1.22 / tile : 0), panel, s * 0.61, 1.2, z));
+    this.doors.liftS = { leaves: leaves(zS), collider: this.phys.box(0, 1.2, zS, 1.2, 1.2, 0.08, 0, { paint: false }), open: 0, target: 0, kind: 'lift' };
+    this.doors.liftN = { leaves: leaves(zN), collider: this.phys.box(0, 1.2, zN, 1.2, 1.2, 0.08, 0, { paint: false }), open: 0, target: 0, kind: 'lift' };
     this.anchors.liftCenter = new THREE.Vector3(0, 0, (L.z0 + L.z1) / 2);
+    // la luz de cada piso que pasa se cuela por las rendijas de las puertas (junta del medio y dintel): una franja
+    // que corre hacia arriba al bajar y hacia abajo al subir. Solo se prende con la cabina en viaje.
+    if (HAS_DOM) {
+      this.liftSeamU = { uPhase: { value: 0 }, uOn: { value: 0 } };
+      const seam = new THREE.ShaderMaterial({
+        uniforms: this.liftSeamU, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
+        vertexShader: 'varying vec2 vUv; varying float vY; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vY = w.y; gl_Position = projectionMatrix * viewMatrix * w; }',
+        fragmentShader: /* glsl */ `
+          uniform float uPhase, uOn; varying vec2 vUv; varying float vY;
+          void main(){
+            float k = fract(vY / 1.7 - uPhase) - 0.5;
+            float band = exp(-k * k * 60.0);
+            float across = 1.0 - abs(vUv.x - 0.5) * 2.0;
+            float a = uOn * (0.08 + band * 1.4) * across * across;
+            gl_FragColor = vec4(vec3(1.0, 0.86, 0.62) * a * 2.2, a);
+          }`,
+      });
+      this.liftSeams = [];
+      for (const [z, yaw] of [[zS - 0.035, Math.PI], [zN + 0.035, 0]]) {
+        const v = this.mesh(new THREE.PlaneGeometry(0.018, 2.4), seam, 0, 1.2, z, { yaw });
+        const top = this.mesh(new THREE.PlaneGeometry(2.4, 0.014), seam, 0, 2.395, z, { yaw });
+        for (const m of [v, top]) { m.receiveShadow = false; m.visible = false; m.renderOrder = 3; this.liftSeams.push(m); }
+      }
+    }
   }
   setFloor(text, red = false) {
     if (!this.floorCanvas) return;
@@ -703,7 +752,9 @@ export class Club {
       } else l.intensity = l.base * (0.55 + 0.45 * Math.sin(B.beat * Math.PI * 0.5 + i));
     }
     if (this.ledU) {
-      this.ledU.uBeat.value = B.beat % 1024; this.ledU.uBar.value = B.bar % 256; // la GPU no se banca números del tamaño de la hora this.ledU.uT.value = t; this.ledU.uLevel.value = 0.25 + 0.75 * level;
+      // (módulo: la GPU no se banca números del tamaño de la hora)
+      this.ledU.uBeat.value = B.beat % 1024; this.ledU.uBar.value = B.bar % 256;
+      this.ledU.uT.value = t % 1000; this.ledU.uLevel.value = 0.25 + 0.75 * level;
       for (let i = 0; i < 8; i++) { const f = feet[i]; if (f) this.ledU.uFeet.value[i].set(f.x, 0, f.z); else this.ledU.uFeet.value[i].set(1e4, 0, 1e4); }
     }
     if (this.heads) {
@@ -754,7 +805,7 @@ export class Club {
     // puertas: se deslizan hacia su objetivo
     for (const d of Object.values(this.doors)) {
       d.open += clamp(d.target - d.open, -dt * (d.kind === 'blast' ? 0.9 : 1.6), dt * (d.kind === 'blast' ? 0.9 : 1.6));
-      if (d.kind === 'lift') { d.leaves[0].position.x = -0.3 - d.open * 0.6; d.leaves[1].position.x = 0.3 + d.open * 0.6; }
+      if (d.kind === 'lift') { const e = d.open * d.open * (3 - 2 * d.open); d.leaves[0].position.x = -0.61 - e * 1.2; d.leaves[1].position.x = 0.61 + e * 1.2; }
       else d.leaves[0].position.x = d.open * (C.door.w + 0.3);
     }
   }

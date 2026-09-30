@@ -491,7 +491,8 @@ function teleportLocal(pos, yaw) {
   if (!L) return;
   if (L.vehicle) state.vehicles?.exitCurrent();
   if (L.seat) { if (L.seat.poker) G.poker?.leave(); L.standUp(); }
-  L.teleport(pos, yaw);
+  // nunca adentro de algo: se apoya en el piso que haya y, si está ocupado, al lado (ver Player.safeSpot)
+  L.teleport(L.safeSpot ? L.safeSpot(pos) : pos, yaw);
   state.viewYaw = yaw; state.viewPitch = 0;
 }
 // Fundido a negro: cb se llama con la pantalla negra y después vuelve (ms: cuánto queda negro)
@@ -1726,7 +1727,7 @@ function updateCamera(dt) {
     state.eyeOff.lerp(off, 1 - Math.exp(-30 * dt));
     state.eye = (state.eye || new THREE.Vector3()).copy(base).add(state.eyeOff);
     G.camera.position.copy(state.eye);
-    G.camera.position.x += shx; G.camera.position.y += shy;
+    G.camera.position.x += shx; G.camera.position.y += shy + (G.club?.camBob || 0);
     G.camera.lookAt(state.eye.clone().addScaledVector(fwd, 10));
     G.camera.rotateX(camKick.a.x); G.camera.rotateY(camKick.a.y); G.camera.rotateZ(camKick.a.z);
     L.char.setVisibleHead(false);
@@ -1742,6 +1743,8 @@ function updateCamera(dt) {
     state.eyeDrop = (state.eyeDrop || 0) + ((L.seat || L.vehicle ? 0 : L.eyeDrop || 0) - (state.eyeDrop || 0)) * (1 - Math.exp(-10 * dt));
     pivot = L.renderPos.clone().add(new THREE.Vector3(0, L.seat || L.vehicle ? 1.3 : 1.62 * (L.char.meta?.height || 1.8) / 1.8 - state.eyeDrop, 0));
   }
+  // el ascensor que arranca y frena: el cuerpo se queda atrás un instante (lo calcula game/club.js)
+  pivot.y += G.club?.camBob || 0;
   let dist = mode === 0 ? 4.2 : mode === 3 ? 2.1 : 2.4;
   if (L.vehicle) dist += 1.8;
   if (down) dist = 3.6;
@@ -1940,6 +1943,7 @@ async function boot() {
       if (st) { sfx.birdMute = st.s; st.ambience(dt, sfx); }
       G.haunt?.ambience(dt, sfx);
       G.owner?.sound(sfx);
+      G.club?.ambience?.(dt, sfx);
     };
     G.owner = new OwnerPowers({
       getNet: () => state.net, getLocal: () => state.local, isOwner: () => !!state.isOwner,

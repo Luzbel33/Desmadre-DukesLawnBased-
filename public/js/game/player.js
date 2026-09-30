@@ -473,6 +473,38 @@ export class LocalPlayer {
     this._syncVisual();
   }
 
+  // Un lugar libre cerca de pos para aparecer (ritual, tumba, escalera): se apoya en el piso de verdad que haya
+  // abajo (tarimas, escalones, pisos altos) y, si la cápsula queda metida en algo, prueba en anillos alrededor.
+  // Sin esto el ritual te dejaba adentro de la tarima del trono: el controlador no sale solo y quedabas atrapado.
+  safeSpot(pos, maxR = 2.4) {
+    const W = G.phys.world, rot = { x: 0, y: 0, z: 0, w: 1 };
+    const cap = new RAPIER.Capsule(this.capsuleHalf, this.capsuleRadius);
+    const solid = groups(0xffff, GR.WORLD | GR.VEHICLE);
+    const at = (x, z) => {
+      const hit = G.phys.raycast(x, pos.y + 1.7, z, 0, -1, 0, 3.6, groups(0xffff, GR.WORLD));
+      if (!hit || hit.ny < 0.6 || hit.dist < 0.05) return null;
+      const c = { x, y: hit.y + this.bodyY + 0.03, z };
+      let blocked = false;
+      W.intersectionsWithShape(c, rot, cap, (col) => {
+        const k = col.contactShape(cap, c, rot, 0);
+        if (k && k.distance < -0.01) blocked = true;
+        return !blocked;
+      }, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, solid, this.collider, this.body);
+      return blocked ? null : new THREE.Vector3(x, hit.y + 0.02, z);
+    };
+    const first = at(pos.x, pos.z);
+    if (first) return first;
+    for (let r = 0.45; r <= maxR; r += 0.45) {
+      const n = Math.max(6, Math.round(r * 9));
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + r;
+        const p = at(pos.x + Math.cos(a) * r, pos.z + Math.sin(a) * r);
+        if (p) return p;
+      }
+    }
+    return pos.clone();
+  }
+
   _resetArms() {
     for (const a of [this.arm.l, this.arm.r]) {
       a.ready = false;

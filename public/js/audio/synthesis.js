@@ -4,7 +4,7 @@
 // un seno sostenido suena a "señal de radio".
 const TAU=Math.PI*2;
 const GAIN={engine:3,blades:1.4,water:1.6};
-const DURATIONS={gulp:.32,cough:.9,pain:.42,burp:.7,'step-grass':.18,'step-hard':.16,jump:.2,land:.28,hit:.22,swing:.24,pickup:.18,throw:.3,drink:1.0,smoke:.8,spray:2,engine:2,blades:2,horn:.55,wind:6,birds:1.6,water:4,ui:.18,munch:.5,drip:.42,shot:.55,boom:2.4,bills:.7,fireball:1.3};
+const DURATIONS={gulp:.32,cough:.9,pain:.42,burp:.7,'step-grass':.18,'step-hard':.16,jump:.2,land:.28,hit:.22,swing:.24,pickup:.18,throw:.3,drink:1.0,smoke:.8,spray:2,engine:2,blades:2,horn:.55,wind:6,birds:1.6,water:4,ui:.18,munch:.5,drip:.42,shot:.55,boom:2.4,bills:.7,fireball:1.3,'lift-hum':2,'lift-ding':1.8,'lift-door':1.05,'lift-clunk':.7};
 
 // Filtro de dos polos (RBJ): pasabanda de ganancia 0 dB en el pico, o pasabajos.
 function biquad(kind,f,q,sr){
@@ -36,6 +36,10 @@ export function synthesize(name, sampleRate=22050, seed=1) {
     st.bub=[];let t=0;while(t<duration){t+=.012+rnd()*.07;st.bub.push({t,f:520+rnd()*1100,d:.012+rnd()*.03,a:.018+rnd()*.05});}
   }
   if(name==='drip'){st.f0=480+rnd()*420;st.dec=rnd()*10;}
+  // ascensor del Búnker: motor (zumbido con armónicos que cierran el loop de 2 s), aire/cable (ruido en banda) y traqueteo
+  if(name==='lift-hum'){st.air=biquad('bp',620,1.1,sr);st.lp=biquad('lp',140,.7,sr);st.rat=biquad('bp',2300,2.2,sr);st.clk=[];let t=0;while(t<duration-.05){t+=.05+rnd()*.16;st.clk.push({t,a:.2+rnd()*.8});}}
+  if(name==='lift-door'){st.bp=biquad('bp',600,1.4,sr);st.lp=biquad('lp',220,.7,sr);}
+  if(name==='lift-clunk'){st.lp=biquad('lp',300,.8,sr);}
   if(name==='blades'){st.bp=biquad('bp',430,1.2,sr);st.hiss=biquad('bp',1900,1.4,sr);st.lp=biquad('lp',180,.7,sr);}
   if(name==='engine'){
     // monocilíndrico: explosiones a ~24 Hz (48 en 2 s, así el loop cierra) que excitan el escape
@@ -110,6 +114,30 @@ export function synthesize(name, sampleRate=22050, seed=1) {
       }
       // gota que cae en un charco: "plip" con el tono subiendo (la burbuja que se cierra) y un chasquido corto
       case 'drip': {const f=st.f0*(1+1.5*(1-Math.exp(-t*60)));phase+=TAU*f/sampleRate;v=.6*Math.sin(phase)+.14*Math.sin(2*phase)*Math.exp(-t*40)+.22*n*Math.exp(-t*220);env=Math.min(1,t/.002)*Math.exp(-t*(15+st.dec));break;}
+      case 'lift-hum': {
+        const hum=.5*Math.sin(TAU*50*t)+.28*Math.sin(TAU*100*t+1)+.16*Math.sin(TAU*150*t+2)+.07*Math.sin(TAU*300*t);
+        let rat=0;for(const c of st.clk){const bt=t-c.t;if(bt>=0&&bt<.03)rat+=c.a*Math.exp(-bt*160);}
+        v=.55*hum*(.8+.2*Math.sin(TAU*1.5*t))+.5*st.air(n)*(.7+.3*Math.sin(TAU*.5*t))+.35*st.lp(n)+.3*st.rat(n)*rat;
+        break;
+      }
+      case 'lift-door': {
+        // puerta neumática: soplido que sube y baja + rodamientos, y el golpe sordo al llegar al tope
+        st.bp.set(500+900*Math.sin(Math.PI*Math.min(1,u*1.25)));
+        const slide=Math.sin(Math.PI*Math.min(1,u*1.25))**.7;
+        const bt=t-.8,thud=bt>0?(.9*Math.sin(TAU*85*bt)+.5*n)*Math.exp(-bt*30):0;
+        v=.6*st.bp(n)*slide+.3*st.lp(n)*slide*(1+.5*Math.sin(TAU*31*t))+thud;
+        break;
+      }
+      case 'lift-clunk': {
+        // freno que se suelta / engancha: golpe grave con chapa que resuena
+        v=.9*Math.sin(TAU*(68*t-20*t*t))*Math.exp(-t*9)+.35*Math.sin(TAU*423*t)*Math.exp(-t*14)+.2*Math.sin(TAU*1131*t)*Math.exp(-t*22)+.5*st.lp(n)*Math.exp(-t*25);
+        env=Math.min(1,t*900);break;
+      }
+      case 'lift-ding': {
+        // campanita de llegada: parciales de campana (inarmónicos) que se apagan a distinto ritmo
+        const f=1318.5;v=.5*Math.sin(TAU*f*t)*Math.exp(-t*2.2)+.22*Math.sin(TAU*f*2.76*t)*Math.exp(-t*5)+.1*Math.sin(TAU*f*5.4*t)*Math.exp(-t*9)+.18*Math.sin(TAU*f*.5*t)*Math.exp(-t*3);
+        env=Math.min(1,t*600);break;
+      }
       case 'ui': v=.24*Math.sin(TAU*(u<.5?660:880)*t);env=Math.sin(Math.PI*u)**2;break;
       case 'gulp': {const f=150-180*u;phase+=TAU*f/sampleRate;v=.55*Math.sin(phase)+.25*lo;env=Math.exp(-(((u-.3)/.2)**2));break;}
       case 'cough': {const k=Math.floor(u*3),lu=(u*3)%1;v=.55*lo+.25*n+.2*Math.sin(TAU*(180-60*lu)*t);env=(k<3?1:0)*Math.exp(-lu*6)*(1-k*.25);break;}

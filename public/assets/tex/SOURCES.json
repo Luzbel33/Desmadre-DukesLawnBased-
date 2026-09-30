@@ -34,5 +34,29 @@
   ],
   "resolution": "1k",
   "date": "2026-09-29"
+ },
+ {
+  "id": "metal_plate",
+  "source": "https://polyhaven.com/a/metal_plate",
+  "license": "CC0",
+  "maps": [
+   "color",
+   "normal",
+   "rough"
+  ],
+  "resolution": "1k",
+  "date": "2026-09-30"
+ },
+ {
+  "id": "metal_plate_02",
+  "source": "https://polyhaven.com/a/metal_plate_02",
+  "license": "CC0",
+  "maps": [
+   "color",
+   "normal",
+   "rough"
+  ],
+  "resolution": "1k",
+  "date": "2026-09-30"
  }
 ]

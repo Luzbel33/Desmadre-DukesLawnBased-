@@ -4,8 +4,9 @@
 //  - El ascensor: una cabina con dos puertas. "Baja" (y "sube") de mentira: se cierran las puertas, tiembla, el visor
 //    cuenta los pisos hasta el -666 y se abre la puerta del otro lado. Lo que aprieta uno lo ven todos (evento).
 //  - El portero pide la contraseña ("tracatraca"); con la clave, la puerta blindada se te abre. De adentro, siempre.
-//  - El pentagrama del cuarto secreto: parado ahí con el Diablo, X abre el ritual (el servidor lo valida) y te llevás
-//    al Búnker a los que elijas de los que están en el pentagrama, entre fuego, risas y humo.
+//  - Los pentagramas: el del cuarto secreto (castillo) y el del Búnker (frente al trono). Parado en uno con el
+//    Diablo, X abre el ritual (el servidor lo valida) y te llevás al otro a los que elijas de los que están ahí,
+//    entre fuego, risas y humo.
 //  - El trono: el que se sienta sale en la pantalla de atrás, en vivo, con su nombre escrito en sangre y fuego.
 import * as THREE from 'three';
 import { G, clamp } from '../core/G.js';
@@ -20,7 +21,9 @@ const F0 = CASTLE.keep.floor;
 const P = CLUB.pentagram;
 const V1 = new THREE.Vector3();
 const V2 = new THREE.Vector3();
-const LIFT = { close: 1.3, move: 5.5, open: 1.2 };
+// el viaje: puertas que cierran, el recorrido (depth: metros "de mentira" que usa el bamboleo de la cámara) y abrir
+const LIFT = { close: 1.3, move: 5.5, open: 1.2, depth: 18, jolts: [0.31, 0.57, 0.84] };
+const LIFT_AT = new THREE.Vector3(0, 1.5, -431.6);
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z]/g, '');
 
 const DOORMAN_HI = ['¿Y vos quién sos?', 'Acá no entra cualquiera, mostro.', 'Sin contraseña no hay fiesta.', 'Ni lo sueñes, flaco.', 'La lista está cerrada. Bah, no hay lista.'];
@@ -39,7 +42,9 @@ export class ClubGame {
     try { this.authorized = sessionStorage.getItem('dukes.bunkerAuth') === '1'; } catch { this.authorized = false; }
     this.tomb = { open: 0, target: 0, closeAt: 0 };
     this.lift = { at: 'top', phase: 'idle', t0: 0, to: 'top', open: null };
-    this.ritual = { on: 0, laughT: 0, fx: [] };
+    this.ritual = { on: 0, laughT: 0, fx: [] }; // el del castillo
+    this.ritual2 = { on: 0, laughT: 0, fx: [] }; // el del Búnker
+    this.camBob = 0; this._bobV = 0; // la cámara en el ascensor (ver _liftStep)
     this.npcs = [];
     this.busy = false;
     this._buildTomb();
@@ -53,8 +58,10 @@ export class ClubGame {
   _interact() {
     const T = CLUB.tomb;
     this.tombUse = { id: 'club_tomb', k: 'club', e: 'tomb', p: [T.x, 1.0, T.z], r: 1.9, label: 'Correr la tapa de la tumba' };
-    this.ritualUse = { id: 'club_ritual', k: 'club', e: 'ritual', p: [P.x, F0 + 1, P.z], r: P.r, label: '⛧ Ritual: bajar al Búnker', when: () => this._ownerOnPentagram() };
-    INTERACT.push(this.tombUse, this.ritualUse);
+    const P2 = CLUB.pentagram2;
+    this.ritualUse = { id: 'club_ritual', k: 'club', e: 'ritual', p: [P.x, F0 + 1, P.z], r: P.r, label: '⛧ Ritual: bajar al Búnker', when: () => this._ownerOnPentagram() === 'castle' };
+    this.ritualUse2 = { id: 'club_ritual2', k: 'club', e: 'ritual', p: [P2.x, 1, P2.z], r: P2.r, label: '⛧ Ritual: volver al castillo', when: () => this._ownerOnPentagram() === 'bunker' };
+    INTERACT.push(this.tombUse, this.ritualUse, this.ritualUse2);
     // el portero y el ascensor ya los registró world/club.js (k: 'club')
     for (const it of this.club.interact) if (it.e === 'ride') this.rideUse = it;
   }
@@ -182,44 +189,89 @@ export class ClubGame {
     this._liftApply(m); this._send(m);
     G.sfx?.trigger('ui-select', null, 0.5);
   }
+  _liftSfx(name, vol) { G.sfx?.trigger(name, LIFT_AT, vol, { full: 4, max: 22, rate: 1 }); }
   _liftApply(m) {
     const Lf = this.lift, D = this.club.doors;
     if (m.a === 'open') {
       Lf.open = m.side;
-      (m.side === 's' ? D.liftS : D.liftN).target = 1;
-      G.sfx?.trigger('pickup', this.club.anchors.liftCenter, 0.5);
+      const d = m.side === 's' ? D.liftS : D.liftN;
+      if (d.target !== 1) this._liftSfx('lift-door', 0.55);
+      d.target = 1;
       return;
     }
+    if (D.liftS.target > 0 || D.liftN.target > 0) this._liftSfx('lift-door', 0.55);
     Lf.phase = 'ride'; Lf.t0 = m.t0; Lf.to = m.to === 'bottom' ? 'bottom' : 'top'; Lf.from = Lf.to === 'top' ? 'bottom' : 'top';
+    Lf.cue = 0; // lo que ya sonó en este viaje (bits): arranque, sacudones
     D.liftS.target = 0; D.liftN.target = 0; Lf.open = null;
   }
   _liftStep(dt) {
-    const Lf = this.lift, D = this.club.doors, L = this.getLocal();
+    const Lf = this.lift, D = this.club.doors, L = this.getLocal(), C = this.club;
     const inside = L && this._inLift(L.pos);
+    let acc = 0, speed = 0; // aceleración (m/s², + hacia arriba) y velocidad normalizada de la cabina "de mentira"
     if (Lf.phase === 'ride') {
       const t = ((G.net?.now?.() ?? Date.now()) - Lf.t0) / 1000;
-      const down = Lf.to === 'bottom';
-      if (t < LIFT.close) this.club.setFloor(down ? 'P.B.' : '-666', !down);
-      else if (t < LIFT.close + LIFT.move) {
+      const down = Lf.to === 'bottom', sgn = down ? -1 : 1;
+      const cue = (bit) => { if (Lf.cue & bit) return false; Lf.cue |= bit; return true; };
+      if (t < LIFT.close) {
+        C.setFloor(down ? 'P.B. ▼' : '-666 ▲', !down);
+        // puertas cerradas: se suelta el freno (golpe seco y la cabina "cae" un poquito)
+        if (t > LIFT.close - 0.2 && cue(1)) { this._liftSfx('lift-clunk', 0.7); if (inside) this._bobV -= 0.35 * sgn; }
+      } else if (t < LIFT.close + LIFT.move) {
         const p = (t - LIFT.close) / LIFT.move, e = p * p * (3 - 2 * p);
+        speed = 6 * p * (1 - p) / 1.5;
+        acc = sgn * LIFT.depth * (6 - 12 * p) / (LIFT.move * LIFT.move);
         const n = Math.round((down ? e : 1 - e) * 666);
-        this.club.setFloor(n === 0 ? 'P.B.' : '-' + n, n > 600);
-        if (inside) {
-          this.shake(0.05 + 0.1 * Math.sin(p * Math.PI));
-          G.sfx?._loop('lift-hum', 'engine', 0.35, null, { bus: 'ambient', rate: 0.45 });
+        C.setFloor((n === 0 ? 'P.B.' : '-' + n) + (down ? ' ▼' : ' ▲'), n > 600);
+        // la luz de cada piso pasa por las rendijas de las puertas (sube al bajar)
+        if (C.liftSeamU) {
+          C.liftSeamU.uOn.value = Math.min(1, speed * 1.4);
+          C.liftSeamU.uPhase.value += -sgn * LIFT.depth * speed * 1.5 / LIFT.move * dt / 1.7;
         }
+        // sacudones en las juntas del riel: ruido de chapa, la luz tiembla y el cuerpo se sacude
+        LIFT.jolts.forEach((jp, i) => {
+          if (p > jp && cue(2 << i)) {
+            G.sfx?.trigger('metal', LIFT_AT, 0.28, { full: 4, max: 18, rate: 0.7 + i * 0.08 });
+            Lf.flick = 0.16;
+            if (inside) { this._bobV -= 0.18; this.shake(0.35); }
+          }
+        });
+        if (inside) this.shake(0.04 + 0.1 * speed);
       } else {
         Lf.phase = 'idle'; Lf.at = Lf.to;
-        this.club.setFloor(Lf.at === 'bottom' ? '-666' : 'P.B.', Lf.at === 'bottom');
+        C.setFloor(Lf.at === 'bottom' ? '-666' : 'P.B.', Lf.at === 'bottom');
         Lf.open = Lf.at === 'bottom' ? 'n' : 's';
         (Lf.open === 's' ? D.liftS : D.liftN).target = 1;
-        G.sfx?.trigger('pickup', this.club.anchors.liftCenter, 0.7);
+        // frena: golpe, campanita, y se abre la puerta del otro lado
+        this._liftSfx('lift-clunk', 0.6);
+        this._liftSfx('lift-ding', 0.55);
+        setTimeout(() => this._liftSfx('lift-door', 0.55), 350);
+        if (inside) { this._bobV += 0.3 * sgn; this.shake(0.25); }
         if (inside && Lf.at === 'bottom') this.big('NIVEL -666', 'Bienvenido al infierno. Hay portero.', 2200);
       }
     }
+    if (Lf.phase !== 'ride' && C.liftSeamU) C.liftSeamU.uOn.value = Math.max(0, C.liftSeamU.uOn.value - dt * 3);
+    if (C.liftSeams) { const on = (C.liftSeamU?.uOn.value || 0) > 0.001; for (const m of C.liftSeams) m.visible = on; }
+    // la luz de la cabina: tiembla con los sacudones y respira con el motor
+    Lf.flick = Math.max(0, (Lf.flick || 0) - dt);
+    if (C.liftLight) C.liftLight.intensity = 6.5 * (Lf.flick > 0 ? 0.25 + 0.5 * Math.random() : 1 - 0.06 * speed * (0.5 + 0.5 * Math.sin(G.time * 37)));
+    // el cuerpo "se queda atrás" cuando la cabina acelera (resorte con un poco de rebote)
+    const w = 9, zeta = 0.28, h = Math.min(dt, 0.05);
+    this._bobV += (-(inside ? acc : 0) - w * w * this.camBob - 2 * zeta * w * this._bobV) * h;
+    this.camBob = clamp(this.camBob + this._bobV * h, -0.12, 0.12);
+    Lf.speed = speed;
     this.rideUse && (this.rideUse.label = Lf.phase === 'ride' ? 'Esperá...' : Lf.at === 'top' ? 'Apretar el botón (bajar al -666)' : 'Apretar el botón (subir)');
     for (const d of [D.liftS, D.liftN]) { try { d.collider.setEnabled(d.open < 0.85); } catch { /* */ } }
     this.inLift = !!inside;
+  }
+  // sonidos que tienen que tocarse dentro del motor de audio (si no, el loop se apaga solo cada cuadro)
+  ambience(dt, sfx) {
+    const Lf = this.lift;
+    if (Lf.phase !== 'ride' || !this.club.visible) return;
+    const L = this.getLocal();
+    if (!L || Math.hypot(L.pos.x - LIFT_AT.x, L.pos.z - LIFT_AT.z) > 14) return;
+    const sp = Lf.speed || 0;
+    if (this.inLift) sfx._loop('lift-hum', 'lift-hum', 0.14 + 0.32 * sp, null, { bus: 'ambient', rate: 0.72 + 0.4 * sp });
+    else sfx._loop('lift-hum', 'lift-hum', 0.08 + 0.14 * sp, LIFT_AT, { bus: 'ambient', rate: 0.72 + 0.4 * sp, full: 3, max: 14 });
   }
   _inLift(p) { const Lc = CLUB.lift; return p.x > Lc.x0 && p.x < Lc.x1 && p.z > Lc.z0 && p.z < Lc.z1 && p.y < 3; }
 
@@ -417,7 +469,6 @@ export class ClubGame {
 
   // ---------------------------------------------------------------- pentagrama y ritual
   _buildPentagram() {
-    const scene = this.club.scene;
     if (!HAS_DOM) return;
     const cv = document.createElement('canvas'); cv.width = cv.height = 512;
     const g = cv.getContext('2d');
@@ -432,53 +483,78 @@ export class ClubGame {
       g.stroke();
     }
     const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+    // el del castillo (piso F0 del cuarto secreto) y el del Búnker (piso del club): los dos iguales
+    this._pentagramAt(this.ritual, P, F0, tex, 3.7);
+    const P2 = CLUB.pentagram2;
+    this._pentagramAt(this.ritual2, P2, 0.012, tex, P2.r * 2);
+    // el del Búnker se ve siempre (apagado, como quemado en el piso): marca adónde se llega
+    const burnt = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.22, depthWrite: false, toneMapped: false, color: 0x5a0a04 });
+    const mark = new THREE.Mesh(new THREE.PlaneGeometry(P2.r * 2, P2.r * 2), burnt);
+    mark.rotation.x = -Math.PI / 2; mark.position.set(P2.x, 0.055, P2.z);
+    this.club.group.add(mark);
+  }
+  _pentagramAt(R, c, y, tex, size) {
     const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
     mat.color.setScalar(3);
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(3.7, 3.7), mat);
-    m.rotation.x = -Math.PI / 2; m.position.set(P.x, F0 + 0.05, P.z);
-    scene.add(m);
-    this.ritual.glow = m;
-    this.ritual.light = { position: new THREE.Vector3(P.x, F0 + 1.2, P.z), color: new THREE.Color(0xff2a10), intensity: 0, distance: 9, decay: 1.6, visible: true, priority: 3, base: 8 };
-    this.world.pool?.add(this.ritual.light);
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), mat);
+    m.rotation.x = -Math.PI / 2; m.position.set(c.x, y + 0.05, c.z);
+    (y > 1 ? this.club.scene : this.club.group).add(m);
+    R.glow = m; R.c = c; R.y = y;
+    R.light = { position: new THREE.Vector3(c.x, y + 1.2, c.z), color: new THREE.Color(0xff2a10), intensity: 0, distance: 9, decay: 1.6, visible: true, priority: 3, base: 8 };
+    this.world.pool?.add(R.light);
     // anillo de llamas (apagadas hasta que se para el Diablo)
     for (let k = 0; k < 12; k++) {
       const a = (k / 12) * Math.PI * 2;
-      const i = this.world.flames?.add(P.x + Math.cos(a) * (P.r + 0.1), F0 + 0.02, P.z + Math.sin(a) * (P.r + 0.1), 0.18, 0.45, { intensity: 0 });
-      if (i !== undefined && i >= 0) this.ritual.fx.push(i);
+      const i = this.world.flames?.add(c.x + Math.cos(a) * (c.r + 0.1), y + 0.02, c.z + Math.sin(a) * (c.r + 0.1), 0.18, 0.45, { intensity: 0 });
+      if (i !== undefined && i >= 0) R.fx.push(i);
     }
   }
-  _onPentagram(p) { return Math.hypot(p.x - P.x, p.z - P.z) < P.r && Math.abs(p.y - F0) < 1.2; }
+  // ¿en qué pentagrama está parado? 'castle' | 'bunker' | null
+  _pentagramOf(p) {
+    if (Math.hypot(p.x - P.x, p.z - P.z) < P.r && Math.abs(p.y - F0) < 1.2) return 'castle';
+    const P2 = CLUB.pentagram2;
+    if (Math.hypot(p.x - P2.x, p.z - P2.z) < P2.r && Math.abs(p.y) < 1.2) return 'bunker';
+    return null;
+  }
+  _onPentagram(p, which = null) { const w = this._pentagramOf(p); return which ? w === which : !!w; }
   _ownerOnPentagram() {
     const L = this.getLocal();
-    return !!(L && G.owner?.active() && this._onPentagram(L.pos));
+    return L && G.owner?.active() ? this._pentagramOf(L.pos) : null;
   }
   _ritualStep(dt) {
     const L = this.getLocal();
-    let demon = L && L.look?.model === 'diablo' && this._onPentagram(L.pos);
-    if (!demon) for (const rp of G.players.values()) if (rp.look?.model === 'diablo' && this._onPentagram(rp.pos)) { demon = true; break; }
-    const R = this.ritual;
-    const target = demon ? 1 : 0;
-    R.on += clamp(target - R.on, -dt * 1.2, dt * 2);
-    const t = G.time;
-    if (R.glow) R.glow.material.opacity = R.on * (0.65 + 0.35 * Math.sin(t * 5.3) * Math.sin(t * 1.7));
-    if (R.light) R.light.intensity = R.on * (6 + 3 * Math.sin(t * 13) + (R.burst || 0) * 20);
-    for (const i of R.fx) this.world.flames?.set(i, R.on * (1.4 + 0.3 * Math.sin(t * 7 + i)) + (R.burst || 0) * 2);
-    R.burst = Math.max(0, (R.burst || 0) - dt * 0.6);
-    // risas de muchos: una cada tanto, con tonos distintos (como si se riera un coro de demonios)
-    if (R.on > 0.5 && t > R.laughT) {
-      R.laughT = t + 0.7 + Math.random() * 1.6;
-      G.sfx?.trigger('devil-laugh', V1.set(P.x + (Math.random() - 0.5) * 6, F0 + 1.5, P.z + (Math.random() - 0.5) * 6), 0.45 + Math.random() * 0.3, { variant: Math.floor(Math.random() * 3), rate: 0.7 + Math.random() * 0.75, full: 4, max: 30 });
+    for (const [R, which] of [[this.ritual, 'castle'], [this.ritual2, 'bunker']]) {
+      let demon = L && L.look?.model === 'diablo' && this._onPentagram(L.pos, which);
+      if (!demon) for (const rp of G.players.values()) if (rp.look?.model === 'diablo' && this._onPentagram(rp.pos, which)) { demon = true; break; }
+      const target = demon ? 1 : 0;
+      R.on += clamp(target - R.on, -dt * 1.2, dt * 2);
+      const t = G.time;
+      if (R.glow) R.glow.material.opacity = R.on * (0.65 + 0.35 * Math.sin(t * 5.3) * Math.sin(t * 1.7));
+      if (R.light) R.light.intensity = R.on * (6 + 3 * Math.sin(t * 13) + (R.burst || 0) * 20);
+      // la llamarada del ritual crece en tamaño, no en brillo (con brillo de más el fuego se ve como una mancha blanca)
+      const bu = R.burst || 0, on = Math.min(1, R.on + bu);
+      for (const i of R.fx) { this.world.flames?.set(i, on * (1.05 + 0.2 * Math.sin(t * 7 + i))); this.world.flames?.scale(i, 0.18 * (1 + bu * 0.5), 0.45 * (1 + bu * 1.2)); }
+      R.burst = Math.max(0, (R.burst || 0) - dt * 0.6);
+      if (!R.c) continue;
+      // risas de muchos: una cada tanto, con tonos distintos (como si se riera un coro de demonios)
+      if (R.on > 0.5 && t > R.laughT) {
+        R.laughT = t + 0.7 + Math.random() * 1.6;
+        G.sfx?.trigger('devil-laugh', V1.set(R.c.x + (Math.random() - 0.5) * 6, R.y + 1.5, R.c.z + (Math.random() - 0.5) * 6), 0.45 + Math.random() * 0.3, { variant: Math.floor(Math.random() * 3), rate: 0.7 + Math.random() * 0.75, full: 4, max: 30 });
+      }
+      if (R.on > 0.05) G.sfx?._loop('penta-fire-' + which, 'fire', R.on * 0.5, V1.set(R.c.x, R.y + 0.5, R.c.z), { bus: 'ambient', full: 3, max: 18 });
     }
-    if (R.on > 0.05) G.sfx?._loop('penta-fire', 'fire', R.on * 0.5, V1.set(P.x, F0 + 0.5, P.z), { bus: 'ambient', full: 3, max: 18 });
   }
   _openRitual() {
-    if (!HAS_DOM || !this._ownerOnPentagram()) return;
+    const where = this._ownerOnPentagram();
+    if (!HAS_DOM || !where) return;
     const list = document.getElementById('ritual-list');
     const modal = document.getElementById('ritual-modal');
     if (!list || !modal) return;
+    const q = document.getElementById('ritual-q');
+    if (q) q.textContent = where === 'bunker' ? '¿A quién te llevás de vuelta al castillo? Solo pueden ir los que están parados en el pentagrama.' : '¿A quién te llevás al Búnker? Solo pueden ir los que están parados en el pentagrama.';
     list.innerHTML = '';
     const here = [];
-    for (const [id, rp] of G.players) if (this._onPentagram(rp.pos)) here.push({ id, name: rp.name || 'Jugador ' + id });
+    for (const [id, rp] of G.players) if (this._onPentagram(rp.pos, where)) here.push({ id, name: rp.name || 'Jugador ' + id });
     if (!here.length) list.innerHTML = '<p class="hint">No hay nadie más en el pentagrama. Te podés llevar solo a vos.</p>';
     for (const h of here) {
       const row = document.createElement('label');
@@ -502,29 +578,36 @@ export class ClubGame {
     this.closeRitual();
   }
   closeRitual() { document.getElementById('ritual-modal')?.classList.add('hidden'); this.closeUI(); }
-  // el servidor aprobó el ritual: fuego, risas, humo... y los elegidos desaparecen
+  // el servidor aprobó el ritual: fuego, risas, humo... y los elegidos desaparecen (m.to: adónde van; un servidor
+  // viejo no lo manda y siempre era al Búnker)
   onRitual(m) {
-    const R = this.ritual;
+    const toCastle = m.to === 'castle';
+    const R = toCastle ? this.ritual2 : this.ritual, c = R.c || P, y = R.y ?? F0;
     R.burst = 1.5;
-    const at = V1.set(P.x, F0 + 0.3, P.z).clone();
+    const at = V1.set(c.x, y + 0.3, c.z).clone();
     G.sfx?.trigger('fire-flare', at, 1, { full: 6, max: 50 });
     G.sfx?.trigger('devil-laugh', at, 1, { variant: 0, rate: 0.8, full: 6, max: 60 });
     G.sfx?.trigger('stinger', at, 0.8, { full: 6, max: 40 });
-    for (let k = 0; k < 10; k++) setTimeout(() => this.puff?.(V2.set(P.x + (Math.random() - 0.5) * 3, F0 + 0.2 + Math.random() * 1.6, P.z + (Math.random() - 0.5) * 3).clone(), 2.5), k * 120);
+    for (let k = 0; k < 10; k++) setTimeout(() => this.puff?.(V2.set(c.x + (Math.random() - 0.5) * 3, y + 0.2 + Math.random() * 1.6, c.z + (Math.random() - 0.5) * 3).clone(), 2.5), k * 120);
     const L = this.getLocal();
-    const mine = [m.id, ...(m.ids || [])].includes(G.myId);
-    if (!mine || !L) return;
+    const all = [m.id, ...(m.ids || [])];
+    if (!all.includes(G.myId) || !L) return;
     this.busy = true;
     this.shake(0.8);
     setTimeout(() => {
       this.fade(true, () => {
-        const A = CLUB.arrive, order = [m.id, ...(m.ids || [])].indexOf(G.myId);
-        const a = order * 1.1;
-        this.teleport(new THREE.Vector3(A.x + Math.cos(a) * (order ? 1.4 : 0), 0.05, A.z + Math.sin(a) * (order ? 1.4 : 0)), A.yaw);
-        this.authorized = true; try { sessionStorage.setItem('dukes.bunkerAuth', '1'); } catch { /* */ }
-        for (let k = 0; k < 6; k++) setTimeout(() => this.puff?.(V2.set(A.x + (Math.random() - 0.5) * 3, 0.3 + Math.random() * 1.5, A.z + (Math.random() - 0.5) * 3).clone(), 2.2), k * 100);
+        // llegada: el Diablo en el centro del otro pentagrama y los invitados en ronda alrededor (cada uno en un
+        // lugar libre: teleport ya se apoya en el piso y esquiva lo que haya)
+        const D = toCastle ? { x: P.x, y: F0, z: P.z, yaw: P.yaw ?? 0 } : { x: CLUB.arrive.x, y: 0, z: CLUB.arrive.z, yaw: CLUB.arrive.yaw };
+        const order = all.indexOf(G.myId), a = order * 1.3;
+        const r = order ? 1.15 : 0;
+        this.teleport(new THREE.Vector3(D.x + Math.cos(a) * r, D.y + 0.05, D.z + Math.sin(a) * r), D.yaw);
+        if (!toCastle) { this.authorized = true; try { sessionStorage.setItem('dukes.bunkerAuth', '1'); } catch { /* */ } }
+        for (let k = 0; k < 6; k++) setTimeout(() => this.puff?.(V2.set(D.x + (Math.random() - 0.5) * 3, D.y + 0.3 + Math.random() * 1.5, D.z + (Math.random() - 0.5) * 3).clone(), 2.2), k * 100);
+        (toCastle ? this.ritual : this.ritual2).burst = 1.2;
         G.sfx?.trigger('devil-laugh', null, 0.8, { variant: 1, rate: 1 });
-        this.big('⛧ EL BÚNKER ⛧', m.id === G.myId ? 'Tu casa, Diablo' : 'El Diablo te trajo de invitado', 2800);
+        if (toCastle) this.big('⛧ EL CASTILLO ⛧', m.id === G.myId ? 'De vuelta arriba' : 'El Diablo te devolvió al castillo', 2600);
+        else this.big('⛧ EL BÚNKER ⛧', m.id === G.myId ? 'Tu casa, Diablo' : 'El Diablo te trajo de invitado', 2800);
         this.busy = false;
       }, 700);
     }, 1400);

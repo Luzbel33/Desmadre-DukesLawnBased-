@@ -53,6 +53,9 @@ const PBR = {
   bunkerConcrete: { id: 'concrete_floor_01', tint: 0x77777c, size: 3 },
   bunkerBrick: { id: 'brick_wall_001', tint: 0x3c3438, size: 2.6 },
   bunkerIron: { id: 'rusty_corrugated_iron', tint: 0x6e645c, size: 2 },
+  // el ascensor: paneles de chapa gastada con juntas (paredes, techo y puertas) y piso de chapa semillada
+  liftPanel: { id: 'metal_plate_02', tint: 0xb4b0aa, size: 2.4 },
+  treadPlate: { id: 'metal_plate', tint: 0xb0aca6, size: 0.9 },
 };
 const loader = new THREE.TextureLoader();
 // cargas en curso: la pantalla de carga espera a que terminen (si no, al entrar se ven las texturas provisorias)
@@ -147,6 +150,8 @@ const TEXMATS = {
   bunkerConcrete: { tex: 'concrete', rough: 0.95, tile: 3 },
   bunkerBrick: { tex: 'brick', rough: 0.9, tile: 2.6 },
   bunkerIron: { tex: 'metal', rough: 0.6, metal: 0.4, tile: 2 },
+  liftPanel: { tex: 'metal', rough: 0.6, metal: 0.35, tile: 2.4 },
+  treadPlate: { tex: 'metal', rough: 0.5, metal: 0.6, tile: 0.9 },
 };
 const COLORMATS = {
   white: { color: 0xd8d4ca, rough: 0.8 },

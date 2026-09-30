@@ -473,3 +473,6 @@ button.big:hover { filter: brightness(1.06); }
 .tag3d .hp i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #d0101a, #ff5a2a); transition: width 0.15s; }
 .dmgnum { position: absolute; left: 0; top: 0; pointer-events: none; font: 900 20px/1 Impact, 'Arial Black', sans-serif; color: #ffe0a0; text-shadow: 0 0 3px #000, 0 2px 0 #7a0000; z-index: 30; }
 .dmgnum.crit { color: #ff3030; }
+/* menús largos (pausa, inicio): se scrollean con la rueda pero sin barra a la vista */
+.menu-card, #media, #ritual-list { scrollbar-width: none; -ms-overflow-style: none; }
+.menu-card::-webkit-scrollbar, #media::-webkit-scrollbar, #ritual-list::-webkit-scrollbar { width: 0; height: 0; display: none; }

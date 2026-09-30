@@ -334,14 +334,16 @@ export class Room {
       case 'pow': // poderes del dueño: invisible, fuego por la boca, risa
         if (!p.owner || p.look.model !== 'diablo') break;
         if (msg.a === 'ritual') {
-          // el pentagrama del cuarto secreto: el Diablo parado adentro se lleva al Búnker a los que elija de los
-          // que también están parados ahí (cada 6 s como mucho)
-          const P = CLUB.pentagram, F0 = CASTLE.keep.floor;
-          const on = (q) => Array.isArray(q?.st?.p) && Math.hypot(q.st.p[0] - P.x, q.st.p[2] - P.z) < P.r + 0.6 && Math.abs(q.st.p[1] - F0) < 1.6;
-          if (!on(p) || now - (p.lastRitual || 0) < 6000) break;
+          // los pentagramas: el del cuarto secreto (castillo) lleva al Búnker y el del Búnker vuelve al castillo. El
+          // Diablo parado adentro se lleva a los que elija de los que también están parados ahí (cada 6 s como mucho)
+          const F0 = CASTLE.keep.floor;
+          const at = (P, y) => (q) => Array.isArray(q?.st?.p) && Math.hypot(q.st.p[0] - P.x, q.st.p[2] - P.z) < P.r + 0.6 && Math.abs(q.st.p[1] - y) < 1.6;
+          const onCastle = at(CLUB.pentagram, F0), onBunker = at(CLUB.pentagram2, 0);
+          const on = onCastle(p) ? onCastle : onBunker(p) ? onBunker : null;
+          if (!on || now - (p.lastRitual || 0) < 6000) break;
           p.lastRitual = now;
           const ids = (Array.isArray(msg.ids) ? msg.ids : []).slice(0, 16).map(Number).filter((id) => id !== p.id && this.players.has(id) && on(this.players.get(id)));
-          this.broadcast({ t: 'pow', id: p.id, a: 'ritual', ids: [...new Set(ids)] });
+          this.broadcast({ t: 'pow', id: p.id, a: 'ritual', ids: [...new Set(ids)], to: on === onCastle ? 'bunker' : 'castle' });
           break;
         }
         if (msg.a === 'inv') {

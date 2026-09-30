@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Room } from '../server/room.js';
-import { PROTOCOL } from '../public/js/shared/mapdata.js';
+import { PROTOCOL, CLUB, CASTLE } from '../public/js/shared/mapdata.js';
 
 let ipN = 1;
 function fakeWs() {
@@ -93,4 +93,25 @@ test('fireballs and temporary flames: validated relay, cooldown, impact deduplic
   assert.equal(later.sent.find(m=>m.t==='welcome').fires.length,0,'expired flames do not resurrect on join');
   own.sent.length=0;say(guest,{t:'pow',a:'ball',shot:'1',o:[0,2,4],d:[0,0,-1]});say(guest,{t:'pow',a:'patch',p:[0,0,4],n:[0,1,0]});
   assert.ok(!own.sent.some(m=>m.t==='pow'),'ordinary players cannot emit demon powers');
+});
+
+test('ritual: del cuarto secreto al Búnker y del pentagrama del Búnker de vuelta al castillo', () => {
+  const room = new Room('test-ritual', fs.mkdtempSync(path.join(os.tmpdir(), 'desmadre-')));
+  const own = fakeWs(); room.accept(own); join(own, 'SmokePyro', { model: 'diablo' }, 'Silencio');
+  const a = fakeWs(); room.accept(a); join(a, 'Ana', {});
+  const P = CLUB.pentagram, P2 = CLUB.pentagram2, F0 = CASTLE.keep.floor;
+  const ritual = () => a.sent.find((m) => m.t === 'pow' && m.a === 'ritual');
+  say(own, { t: 'st', s: { p: [P.x, F0, P.z] } }); say(a, { t: 'st', s: { p: [P.x + 0.5, F0, P.z] } });
+  a.sent.length = 0; say(own, { t: 'pow', a: 'ritual', ids: [2] });
+  assert.equal(ritual()?.to, 'bunker', 'desde el castillo se baja al Búnker');
+  assert.deepEqual(ritual().ids, [2]);
+  room.players.get(1).lastRitual = 0;
+  say(own, { t: 'st', s: { p: [P2.x, 0, P2.z] } }); say(a, { t: 'st', s: { p: [P2.x, 0, P2.z + 0.6] } });
+  a.sent.length = 0; say(own, { t: 'pow', a: 'ritual', ids: [2] });
+  assert.equal(ritual()?.to, 'castle', 'desde el Búnker se vuelve al castillo');
+  assert.deepEqual(ritual().ids, [2]);
+  room.players.get(1).lastRitual = 0;
+  say(own, { t: 'st', s: { p: [0, 0, -60] } });
+  a.sent.length = 0; say(own, { t: 'pow', a: 'ritual', ids: [] });
+  assert.equal(ritual(), undefined, 'lejos de los pentagramas no hay ritual');
 });

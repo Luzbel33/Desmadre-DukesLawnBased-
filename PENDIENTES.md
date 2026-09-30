@@ -2,7 +2,66 @@
 
 Documento de traspaso: si la conversación se compacta o se abre otro chat, leer esto primero.
 GitHub: https://github.com/Luzbel33/Desmadre-DukesLawnBased- · Render: srv-das85jg473hc7384nqn0.
-No hacer push ni deploy sin que Luz lo pida.
+Desde el 30/09 Luz pidió: **cada tarea terminada se sube a `main`** (así prueba hasta donde se llegó).
+
+## Tablero (30/09, pedido grande de QA de Luz) — [x] listo · [ ] pendiente
+
+Reglas de este pedido: respetar lo que subió GPT (arreglos y NPCs del club); **no tocar el cuerpo de las
+bailarinas** (ni mirarlo); usar Blender/addons/descargas para resultados de calidad, nada plano; optimizar sin
+bajar la calidad. Orden: primero bugs y lo importante, lo "random" al final.
+
+### 1. Bugs que rompen el juego
+- [x] Menú de Esc: sin barra de scroll visible (se sigue scrolleando con la rueda).
+- [x] Ascensor: las puertas tapan todo el vano (antes quedaban dos huecos de 0.6 m y se veía la antesala), cabina
+      de chapa (Poly Haven metal_plate/metal_plate_02) con marco y plafón, visor afuera y adentro con flecha; el
+      viaje se siente: freno que se suelta, la cabina que "cae", luz de cada piso que pasa por las rendijas,
+      sacudones en las juntas, zumbido de motor, campanita y puertas neumáticas (sonidos nuevos en synthesis.js).
+- [x] Ritual: pentagrama nuevo en el piso del Búnker (frente al trono) para llegar y para volver al castillo con los
+      que elija el Diablo (el servidor valida los dos); toda llegada por teletransporte busca piso firme y lugar
+      libre (`Player.safeSpot`): nadie queda metido en la tarima ni en el piso.
+- [ ] Choques con NPCs: con el AUTO son como paredes (el auto sale volando y ellos siguen caminando: tienen
+      que ser atropellados); A PIE chocan una vez y después se atraviesan; los que se queman no respetan
+      colisiones; al morir se congelan (tiene que ser ragdoll).
+- [ ] NPCs invisibles (¿guardias?) y el de cara de cerdo (transparente / colisiones rotas).
+- [ ] Rendimiento: el juego está pesado y el sonido se traba a veces.
+
+### 2. Club / personajes
+- [ ] Botón para cortar las peleas de los boxeadores.
+- [ ] Mujeres: **el cuerpo NO se toca** (ni se mira: es la base del futuro parque anatómico). Solo la cara:
+      lindas, sin bigote, con pelo largo de verdad (el de GPT está pésimo) o, si no sale bien, una máscara de
+      animal distinta para cada una (fiesta de élite). Accesorios bien puestos; nada de ropa pintada.
+
+### 3. Castillo (QA de Luz)
+- [ ] Banderas de la fachada que atraviesan el castillo; cartel más lindo.
+- [ ] Palanca afuera y adentro para subir/bajar el rastrillo de metal del portón.
+- [ ] Carro de calabazas: las calabazas lo atraviesan.
+- [ ] Ahorcado: soga que acompañe y calce en el cuello; escotilla abierta (que no la atraviese).
+- [ ] Tierra del calabazar y del espantapájaros redondeada y natural como las tumbas (nada de cajas).
+- [ ] Sandías flotando.
+- [ ] Piso de arriba ampliado con más lugares.
+
+### 4. Sensación de juego
+- [ ] Tercera persona: hombro derecho/izquierdo/centro, agarrar e interactuar cómodo, verse sentado en el trono.
+- [ ] Armas: apuntar de verdad, la mano y el arma siguen la mira, animaciones y retroceso.
+- [ ] Colisiones de todo el cuerpo (brazos activos, cabeza, piernas) contra jugadores, NPCs, vehículos y objetos.
+- [ ] Revolear objetos a jugadores: daño, reacción y feedback.
+- [ ] Gore más dinámico: miembros como objetos agarrables/revoleables.
+- [ ] Cuchillos/armas blancas que quedan clavados (jugador, piso, madera) y se sacan.
+
+### 5. Pase visual (sigue del plan de 12 puntos)
+- [ ] Resto del castillo y el mapa: cielo/tormenta, pasto, fuego, objetos flotantes, tumbas orgánicas,
+      enredaderas, pestillo del cementerio, caldero, más esqueletos, luz por ventanas.
+
+### 6. Para después (Luz: "no hacer ninguno hasta que lo anterior esté")
+- [ ] Empujones.
+- [ ] Gestos: mear, vomitar, escupir, caca (agarrable y revoleable, mancha), pedos.
+- [ ] Frisbees, aviones de papel, sorbete con bolitas, láser (feedback en la cara), gomitas.
+- [ ] Soga para trepar/atar, gancho tipo Batman, lanzallamas encendedor+alcohol (alternativo: pedos de fuego),
+      bombuchas, tomates que manchan, matafuegos, insecticida, consolador vibrador, látigo, correa (en 4 patas).
+      Rueda de ítems (¿X?) como la de gestos.
+- [ ] Suicidio con 3 variantes (pistola en la boca, puñalada en el culo, granada con 5 s de corrida).
+- [ ] Más playermodels graciosos (enanos, aliens, Kermit, Elmo, Scream, robots, memes, Hello Kitty...) de
+      paquetes gratis ya hechos, vibra Garry's Mod.
 
 ## Ojo: dos líneas de trabajo en paralelo
 
