@@ -7,8 +7,8 @@ import { cutRect, growAll, fieldMask } from '../shared/raster.js';
 // near/far: briznas; vf: matas lejanas (un triángulo ancho cada ~60 cm) hasta donde llega la bruma
 const QUALITY = {
   baja: { nearR: 10, nearS: 0.13, farR: 30, farS: 0.36, vfR: 0, vfS: 1 },
-  media: { nearR: 12, nearS: 0.1, farR: 40, farS: 0.28, vfR: 78, vfS: 0.72 },
-  alta: { nearR: 14, nearS: 0.08, farR: 48, farS: 0.24, vfR: 100, vfS: 0.62 },
+  media: { nearR: 11, nearS: 0.12, farR: 34, farS: 0.34, vfR: 78, vfS: 0.82 },
+  alta: { nearR: 14, nearS: 0.1, farR: 44, farS: 0.3, vfR: 96, vfS: 0.75 },
   ultra: { nearR: 18, nearS: 0.068, farR: 62, farS: 0.21, vfR: 125, vfS: 0.55 },
 };
 
@@ -42,7 +42,7 @@ uniform float uTime;
 uniform vec2 uCenter;      // centro de la grilla (celda entera * spacing)
 uniform float uSpacing;
 uniform int uGridW;
-uniform vec4 uInner;       // centro xz + medio lado del anillo cercano (para no duplicar)
+uniform vec4 uInner;       // previous grid: center xz, outer edge, transition start
 uniform float uHasInner;
 uniform float uFade;       // distancia de desvanecido
 uniform sampler2D uHeightTex;
@@ -87,7 +87,10 @@ const GLSL_BLADE = /* glsl */ `
   vec2 rel = wpos - uCamPos.xz;
   float dist = length(rel);
   vec2 inr = abs(wpos - uInner.xy);
-  float keep = 1.0 - uHasInner * step(max(inr.x, inr.y), uInner.z);
+  float keep = 1.0;
+  if (uHasInner > 0.5) keep = smoothstep(uInner.w, uInner.z, max(inr.x, inr.y));
+  vec2 edge = abs(wpos - uCenter);
+  float coverage = (1.0 - smoothstep(uFade * 0.74, uFade, max(edge.x, edge.y))) * keep;
   vec2 luv = (wpos - uLawn.xy) / uLawn.zw;
   float inLawn = step(0.0, luv.x) * step(luv.x, 1.0) * step(0.0, luv.y) * step(luv.y, 1.0);
   float hv = texture2D(uHeightTex, luv).r;
@@ -96,8 +99,9 @@ const GLSL_BLADE = /* glsl */ `
   float bh = (inLawn > 0.5 && hv > 0.015) ? mix(0.035, uBladeH, hv * hv * (0.85 + 0.15 * hv)) : 0.0;
   bh *= 0.999 + wild * 0.0;
   bh *= (0.62 + 0.76 * rnd) * (1.0 + uClump * 0.18);
-  bh *= 1.0 - smoothstep(uFade * 0.72, uFade, dist);
-  bh *= keep;
+  // Thin out full-height blades across the same square boundary that the
+  // next grid fills. Shrinking them around the camera made a bare circular band.
+  bh *= step(ghash12(wpos * 7.13 + 24.0), coverage);
   float ang = h2.x * 6.2831853 + h2.y * 3.0;
   vec2 sideDir = vec2(cos(ang), -sin(ang));
   vec2 mowDir = vec2(sin(dirv), cos(dirv));
@@ -192,6 +196,7 @@ export class Grass {
     this.maskTex = null;
     this.meshes = [];
     this.pendingCuts = [];
+    this._forward = new THREE.Vector3();
   }
 
   // máscara de pasto silvestre fuera del Gran Pasto (blanco = pasto, negro = piso duro)
@@ -205,6 +210,7 @@ export class Grass {
   }
 
   build(quality = 'alta') {
+    this.quality = quality;
     for (const m of this.meshes) {
       this.scene.remove(m);
       m.geometry.dispose();
@@ -254,10 +260,10 @@ export class Grass {
       this.meshes.push(mesh);
       return mesh;
     };
-    this.near = mk(q.nearR, q.nearS, 4, 0.05, false, q.nearR * 1.9);
-    this.far = mk(q.farR, q.farS, 3, 0.095, true, q.farR * 1.15);
+    this.near = mk(q.nearR, q.nearS, 4, 0.044, false, q.nearR - q.nearS * 2);
+    this.far = mk(q.farR, q.farS, 3, 0.11, true, q.farR - q.farS * 2);
     // matas lejanas: tapan el piso hasta la bruma (antes a partir de ~55 m el pasto era un piso chato)
-    this.vfar = q.vfR > 0 ? mk(q.vfR, q.vfS, 1, 0.26, true, q.vfR * 1.06, 1) : null;
+    this.vfar = q.vfR > 0 ? mk(q.vfR, q.vfS, 2, 0.26, true, q.vfR - q.vfS * 2, 1) : null;
   }
 
   // Suelo del Gran Pasto: color según altura y dirección de corte (se ve a la distancia)
@@ -384,7 +390,7 @@ float lnoise(vec2 p) {
   // benders: [{x, z, r, s}]
   update(dt, camera, benders) {
     const now = performance.now();
-    if (this.texDirty && now - this.lastUpload > 140) {
+    if (this.texDirty && now - this.lastUpload >= 33) {
       this.heightTex.needsUpdate = true;
       this.dirTex.needsUpdate = true;
       this.texDirty = false;
@@ -397,7 +403,7 @@ float lnoise(vec2 p) {
     }
     if (!this.near) return;
     const cp = camera.position;
-    const fwd = new THREE.Vector3();
+    const fwd = this._forward;
     camera.getWorldDirection(fwd);
     fwd.y = 0;
     if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, 1);
@@ -416,11 +422,11 @@ float lnoise(vec2 p) {
     const fcx = Math.floor((cp.x + fwd.x * fR * 0.5) / fS) * fS;
     const fcz = Math.floor((cp.z + fwd.z * fR * 0.5) / fS) * fS;
     fu.uCenter.value.set(fcx, fcz);
-    fu.uInner.value.set(ncx, ncz, nR * 0.92, 0);
+    fu.uInner.value.set(ncx, ncz, nu.uFade.value, nu.uFade.value * 0.74);
     if (this.vfar) {
       const vu = this.vfar.userData.u, vR = this.vfar.userData.R, vS = vu.uSpacing.value;
       vu.uCenter.value.set(Math.floor((cp.x + fwd.x * vR * 0.5) / vS) * vS, Math.floor((cp.z + fwd.z * vR * 0.5) / vS) * vS);
-      vu.uInner.value.set(fcx, fcz, fR * 0.93, 0);
+      vu.uInner.value.set(fcx, fcz, fu.uFade.value, fu.uFade.value * 0.74);
     }
     // quienes aplastan el pasto
     for (let i = 0; i < MAX_BENDERS; i++) {

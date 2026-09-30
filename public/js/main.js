@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import { G, clamp } from './core/G.js';
 import { Physics, GR, groups } from './core/physics.js';
 import { Input } from './core/input.js';
+import { GRAPHICS, readGraphics, applyGraphics } from './core/graphics.js';
+import { readAtmosphere, applyAtmosphere } from './core/atmosphere.js';
 import { Net } from './net/net.js';
 import { World } from './world/world.js';
 import { Grass } from './world/grass.js';
@@ -16,22 +18,26 @@ import { PropManager, defOf } from './game/props.js';
 import { preloadAssets, registerManifest } from './game/assets.js';
 import { Haunt } from './game/haunt.js';
 import { pbrReady } from './world/builder.js';
+import { yieldToBrowser, prepareScene } from './core/startup.js';
 
-// Que no se vea nada provisorio: compila todos los shaders de la escena (también los de los fantasmas, que arrancan
-// ocultos) para el estado en que se dibujan de verdad (adentro del pase de post), antes de mostrar el menú.
+// Preparar GPU antes del primer dibujo, cediendo el hilo entre tandas.
+// Un render para hornear sombras antes de compileAsync bloquea el navegador en frío.
 async function precompileScene(renderer) {
+  const rt = G.post?.ao?.beautyRenderTarget || G.post?.composer?.renderTarget1 || null;
+  const prev = renderer.getRenderTarget();
+  const hidden = [];
   try {
-    const rt = G.post?.ao?.beautyRenderTarget || G.post?.composer?.renderTarget1 || null;
-    const hidden = [];
     for (const o of [G.haunt?.count?.root, G.haunt?.lady?.g?.char?.root]) if (o && !o.visible) { o.visible = true; hidden.push(o); }
-    G.world?.update(1 / 60, { x: 0, z: -60 });
-    const prev = renderer.getRenderTarget();
+    G.camera.position.set(0, 3.4, -53); G.camera.lookAt(0, 1.2, -60);
+    G.world?.update(1 / 60, { x: 0, z: -60 }, { bake: false });
     renderer.setRenderTarget(rt);
-    await Promise.race([renderer.compileAsync(G.scene, G.camera), new Promise((r) => setTimeout(r, 12000))]);
+    await prepareScene(renderer, G.scene, G.camera, (done, total) => status(`Preparando materiales... ${Math.round(done / Math.max(1, total) * 100)}%`));
+  } finally {
     renderer.setRenderTarget(prev);
     for (const o of hidden) o.visible = false;
-  } catch (e) { console.warn('precompilación de shaders', e); }
+  }
 }
+
 import { ASSET_MANIFEST } from './game/asset-manifest.js';
 import { SFX_MANIFEST } from './audio/sfx-manifest.js';
 import { VoiceChat } from './audio/voice.js';
@@ -77,6 +83,7 @@ const state = {
   stateT: 0,
   promptAction: null,
   reconnecting: false,
+  preparingJoin: false,
   room: null,
   joinedName: null,
 };
@@ -235,6 +242,8 @@ function setupMenuDefaults() {
   updateAudioUI();
   $('o-grass').value = G.opts.grass;
   $('o-shadows').value = G.opts.shadows;
+  $('o-graphics').value = G.opts.graphics;
+  $('o-atmosphere').value = G.opts.atmosphere;
   $('o-voicemode').value = G.opts.voiceMode;
   $('o-hints').value = G.hud?.mode || 'primeras';
   $('o-spatial').checked = G.opts.voiceSpatial;
@@ -725,7 +734,7 @@ function doThrowRelease(side) {
   if (p) {
     // lo liviano sale disparado; lo pesado apenas
     const sp = clamp(17 - Math.sqrt(p.mass || 1) * 3.3, 5.5, 16.5);
-    L.release(side, false);
+    L.releaseForThrow(side);
     state.props.setVelocity(p, { x: dir.x * sp + hv.x * 0.3, y: dir.y * sp + hv.y * 0.3 + 1.6, z: dir.z * sp + hv.z * 0.3 });
     p.body.setAngvel({ x: (Math.random() - 0.5) * 10, y: (Math.random() - 0.5) * 10, z: (Math.random() - 0.5) * 10 }, true);
     state.props.markThrown(p);
@@ -1117,7 +1126,8 @@ async function joinGame() {
     $('m-err').textContent = ''; resumeGame(); return;
   }
 
-  state.reconnecting = true;
+  state.reconnecting = true; state.preparingJoin = true;
+  $('m-play').disabled = true;
   try {
     state.local = new LocalPlayer(look); state.local.name = name; G.me = state.local;
     state.net = new Net(); G.net = state.net;
@@ -1145,6 +1155,13 @@ async function joinGame() {
     });
     setupNetHandlers(state.net);
     await state.net.connect(room, name, look, isOwnerName(name) ? state.ownerKey : undefined);
+    // Welcome adds characters, vehicles and room props. Prepare those before
+    // starting gameplay; otherwise their first draw stalls the first seconds.
+    const target = G.renderer.getRenderTarget();
+    try {
+      G.renderer.setRenderTarget(G.post.ao?.beautyRenderTarget || G.post.composer.renderTarget1);
+      await prepareScene(G.renderer, G.scene, G.camera, (done, total) => { $('m-err').textContent = `Preparando sala... ${Math.round(done / Math.max(1, total) * 100)}%`; });
+    } finally { G.renderer.setRenderTarget(target); }
     G.inGame = true; G.sfx?.trigger('ui', null, .35); state.eyeOffset = undefined; state.room = room; state.joinedName = name;
     $('m-err').textContent = '';
     state.viewYaw = state.local.yaw;
@@ -1156,7 +1173,7 @@ async function joinGame() {
   } catch (e) {
     console.error(e); $('m-err').textContent = e.message || String(e);
     state.local?.dispose(); state.local = null; G.me = null; G.media?.dispose(); G.media = null; G.sfx?.stop(); state.net?.close();
-  } finally { state.reconnecting = false; }
+  } finally { state.reconnecting = false; state.preparingJoin = false; $('m-play').disabled = false; }
 }
 
 function setupUIEvents() {
@@ -1174,6 +1191,11 @@ function setupUIEvents() {
     else if (e.key === 'Escape') { e.preventDefault(); closeOwnerModal(); }
   });
   $('p-resume').addEventListener('click', resumeGame);
+  $('p-fullscreen').addEventListener('click', async () => {
+    const protectedKeys = await G.input.immersive();
+    if (!protectedKeys) G.hud?.notify('El navegador no habilitó la captura completa de atajos.', 4000);
+    resumeGame();
+  });
   $('p-respawn').addEventListener('click', () => { state.local?.respawn(); resumeGame(); });
   $('p-char').addEventListener('click', () => { setMode('menu'); G.input.unlock(); $('m-play').textContent = 'APLICAR Y VOLVER'; });
   $('p-desmadre').addEventListener('click', () => state.net?.send({ t: 'set', k: 'desmadre', v: !G.settings.desmadre }));
@@ -1232,6 +1254,18 @@ function setupUIEvents() {
   $('o-invert').addEventListener('change', (e) => { G.opts.invertY = e.target.checked; });
   $('o-hints').addEventListener('change', (e) => G.hud?.setHintMode(e.target.value));
   $('o-grass').addEventListener('change', (e) => { G.opts.grass = e.target.value; G.grass.build(G.opts.grass); });
+  $('o-graphics').addEventListener('change', (e) => {
+    applyGraphics(G, e.target.value, localStorage);
+    $('o-grass').value = G.opts.grass;
+    $('o-shadows').value = G.opts.shadows;
+  });
+  $('o-atmosphere').addEventListener('change', (e) => applyAtmosphere(G, e.target.value, localStorage));
+  $('o-shadows').addEventListener('change', (e) => {
+    G.opts.shadows = e.target.value;
+    const size = G.opts.shadows === 'ultra' ? 4096 : G.opts.shadows === 'baja' ? 1024 : 2048;
+    const shadow = G.world.sun.shadow;
+    shadow.mapSize.set(size, size); shadow.map?.dispose(); shadow.map = null; shadow.needsUpdate = true;
+  });
 
   addEventListener('keydown', (e) => {
     if (!G.inGame) return;
@@ -1287,7 +1321,10 @@ function updateInput(dt) {
   state.viewPitch = clamp(state.viewPitch, -1.32, 1.32);
   L.aimPitch = state.viewPitch;
 
-  if (inp.hit('Space') && onFoot) L.queueJump();
+  if (inp.hit('Space') && onFoot) {
+    if (inp.key('ShiftLeft') || inp.key('ShiftRight')) L.dive(state.viewYaw);
+    else L.queueJump();
+  }
   // X usa el mundo; E y Q solo agarran/sueltan (derecha/izquierda). Nunca se pisan.
   if (inp.hit('KeyX')) interact();
   if (!driving && !down) {
@@ -1531,10 +1568,13 @@ function benders() {
 
 async function boot() {
   try {
+    const initialGraphics = readGraphics(localStorage);
+    applyGraphics(G, initialGraphics);
+    applyAtmosphere(G, readAtmosphere(localStorage));
     status('Iniciando motor...');
     const canvas = $('game');
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, GRAPHICS[initialGraphics].maxDpr)); renderer.setSize(innerWidth, innerHeight);
     renderer.setClearColor(0x000000, 0); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.86;
     installFarShadowChunk(); // sombra lejana horneada + la dinámica de cerca (antes de compilar materiales)
@@ -1547,11 +1587,16 @@ async function boot() {
     status('Cargando objetos...');
     registerManifest(ASSET_MANIFEST);
     await preloadAssets((n, total) => status(`Cargando objetos... ${n}/${total}`));
-    status('Construyendo el mundo...'); G.world = new World(G.scene, G.phys); G.world.build(renderer, G.opts.shadows);
+    status('Construyendo el mundo...'); await yieldToBrowser();
+    G.world = new World(G.scene, G.phys); await G.world.build(renderer, 'media');
+    await yieldToBrowser();
     G.grass = new Grass(G.scene); G.grass.setMask(G.world.mask); G.grass.makeLawnGround(); G.grass.build(G.opts.grass);
-    G.post = new Post(renderer, G.scene, G.camera, { bloom: G.opts.shadows !== 'baja', ao: G.opts.shadows !== 'baja' }); G.fx = new FX(G.scene); G.blood = new Decals(G.scene);
+    await yieldToBrowser();
+    G.post = new Post(renderer, G.scene, G.camera); G.post.setQuality(GRAPHICS[initialGraphics]); G.fx = new FX(G.scene); G.blood = new Decals(G.scene);
     G.post.vol?.setShafts(G.world.castle?.shafts || [], G.world.storm, { x0: -40, x1: 40, z0: -140, z1: -80 });
     if (G.world.fires) G.post.vol?.setFires(G.world.fires, () => G.scene.fog?.density || 0);
+    applyGraphics(G, initialGraphics);
+    applyAtmosphere(G, G.opts.atmosphere);
     G.post.vol?.setFog({
       storm: STORM, fade: STORM.fade, keep: { x0: CASTLE.keep.x0, z0: CASTLE.keep.z0, x1: CASTLE.keep.x1, z1: CASTLE.keep.z1 }, keepY: CASTLE.keep.floor - 0.3,
       crypt: { x0: 8.3, z0: CASTLE.keep.z0, x1: CASTLE.keep.x1, z1: CASTLE.keep.z1 }, moonDir: new THREE.Vector3(...MOON),
@@ -1592,33 +1637,42 @@ async function boot() {
     document.addEventListener('visibilitychange', () => { if (document.hidden) { G.sfx?.stop(); G.media?.stop(); } });
     // texturas, modelos del castillo y shaders listos antes de mostrar nada (al entrar no aparece nada a medio cargar)
     status('Cargando texturas y modelos...');
-    await Promise.race([Promise.allSettled([pbrReady(), G.world.castleAssets]), new Promise((r) => setTimeout(r, 20000))]);
+    await Promise.race([Promise.allSettled([pbrReady(), G.world.castleAssets, G.world.forestReady]), new Promise((r) => setTimeout(r, 20000))]);
     status('Preparando luces, sombras y materiales...');
     await precompileScene(renderer);
+    await yieldToBrowser();
+    G.world.bakeFarShadows(G.camera);
+    await yieldToBrowser();
     show($('loading'), false); setMode('menu');
   try { state.preview = new AvatarPreview($('avatar-preview'), readLook()); }
   catch (error) { console.warn('Avatar preview unavailable', error); $('avatar-preview').textContent = 'Vista previa no disponible en este navegador.'; }
 
 
-    addEventListener('resize', () => {
+    const resizeGame = () => {
       renderer.setSize(innerWidth, innerHeight); G.camera.aspect = innerWidth / innerHeight; G.camera.updateProjectionMatrix(); G.post.setSize(innerWidth, innerHeight);
-    });
+    };
+    addEventListener('resize', resizeGame);
+    // La ventana puede cambiar durante la carga, antes de registrar el evento.
+    resizeGame();
 
     let last = performance.now();
     let lastErr = 0;
     // resolución dinámica: si el juego no llega a ~48 fps baja un poco la resolución interna; si sobra, la sube
-    const DYN = { ema: 16.7, t: 0, pr: renderer.getPixelRatio(), max: Math.min(devicePixelRatio || 1, 1.5), min: 0.7 };
+    const DYN = { ema: 16.7, t: 0, key: G.opts.graphics };
     function dynRes(dt) {
       if (document.hidden || !G.inGame) return;
+      if (DYN.key !== G.opts.graphics) { DYN.key = G.opts.graphics; DYN.ema = 16.7; DYN.t = 0; }
+      const profile = GRAPHICS[G.opts.graphics] || GRAPHICS.equilibrado;
+      const max = Math.min(devicePixelRatio || 1, profile.maxDpr), min = Math.min(max, profile.minDpr);
       DYN.ema += (dt * 1000 - DYN.ema) * 0.05;
       DYN.t += dt;
       if (DYN.t < 2.5) return;
-      let pr = DYN.pr;
-      if (DYN.ema > 21 && pr > DYN.min) pr = Math.max(DYN.min, +(pr - 0.1).toFixed(2));
-      else if (DYN.ema < 12.5 && pr < DYN.max) pr = Math.min(DYN.max, +(pr + 0.1).toFixed(2));
-      DYN.t = pr !== DYN.pr ? 0 : 2;
-      if (pr === DYN.pr) return;
-      DYN.pr = pr;
+      const current = renderer.getPixelRatio();
+      let pr = current;
+      if (DYN.ema > 21 && pr > min) pr = Math.max(min, +(pr - 0.1).toFixed(2));
+      else if (DYN.ema < 15 && pr < max) pr = Math.min(max, +(pr + 0.1).toFixed(2));
+      DYN.t = pr !== current ? 0 : 2;
+      if (pr === current) return;
       renderer.setPixelRatio(pr);
       G.post.setPixelRatio(pr);
       G.post.setSize(innerWidth, innerHeight);
@@ -1626,7 +1680,7 @@ async function boot() {
     function frame(now) {
       // se agenda primero: un error en un frame no congela el juego
       requestAnimationFrame(frame);
-      if (window.__dukesPause) { last = now; return; }
+      if (window.__dukesPause || state.preparingJoin) { last = now; return; }
       step(now);
     }
     // depuración: window.__dukesStep(ms) avanza un cuadro a mano; window.__dukesPause congela el loop
@@ -1645,7 +1699,10 @@ async function boot() {
         // sentado al póker: el mouse mira alrededor de la mesa y la rueda elige cuánto apostar
         if (state.mode === 'poker' && G.poker && G.input.locked) { G.poker.lookAround(G.input.dx, G.input.dy); G.poker.wheel(G.input.wheel); }
         if (state.mode === 'poker' && G.poker?.cameraPose(G.camera, dt)) state.local.char.setVisibleHead(false); // cámara en los ojos: sin ver la propia cabeza
-        else updateCamera(dt);
+        else {
+          if (Math.abs(G.camera.fov - G.opts.fov) > 0.01) { G.camera.fov = G.opts.fov; G.camera.updateProjectionMatrix(); }
+          updateCamera(dt);
+        }
         G.poker?.update(G.camera, dt);
         updateNameTags(); updatePrompt(); updateHud(dt); updatePost();
         G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.owner?.update(dt);

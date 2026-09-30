@@ -87,8 +87,8 @@ export class Storm {
       sun: world.sun.intensity, sunColor: world.sun.color.clone(), env: world.scene.environmentIntensity,
     };
     this.night = {
-      fog: new THREE.Color(0x151b24), fogD: 0.0125, hemi: 0.34, hemiSky: new THREE.Color(0x6a80a8),
-      hemiGround: new THREE.Color(0x221f1a), sun: 0.12, sunColor: new THREE.Color(0x8ea4d6), env: 0.12,
+      fog: new THREE.Color(0x151b24), fogD: 0.0125, hemi: 0.36, hemiSky: new THREE.Color(0x8494ac),
+      hemiGround: new THREE.Color(0x48433a), sun: 0.15, sunColor: new THREE.Color(0x9eaed4), env: 0.2,
     };
     this.wind = new THREE.Vector2(2.2, 0.9); // m/s: la lluvia cae inclinada
     this._played = new Set();
@@ -108,6 +108,7 @@ export class Storm {
     this.skyU = {
       uT: { value: 0 }, uAlpha: { value: 0 }, uFlash: { value: 0 }, uFlashDir: { value: new THREE.Vector3(0, 0.3, -1) },
       uFog: { value: new THREE.Color() },
+      tClouds: { value: this.world.stormHDR || moonTex }, uPhotoClouds: { value: this.world.stormHDR ? 1 : 0 },
       uMoonDir: { value: new THREE.Vector3(...MOON).normalize() }, tMoon: { value: moonTex }, uMoonOn: { value: moonTex ? 1 : 0 },
     };
     const dome = new THREE.Mesh(new THREE.SphereGeometry(1400, 48, 24), new THREE.ShaderMaterial({
@@ -121,7 +122,8 @@ export class Storm {
         }`,
       fragmentShader: /* glsl */ `
         uniform float uT, uAlpha, uFlash, uMoonOn; uniform vec3 uFlashDir, uFog, uMoonDir;
-        uniform sampler2D tMoon;
+        uniform sampler2D tMoon, tClouds;
+        uniform float uPhotoClouds;
         varying vec3 vDir;
         ${NOISE}
         void main() {
@@ -133,6 +135,15 @@ export class Storm {
           float m = fbm(uv * 2.4 - flow * 1.7 + 5.0);
           float c = smoothstep(0.32, 0.78, n * 0.75 + m * 0.35);
           vec3 col = mix(vec3(0.010, 0.012, 0.018), vec3(0.042, 0.048, 0.062), c);
+          if (uPhotoClouds > 0.5) {
+            vec2 skyUV = vec2(atan(d.z, d.x) / 6.283185 + 0.5 + uT * 0.000025,
+              asin(clamp(d.y, -1.0, 1.0)) / 3.141593 + 0.5);
+            vec3 photo = texture2D(tClouds, skyUV).rgb;
+            float lum = dot(photo, vec3(0.2126, 0.7152, 0.0722));
+            c = clamp(lum / (0.25 + lum), 0.0, 1.0);
+            n = c * 0.72; m = c * 0.45;
+            col = vec3(0.012, 0.018, 0.032) + photo / (vec3(0.5) + photo) * vec3(0.035, 0.044, 0.061);
+          }
           // luna: disco con relieve (textura), un poco gibosa y con el borde oscurecido; las nubes la tapan a ratos
           // y las que pasan cerca se iluminan de atrás (borde plateado)
           float ang = acos(clamp(dot(d, uMoonDir), -1.0, 1.0));
@@ -172,6 +183,7 @@ export class Storm {
     const cx = (STORM.x0 + STORM.x1) / 2, cz = (STORM.z0 + STORM.z1) / 2;
     const hx = (STORM.x1 - STORM.x0) / 2 + 62, hz = (STORM.z1 - STORM.z0) / 2 + 62;
     this.deckU = {
+      tClouds: { value: this.skyU.tClouds.value }, uPhotoClouds: { value: this.skyU.uPhotoClouds.value },
       uT: { value: 0 }, uFlash: { value: 0 }, uFlashPos: { value: new THREE.Vector3() }, uVis: { value: 1 },
       uRect: { value: new THREE.Vector4(STORM.x0, STORM.z0, STORM.x1, STORM.z1) },
     };
@@ -181,7 +193,7 @@ export class Storm {
         varying vec3 vW;
         void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
       fragmentShader: /* glsl */ `
-        uniform float uT, uFlash, uVis; uniform vec3 uFlashPos; uniform vec4 uRect;
+        uniform float uT, uFlash, uVis, uPhotoClouds; uniform vec3 uFlashPos; uniform vec4 uRect; uniform sampler2D tClouds;
         varying vec3 vW;
         ${NOISE}
         void main() {
@@ -191,10 +203,19 @@ export class Storm {
           float n = fbm(p * 0.02 + vec2(uT * 0.012, uT * 0.02) + vW.y * 0.013);
           float m = fbm(p * 0.06 - vec2(uT * 0.02, 0.0));
           float a = smoothstep(0.25, 0.7, n * 0.8 + m * 0.35) * edge;
-          vec3 col = mix(vec3(0.012, 0.014, 0.02), vec3(0.05, 0.055, 0.07), m);
+          vec3 col = mix(vec3(0.14, 0.15, 0.17), vec3(0.31, 0.33, 0.36), m);
+          if (uPhotoClouds > 0.5) {
+            vec2 center = (uRect.xy + uRect.zw) * 0.5;
+            vec3 dir = normalize(vec3((p.x-center.x)/70.0, 1.0, (p.y-center.y)/70.0));
+            vec2 uv = vec2(atan(dir.z,dir.x)/6.2831853+0.5+uT*.00015, asin(dir.y)/3.14159265+0.5);
+            vec3 photo = texture2D(tClouds,uv).rgb;
+            photo = photo/(vec3(.6)+photo);
+            col = photo * mix(.26,.52,m);
+            a *= smoothstep(.08,.4,dot(photo,vec3(.2126,.7152,.0722)));
+          }
           float fl = uFlash * (0.25 + 3.0 / (1.0 + pow(length(vW - uFlashPos) / 70.0, 2.0)));
           col += fl * vec3(0.5, 0.58, 0.8) * (0.4 + m);
-          gl_FragColor = vec4(col, a * uVis * 0.92);
+          gl_FragColor = vec4(col, a * uVis * 0.76);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
         }`,
@@ -547,7 +568,7 @@ export class Storm {
     fog.color.lerp(C1.setRGB(0.35, 0.4, 0.52), fin * 0.5);
     fog.density = lerp(B.fogD, Nn.fogD, s);
     if (w.hemi) {
-      const inDark = this.indoor * 0.62; // adentro: velas, luna por las ventanas y un poco de rebote
+      const inDark = this.indoor * 0.42; // rebote tenue: conserva la lectura de muebles y puertas
       w.hemi.intensity = lerp(B.hemi, Nn.hemi, sI) * (1 - inDark * s) + fin * 1.4;
       w.hemi.color.copy(B.hemiSky).lerp(Nn.hemiSky, s);
       w.hemi.groundColor.copy(B.hemiGround).lerp(Nn.hemiGround, s);
@@ -555,7 +576,7 @@ export class Storm {
     w.sun.intensity = lerp(B.sun, Nn.sun, s);
     w.sun.shadow.autoUpdate = s < 0.9;
     w.sun.color.copy(B.sunColor).lerp(Nn.sunColor, s);
-    this.scene.environmentIntensity = lerp(B.env, Nn.env, s) * (1 - this.indoor * 0.6 * s);
+    this.scene.environmentIntensity = lerp(B.env, Nn.env, s) * (1 - this.indoor * 0.42 * s);
     // una sola luz direccional con sombra: la luna fría y quieta; el relámpago la enciende (el cielo marca de dónde viene)
     const ls = this.lastStrike;
     if (ls && ls.to) {
@@ -570,7 +591,8 @@ export class Storm {
     ML.position.set(mcx + MOON[0], MOON[1], mcz + MOON[2]);
     ML.target.position.set(mcx, 0, mcz);
     ML.target.updateMatrixWorld();
-    ML.intensity = fin * 5.5 + s * (0.5 + this.indoor * 1.4);
+    // afuera la luna marca las formas (caras iluminadas y en sombra); adentro entra por las ventanas como antes
+    ML.intensity = fin * 5.5 + s * (1.4 + this.indoor * 0.5);
     if (ML.castShadow && s > 0.02) {
       this.moonT += dt;
       if (this.moonT > 0.25 || Math.hypot(mcx - this.moonC.x, mcz - this.moonC.y) > 3) {

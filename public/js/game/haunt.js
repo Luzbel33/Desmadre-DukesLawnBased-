@@ -659,6 +659,7 @@ export class Haunt {
       }
       case 'well': { // el aljibe: eco del fondo... a veces contesta alguien
         const w = c.anchors.well;
+        if (c.wellWater) c.wellWater.pulseAt = G.time + 1.4;
         const seed = m.s ?? Math.random();
         setTimeout(() => sfx?.trigger('splash', V1.set(w.x, 0.2, w.z), 0.6, { full: 2, max: 14 }), 1400);
         if (seed < 0.35) setTimeout(() => sfx?.trigger('whisper', V1.set(w.x, 0.3, w.z), 0.9, { full: 2, max: 12 }), 2600);
@@ -676,15 +677,15 @@ export class Haunt {
   _wheelchair() {
     const m = this.decor?.models.wheelchair;
     if (!m) return;
-    const x0 = m.position.x, t0 = G.time;
+    const z0 = m.position.z, t0 = G.time;
     G.sfx?.trigger('door-creak', m.position, 0.7, { full: 2, max: 18, rate: 0.6 });
     const step = () => {
       const k = (G.time - t0) / 3.2;
-      m.position.x = lerp(x0, -5, clamp(k, 0, 1));
-      m.rotation.y = -Math.PI / 2 + Math.sin(k * 9) * 0.04;
+      m.position.z = lerp(z0, -116.8, clamp(k, 0, 1));
+      m.rotation.y = Math.sin(k * 9) * 0.04;
       m.updateMatrixWorld(true);
       if (k < 1) requestAnimationFrame(step);
-      else setTimeout(() => { m.position.x = x0; m.updateMatrixWorld(true); }, 9000);
+      else setTimeout(() => { m.position.z = z0; m.rotation.y = -Math.PI / 2; m.updateMatrixWorld(true); }, 9000);
     };
     step();
   }

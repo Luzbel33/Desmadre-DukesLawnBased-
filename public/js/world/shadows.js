@@ -65,7 +65,9 @@ export function makeFarSun(sunDir, size = 4096, half = 165) {
   far.shadow.normalBias = 0.1;
   far.shadow.radius = 1.5;
   far.shadow.autoUpdate = false;
-  far.shadow.needsUpdate = false;
+  // PCF usa un sampler de profundidad: necesita un mapa válido desde el primer
+  // cuadro, incluso antes del bake definitivo de árboles y edificios.
+  far.shadow.needsUpdate = true;
   far.position.copy(sunDir).multiplyScalar(400);
   far.target.position.set(0, 0, 0);
   return far;

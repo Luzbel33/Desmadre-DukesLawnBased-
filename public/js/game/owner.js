@@ -263,11 +263,17 @@ export class OwnerPowers {
       }
     }
     // prendido fuego: yo pierdo vida mientras dure (salvo inmortal); a todos se les ve el fuego encima
-    const mine = this.burning.get('me') || 0;
+    let mine = this.burning.get('me') || 0;
     if(L&&!L.dead&&this.contactT<=0) {
       this.contactT=.3;
       const patch=this.patches.touching(L.char,G.myId).find(s=>clearFirePath(G.phys,s.p.clone().addScaledVector(s.n,.06),L.char.headWorld().add(new THREE.Vector3(0,-.35,0))));
-      if(patch){this.ignite('me',F.burnSeconds,patch.by);this.getNet()?.send({t:'ev',k:'onfire',d:F.burnSeconds});}
+      let campfire = false;
+      if (G.world?.fires) for (let i = 0; i < L.rag.bodies.length && !campfire; i++) {
+        const b = L.rag.bodies[i], cap = L.meta.caps[i], rot = b.rotation();
+        const part = cap.a.clone().add(cap.b).multiplyScalar(.5).applyQuaternion(new THREE.Quaternion(rot.x, rot.y, rot.z, rot.w)).add(new THREE.Vector3(b.translation().x,b.translation().y,b.translation().z));
+        campfire = G.world.fires.touching(part, cap.r).some(f => clearFirePath(G.phys,new THREE.Vector3(f.x,f.y+f.h*.7,f.z),part));
+      }
+      if(patch || campfire){this.ignite('me',F.burnSeconds,patch?.by || 0);this.getNet()?.send({t:'ev',k:'onfire',d:F.burnSeconds});mine=F.burnSeconds;}
     }
     if (mine > 0 && L && !L.dead && !L.immortal) {
       L.damage(F.burnDps*dt,this.burnSource.get('me')||0);
@@ -291,7 +297,7 @@ export class OwnerPowers {
       s = this.freeSlots.pop();
       if(!s) {
         s = { fire: -1, flames: [] };
-        if (W.fires && W.quality !== 'baja' && W.fires.list.length<48) s.fire = W.fires.add(0, -50, 0, 0.42, 0.38, 2.0, { intensity: 0, speed: 1.5 });
+        if (W.fires && W.quality !== 'baja' && W.fires.list.length<48) s.fire = W.fires.add(0, -50, 0, 0.42, 0.38, 2.0, { intensity: 0, speed: 1.5, hazard: false });
         else if (W.flames) for (let i = 0; i < 3; i++) s.flames.push(W.flames.add(0, -50, 0, 0.35, 0.6, { intensity: 0 }));
       }
       this.slots.set(id, s);

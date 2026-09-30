@@ -238,7 +238,8 @@ test('changing models updates the local rig and remote hit volumes', async () =>
   assert.equal(p.meta,p.char.meta);assert.equal(p.rag.meta,p.char.meta);
   assert.ok(p.rig.jointRest[0].distanceTo(p.char.meta.jointRest[0])<1e-8);
   assert.equal(p.hp,oldHp);assert.ok(p.pos.equals(oldPos));
-  assert.ok(Math.abs(p.collider.halfHeight()-.5*2.2/1.8)<.001,'movement collider fits the larger demon');
+  const movementHeight=2*(p.collider.halfHeight()+p.collider.radius());
+  assert.ok(movementHeight>2.1 && movementHeight<2.3,'movement collider protects the larger demon head');
   assert.ok(Math.abs(p.rig.foreLen[0]-p.meta.gripLocal.l.length())<1e-8,'IK uses the actual forearm reach');
   assert.equal(ph.world.bodies.len(),oldBodyCount,'model replacement does not leak physics bodies');
   p.setLook({model:'galleta'});

@@ -67,7 +67,7 @@ export class SurfaceFires {
     if(!slot&&this.slots.length<F.maxPatches) {
       const w=this.getWorld();if(!w)return null;
       slot={p:new THREE.Vector3(),n:new THREE.Vector3(),life:0,fire:-1,flames:[],world:w};
-      if(w.quality!=='baja'&&w.fires&&w.fires.list.length<48)slot.fire=w.fires.add(0,-50,0,.28,.28,.72,{intensity:0,speed:1.3});
+      if(w.quality!=='baja'&&w.fires&&w.fires.list.length<48)slot.fire=w.fires.add(0,-50,0,.28,.28,.72,{intensity:0,speed:1.3,hazard:false});
       else if(w.flames)for(let i=0;i<3;i++)slot.flames.push(w.flames.add(0,-50,0,.4,.6,{intensity:0}));
       this.slots.push(slot);
     }

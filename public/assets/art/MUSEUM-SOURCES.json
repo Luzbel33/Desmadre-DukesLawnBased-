@@ -1,0 +1,83 @@
+[
+  {
+    "file": "aic-11.jpg",
+    "title": "Self-Portrait",
+    "artist": "Walter Shirlaw (American, 1838–1909)",
+    "source": "https://www.artic.edu/artworks/11",
+    "image_source": "https://commons.wikimedia.org/wiki/File:Walter_Shirlaw_self-portrait.jpg",
+    "license": "Public domain",
+    "sha256": "cc288c69503af686dd549c1095418b6c9f66e6ae3995f8d7ca66aea79dc28280"
+  },
+  {
+    "file": "aic-15708.jpg",
+    "title": "Portrait of a Man with Gray Hair",
+    "artist": "Henry Raeburn (Scottish, 1756–1823)",
+    "source": "https://www.artic.edu/artworks/15708",
+    "image_source": "https://commons.wikimedia.org/wiki/File:Sir_Henry_Raeburn_-_Portrait_of_a_Man_with_Gray_Hair_-_1962.961_-_Art_Institute_of_Chicago.jpg",
+    "license": "Public domain",
+    "sha256": "f3f2e8690680439075316ad9667351adca2e147edfad7918f15dac0bddd32905"
+  },
+  {
+    "file": "aic-95998.jpg",
+    "title": "Old Man with a Gold Chain",
+    "artist": "Rembrandt van Rijn (Dutch, 1606–1669)",
+    "source": "https://www.artic.edu/artworks/95998",
+    "image_source": "https://commons.wikimedia.org/wiki/File:Rembrandt_Harmenszoon_van_Rijn_-_Old_Man_with_a_Gold_Chain_-_1922.4467_-_Art_Institute_of_Chicago.jpg",
+    "license": "Public domain",
+    "sha256": "18acc50634ba8ba41ba863b4c78d993285ea5dd3425d6060cf08d9437fe9e8b5"
+  },
+  {
+    "file": "aic-94840.jpg",
+    "title": "Young Woman at an Open Half-Door",
+    "artist": "Rembrandt van Rijn (Dutch, 1606–1669)\nWorkshop of Rembrandt van Rijn (Dutch, 1606–1669)",
+    "source": "https://www.artic.edu/artworks/94840",
+    "image_source": "https://commons.wikimedia.org/wiki/File:Samuel_van_Hoogstraten_-_Young_woman_at_an_open_half-door_(1645).jpg",
+    "license": "Public domain",
+    "sha256": "f0af06d3ef368dfdf4b5b3c1fd8e19af1de187f8a1f4417636017e00d0fd7179"
+  },
+  {
+    "file": "aic-88632.jpg",
+    "title": "Madame François Buron",
+    "artist": "Jacques-Louis David (French, 1748–1825)",
+    "source": "https://www.artic.edu/artworks/88632",
+    "image_source": "https://commons.wikimedia.org/wiki/File:Jacques_Louis_David_-_Madame_Fran%C3%A7ois_Buron_-_1963.205_-_Art_Institute_of_Chicago.jpg",
+    "license": "Public domain",
+    "sha256": "45a0aa7784c137b4840514108031f344c4038184d97d030607287e23260e7c8f"
+  },
+  {
+    "file": "aic-146701.jpg",
+    "title": "Mountain Brook",
+    "artist": "Albert Bierstadt (American, born Solingen, Prussia, now Germany, 1830–1902)",
+    "source": "https://www.artic.edu/artworks/146701",
+    "image_source": "https://commons.wikimedia.org/wiki/File:Albert_Bierstadt_-_Mountain_Brook_-_1997.365_-_Art_Institute_of_Chicago.jpg",
+    "license": "Public domain",
+    "sha256": "eff790b9b95cd2a19c2e2eb6302f8d276e23c433fa9431ce28053593120e5d95"
+  },
+  {
+    "file": "aic-84709.jpg",
+    "title": "Still Life with Game Fowl",
+    "artist": "Juan Sánchez Cotán (Spanish, 1560–1627)",
+    "source": "https://www.artic.edu/artworks/84709",
+    "image_source": "https://commons.wikimedia.org/wiki/File:Juan_S%C3%A1nchez_Cot%C3%A1n_-_Still_Life_with_Game_Fowl_-_1955.1203_-_Art_Institute_of_Chicago.jpg",
+    "license": "Public domain",
+    "sha256": "9e490079a4573e452e34e06c719b9355e1c14e6b7f941ca7d4c0f79acfd58320"
+  },
+  {
+    "file": "aic-131407.jpg",
+    "title": "Wine, Cheese, and Fruit",
+    "artist": "John F. Francis\nAmerican, 1808–1886",
+    "source": "https://www.artic.edu/artworks/131407",
+    "image_source": "https://commons.wikimedia.org/wiki/File:John_F._Francis_-_Wine,_Cheese,_and_Fruit_-_1994.239_-_Art_Institute_of_Chicago.jpg",
+    "license": "Public domain",
+    "sha256": "3013de731ae8bda16a0cae380f5552b32acf2c34950d68f235f568879555b121"
+  },
+  {
+    "file": "aic-100829.jpg",
+    "title": "Magnolias on Light Blue Velvet Cloth",
+    "artist": "Martin Johnson Heade (American, 1819–1904)",
+    "source": "https://www.artic.edu/artworks/100829",
+    "image_source": "https://commons.wikimedia.org/wiki/File:Martin_Johnson_Heade_-_Magnolias_on_Light_Blue_Velvet_Cloth_-_1983.791_-_Art_Institute_of_Chicago.jpg",
+    "license": "Public domain",
+    "sha256": "caad2b6eaad9f0450ad70fc7e38346b90eb80e10a9ad93b08a0c6f18f7bb9293"
+  }
+]

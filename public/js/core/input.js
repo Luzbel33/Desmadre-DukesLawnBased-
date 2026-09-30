@@ -1,4 +1,9 @@
 // Teclado + mouse + pointer lock.
+const CAPTURE_KEYS = ['KeyW','KeyT','KeyN','KeyR','KeyL','KeyS','KeyD','KeyF','KeyP','Tab','F4','F5'];
+export function browserShortcut(e) {
+  return ((e.ctrlKey || e.metaKey) && CAPTURE_KEYS.includes(e.code))
+    || (e.altKey && ['ArrowLeft','ArrowRight','F4'].includes(e.code)) || e.code === 'F5';
+}
 export class Input {
   constructor(canvas) {
     this.canvas = canvas;
@@ -18,7 +23,7 @@ export class Input {
     addEventListener('keydown', (e) => {
       if (this._typing(e)) return;
       if (!this.enabled) return;
-      if (['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'F1', 'Quote', 'Slash'].includes(e.code) || (e.ctrlKey && e.code === 'KeyW')) e.preventDefault();
+      if (['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'F1', 'Quote', 'Slash'].includes(e.code) || (e.ctrlKey && ['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code)) || (this.locked && browserShortcut(e))) e.preventDefault();
       if (!this.down.has(e.code)) this.pressed.add(e.code);
       this.down.add(e.code);
     });
@@ -46,13 +51,19 @@ export class Input {
     });
     addEventListener('wheel', (e) => {
       if (!this.locked) return;
+      e.preventDefault(); // incluye Ctrl + rueda (zoom del navegador)
       this.wheel += Math.sign(e.deltaY);
-    }, { passive: true });
+    }, { passive: false });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === canvas;
-      if (!this.locked) this.releaseAll();
+      if (!this.locked) { this.releaseAll(); navigator.keyboard?.unlock?.(); }
+      else this._keyboardCapture();
       this.onLockChange && this.onLockChange(this.locked);
+    });
+    document.addEventListener('fullscreenchange', () => {
+      if (!document.fullscreenElement) navigator.keyboard?.unlock?.();
+      else if (this.locked && this.enabled) this._keyboardCapture();
     });
   }
 
@@ -69,7 +80,21 @@ export class Input {
     } catch { /* ignore */ }
   }
   unlock() {
+    navigator.keyboard?.unlock?.();
     if (document.pointerLockElement) document.exitPointerLock();
+  }
+
+  async _keyboardCapture() {
+    if (!document.fullscreenElement || !navigator.keyboard?.lock) return false;
+    try { await navigator.keyboard.lock(CAPTURE_KEYS); return true; }
+    catch { return false; }
+  }
+
+  async immersive() {
+    try {
+      if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+      return await this._keyboardCapture();
+    } catch { return false; }
   }
 
   releaseAll() {
@@ -86,6 +111,11 @@ export class Input {
 
   key(code) { return this.enabled && this.down.has(code); }
   hit(code) { return this.enabled && this.pressed.has(code); }
+  consume(code) {
+    if (!this.hit(code)) return false;
+    this.pressed.delete(code);
+    return true;
+  }
   up(code) { return this.released.has(code); }
   btn(i) { return this.enabled && this.mouse[i]; }
   btnHit(i) { return this.enabled && this.mPressed[i]; }

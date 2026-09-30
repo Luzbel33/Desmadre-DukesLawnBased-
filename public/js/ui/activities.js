@@ -91,13 +91,13 @@ export class ActivityMarkers {
         it.hidden = !!hit && hit.dist < d - 0.6;
       }
       // de cerca no molesta; de lejos se achica y se apaga (el destino marcado se ve siempre, salvo encima)
-      let op = marked ? (d < 7 ? 0 : d < 12 ? (d - 7) / 5 : 1) : d < 9 ? 0 : d < 16 ? (d - 9) / 7 : d > 170 ? 0 : d > 130 ? (170 - d) / 40 : 1;
+      let op = marked ? (d < 12 ? 0 : d < 20 ? (d - 12) / 8 : 1) : d < 18 ? 0 : d < 28 ? (d - 18) / 10 : d > 170 ? 0 : d > 130 ? (170 - d) / 40 : 1;
       if (!enabled) op = 0;
       it.vis = (it.vis ?? 1) + ((it.hidden && !marked ? 0 : 1) - (it.vis ?? 1)) * 0.25;
       op *= it.vis;
       s.visible = op > 0.01;
       s.material.opacity = op * (marked ? 1 : 0.85);
-      const k = Math.max(0.9, Math.min(4.5, d * 0.045));
+      const k = Math.max(0.65, Math.min(2.7, d * 0.025));
       s.scale.set(k * 4, k, 1);
     }
   }

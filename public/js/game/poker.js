@@ -27,7 +27,7 @@ const SUITS = 'shdc';
 const SUIT_CH = { s: '♠', h: '♥', d: '♦', c: '♣' };
 const RANK_TXT = { T: '10', J: 'J', Q: 'Q', K: 'K', A: 'A' };
 const CW = 160, CH = 224; // píxeles por carta en la textura
-const CARD_W = 0.105, CARD_H = 0.147; // un poco más grandes que las reales: se leen desde la silla
+const CARD_W = 0.12, CARD_H = 0.168; // legibles desde el asiento sin tapar el paño
 const FELT = 0.012; // altura sobre el paño
 const BOARD_SCALE = 1.4;
 const LIVE = ['preflop', 'flop', 'turn', 'river'];
@@ -316,6 +316,7 @@ export class PokerView {
     this.betting = null; // { amount } mientras elegís cuánto subir
     this.foldHold = 0;
     this.helpHeld = false;
+    this.inspectHeld = false;
     this.banner = null;
     this._ui();
   }
@@ -377,6 +378,7 @@ export class PokerView {
     this.pendingSeat = null;
     this.myCards = [];
     this.betting = null;
+    this.inspectHeld = false;
     this.onLeave?.();
     this._layout();
     this._hud();
@@ -406,7 +408,11 @@ export class PokerView {
       this.onLeave?.();
     }
     // El reparto privado llega antes del estado público: conservar las cartas de esta mano.
-    if (prev && st.handNo !== prev.handNo && this._cardsHand !== st.handNo) this.myCards = [];
+    if (prev && st.handNo !== prev.handNo) {
+      if (this._cardsHand !== st.handNo) this.myCards = [];
+      this.banner = null; this.betting = null; this.foldHold = 0;
+      this.panel?.querySelector('#pk-banner')?.classList.add('hidden');
+    }
     this._chipFlow(prev, st);
     // resultado de la mano (una sola vez)
     if (st.phase === 'showdown' && st.result && st.handNo !== this._wonHand) {
@@ -571,7 +577,9 @@ export class PokerView {
         const mine = i === this.mySeat && this.myCards.length === 2;
         const face = s.shown ? s.shown[k] : mine ? this.myCards[k] : null;
         const to = this._spot(i, mine ? 0.27 : 0.3, (k - 0.5) * (CARD_W * (mine ? 1.2 : 0.9)), new THREE.Vector3());
-        to.y += k * 0.001;
+        to.y += k * 0.001 + (mine && this.inspectHeld ? 0.18 : 0);
+        // +X inclina la cara hacia el asiento después del yaw, no hacia el rival.
+        m.userData.tilt = mine && this.inspectHeld ? 0.35 : 0;
         const yaw = this._seatYaw(i) + Math.PI + (k - 0.5) * (mine ? 0.12 : 0.2);
         this._place(m, face, to, yaw, !!face, handNew, (k * this.seats.length + ((i - (st.dealer + 1) + 60) % this.seats.length)) * 0.1, mine ? 1.22 : 1);
       }
@@ -586,7 +594,7 @@ export class PokerView {
     const d = m.userData;
     const deck = this._deckSpot(V2);
     void fresh;
-    const q = Q1.setFromEuler(E1.set(0, yaw, up ? 0 : Math.PI));
+    const q = Q1.setFromEuler(E1.set(m.userData.tilt || 0, yaw, up ? 0 : Math.PI, 'YXZ'));
     if (!m.visible) {
       m.visible = true;
       setFace(m, face);
@@ -724,6 +732,11 @@ export class PokerView {
     const st = this.st, me = st?.seats[this.mySeat];
     const myTurn = !!(me && st.turn === this.mySeat && !me.folded && !me.allin && LIVE.includes(st.phase));
     const code = e.code;
+    if (code === 'KeyQ') {
+      this.inspectHeld = down;
+      this._layout(); this._hud();
+      return true;
+    }
     if (code === 'Tab') { this.helpHeld = down; this._hud(); return true; }
     if (!down) {
       if (code === 'KeyF') { this.foldHold = 0; this._hud(); }
@@ -794,6 +807,7 @@ export class PokerView {
     const P = document.getElementById('poker');
     if (!P) return;
     P.innerHTML = `
+      <div id="pk-stage"></div>
       <div id="pk-banner" class="hidden"></div>
       <div id="pk-line"></div>
       <div id="pk-bet" class="hidden"><small>Subir a</small><b></b><div class="bar"><i></i></div><div class="hint"></div></div>
@@ -825,6 +839,8 @@ export class PokerView {
     const $ = (id) => P.querySelector('#' + id);
     const myTurn = !!(me && st.turn === this.mySeat && !me.folded && !me.allin && LIVE.includes(st.phase));
     const toCall = me ? Math.max(0, st.currentBet - me.bet) : 0;
+    const phase = { preflop: 'Preflop', flop: 'Flop', turn: 'Turn', river: 'River', showdown: 'Resultado', waiting: 'Esperando' }[st.phase] || 'Mesa abierta';
+    $('pk-stage').innerHTML = `<small>EL CORTACÉSPED · TEXAS HOLD’EM</small><b>${phase}</b><span>Mano ${st.handNo || 0}${myTurn ? ' · Tu turno' : ''}</span>`;
     // línea de abajo: pozo, tus fichas, lo que tenés
     let mine = '';
     if (this.myCards.length === 2 && me?.inHand && !me.folded) {
@@ -852,6 +868,7 @@ export class PokerView {
       const left = st.deadline ? Math.max(0, Math.ceil((st.deadline - (G.net?.now?.() || Date.now())) / 1000)) : 0;
       if (left) keys += `<div class="timer">${left} s</div>`;
     }
+    if (this.myCards.length === 2 && me?.inHand && !me.folded) keys += K('Q', this.inspectHeld ? 'Soltar para volver a la mesa' : 'Mantener para mirar tus cartas');
     keys += `<div class="sub">${K('Tab', 'Ver jugadas')}${K('X', 'Levantarse')}</div>`;
     $('pk-keys').innerHTML = keys;
     $('pk-keys').classList.toggle('turn', myTurn);
@@ -872,6 +889,10 @@ export class PokerView {
   // ---------------------------------------------------------------- por frame
   update(camera, dt = 1 / 60) {
     const st = this.st;
+    if (this.inspectHeld && G.input && !G.input.locked) {
+      this.inspectHeld = false;
+      this._layout(); this._hud();
+    }
     const W = innerWidth, H = innerHeight;
     // retirarse: hay que mantener F (no se tira la mano por un toque sin querer)
     if (this.foldHold > 0) {
@@ -965,7 +986,12 @@ export class PokerView {
     const k = 1 - Math.exp(-8 * dt);
     camera.position.lerp(eye, k);
     // dirección base: hacia el centro de la mesa, un poco más cerca de mí (se ven bien mis cartas)
-    const base = V2.set(c.x - fx * 0.25 - camera.position.x, c.y - camera.position.y, c.z - fz * 0.25 - camera.position.z).normalize();
+    const peek = this.inspectHeld && this.myCards.length === 2 && this.st?.seats[this.mySeat]?.inHand;
+    const target = peek ? this._spot(this.mySeat, 0.27, 0, V2).setY(c.y + 0.18) : V2.set(c.x - fx * 0.25, c.y, c.z - fz * 0.25);
+    const base = target.sub(camera.position).normalize();
+    const fov = peek ? 44 : 60;
+    camera.fov += (fov - camera.fov) * k;
+    camera.updateProjectionMatrix();
     const yaw0 = Math.atan2(base.x, base.z), pitch0 = Math.asin(clamp(base.y, -1, 1));
     const yaw = yaw0 + this.look.yaw, pitch = clamp(pitch0 + this.look.pitch, -1.3, 0.6);
     this._lookDir = this._lookDir || new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));

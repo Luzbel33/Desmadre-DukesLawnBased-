@@ -184,7 +184,7 @@ export function buildTerrace(b) {
 
 export function buildForecourt(b) {
   // termina en z = -74.4 (antes seguía debajo del empedrado del portón, a la misma altura: parpadeaba)
-  b.box('gravel', 0, 0.01, -63.2, 80, 0.06, 22.4, { collide: false, noShadow: true });
+  b.box('plaza', 0, 0.01, -63.2, 80, 0.06, 22.4, { collide: false, noShadow: true });
   // senderos hacia el pueblo y el galpón
   b.box('gravel', 61, 0.012, -54, 42, 0.06, 4, { collide: false, noShadow: true });
   b.box('gravel', -61, 0.012, -54, 42, 0.06, 4, { collide: false, noShadow: true });
@@ -238,6 +238,7 @@ export function buildTown(b, scene) {
   for (let z = -110; z <= 110; z += 22) {
     if (placeModel(scene, 'd_streetlamp', 91, 0.09, z, -Math.PI / 2)) {
       b.phys.cylinder(91, 2.1, z, 2, 0.12);
+      const light=new THREE.PointLight(0xffce89,3,8,2); light.position.set(91,3.63,z); scene.add(light);
       continue;
     }
     b.cylinder('darkgray', 91, 3, z, 0.08, 0.12, 6, 8, { collide: true });

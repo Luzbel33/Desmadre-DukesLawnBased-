@@ -381,3 +381,22 @@ button.big:hover { filter: brightness(1.06); }
   #pk-bet .bar { width: 200px; }
   #pk-banner { font-size: 18px; }
 }
+/* Póker: paño visible, tipografía sobria y acciones agrupadas junto al borde. */
+#poker { font-family: 'Rubik', sans-serif; background: linear-gradient(180deg,rgba(12,9,6,.34),transparent 22%,transparent 75%,rgba(12,9,6,.6)); }
+#pk-stage { position:absolute; top:25px; left:28px; display:flex; flex-direction:column; gap:5px; color:#e9dfc9; text-shadow:0 2px 5px #000; }
+#pk-stage small { font-size:10px; letter-spacing:2px; color:#c6aa74; }
+#pk-stage b { font:small-caps 31px Georgia,serif; letter-spacing:1px; }
+#pk-stage span { font-size:12px; color:#d5cbbb; }
+#pk-line { bottom:26px; gap:20px; font-size:14px; background:rgba(14,11,8,.65); border-radius:3px; padding:9px 16px; border-top:1px solid rgba(209,179,119,.3); max-width:calc(100vw - 500px); flex-wrap:wrap; justify-content:center; }
+#pk-line b.hand { color:#e6c78e; }
+#pk-keys { right:28px; bottom:26px; gap:6px; }
+#pk-keys .k { background:rgba(14,11,8,.74); border-radius:3px; font-size:13px; }
+#pk-keys .k.main { background:rgba(38,49,35,.85); font-size:16px; }
+#pk-keys kbd,#pk-bet kbd { border-radius:2px; border:1px solid #ad9f82; color:#f2e5cb; box-shadow:none; background:rgba(237,220,186,.08); }
+#pk-keys.turn .k.main { box-shadow:inset 3px 0 #d2ae6c; }
+#pk-banner { border-radius:3px; border-block:1px solid rgba(210,174,108,.55); background:rgba(14,11,8,.82); font:24px Georgia,serif; }
+#pk-bet { bottom:100px; border-radius:4px; background:rgba(14,11,8,.9); border:1px solid rgba(210,174,108,.4); }
+#pk-bet b { color:#e6c78e; }
+.pk-label { border-radius:3px; background:rgba(14,11,8,.65); border-bottom:1px solid rgba(210,174,108,.3); }
+.pk-label.turn { background:rgba(52,39,18,.8); box-shadow:inset 0 -2px #d2ae6c; }
+@media (max-width:800px) { #pk-stage {top:14px;left:15px;} #pk-stage small {font-size:8px;} #pk-stage b {font-size:24px;} #pk-line {left:15px;bottom:18px;transform:none;max-width:42vw;font-size:12px;gap:5px;flex-direction:column;align-items:flex-start;} #pk-keys {right:12px;bottom:18px;} #pk-keys .k {font-size:11px;} }

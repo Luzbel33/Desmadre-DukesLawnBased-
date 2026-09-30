@@ -6,7 +6,7 @@
 // Se inyecta en MeshStandardMaterial con onBeforeCompile: los mapas que ya usa three (color, normal, rugosidad,
 // oclusión) leen con la coordenada corrida.
 import * as THREE from 'three';
-import { STORM } from '../shared/mapdata.js';
+import { STORM, CASTLE } from '../shared/mapdata.js';
 
 const WHITE = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, THREE.RGBAFormat);
 WHITE.needsUpdate = true;
@@ -17,6 +17,9 @@ uniform float uPomScale;
 uniform float uPomFade;
 uniform vec4 uWeather; // x: suciedad de base, y: chorreaduras, z: musgo, w: variación grande
 uniform vec4 uStormRect;
+uniform vec4 uShelter;
+uniform float uShelterFloor;
+uniform float uShelterCeiling;
 uniform float uWetMax;
 varying vec3 vSurfW;
 float sfH(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
@@ -71,6 +74,9 @@ export function patchSurface(mat, opts = {}) {
     uPomFade: { value: opts.fade || 22 },
     uWeather: { value: new THREE.Vector4(...(opts.weather || [0, 0, 0, 0])) },
     uStormRect: { value: new THREE.Vector4(STORM.x0, STORM.z0, STORM.x1, STORM.z1) },
+    uShelter: { value: new THREE.Vector4(CASTLE.keep.x0 + 0.3, CASTLE.keep.z0 + 0.3, CASTLE.keep.x1 - 0.3, CASTLE.keep.z1 - 0.3) },
+    uShelterFloor: { value: CASTLE.keep.floor - 0.15 },
+    uShelterCeiling: { value: CASTLE.keep.top - 0.2 },
     uWetMax: { value: opts.wet ?? 0.5 },
   };
   mat.userData.surface = U;
@@ -119,12 +125,15 @@ export function patchSurface(mat, opts = {}) {
       // mojado bajo la tormenta (oscurece un poco; la rugosidad baja más abajo)
       vec2 sfSd = max(max(uStormRect.xy - vSurfW.xz, 0.0), vSurfW.xz - uStormRect.zw);
       float sfWet = (1.0 - smoothstep(0.0, 18.0, length(sfSd))) * uWetMax;
+      // Los materiales interiores no reciben el brillo de lluvia del patio.
+      bool sfSheltered = vSurfW.x > uShelter.x && vSurfW.x < uShelter.z && vSurfW.z > uShelter.y && vSurfW.z < uShelter.w && vSurfW.y > uShelterFloor && vSurfW.y < uShelterCeiling;
+      if (sfSheltered) sfWet *= 0.06;
       float sfPuddle = smoothstep(0.55, 0.8, sfF(vSurfW.xz * 0.35)) * smoothstep(0.7, 0.95, sfUp);
       diffuseColor.rgb *= 1.0 - sfWet * (0.18 + sfPuddle * 0.25);
     `);
     fs = fs.replace('#include <roughnessmap_fragment>', `${swap('roughnessmap_fragment')}
-      roughnessFactor = mix(roughnessFactor, roughnessFactor * 0.45, sfWet * (0.5 + 0.5 * max(sfUp, 0.0)));
-      roughnessFactor = mix(roughnessFactor, 0.06, sfWet * sfPuddle);`);
+      roughnessFactor = mix(roughnessFactor, roughnessFactor * 0.78, sfWet * (0.5 + 0.5 * max(sfUp, 0.0)));
+      roughnessFactor = mix(roughnessFactor, 0.18, sfWet * sfPuddle);`);
     fs = fs.replace('#include <metalnessmap_fragment>', swap('metalnessmap_fragment'));
     fs = fs.replace('#include <normal_fragment_maps>', swap('normal_fragment_maps'));
     fs = fs.replace('#include <aomap_fragment>', swap('aomap_fragment'));

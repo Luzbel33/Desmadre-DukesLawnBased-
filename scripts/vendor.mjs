@@ -33,6 +33,7 @@ copy(path.join(jsm, 'objects', 'Sky.js'), path.join(out, 'three', 'addons', 'obj
 copy(path.join(jsm, 'utils', 'BufferGeometryUtils.js'), path.join(out, 'three', 'addons', 'utils', 'BufferGeometryUtils.js'));
 copy(path.join(jsm, 'utils', 'SkeletonUtils.js'), path.join(out, 'three', 'addons', 'utils', 'SkeletonUtils.js'));
 copy(path.join(jsm, 'loaders', 'GLTFLoader.js'), path.join(out, 'three', 'addons', 'loaders', 'GLTFLoader.js'));
+copy(path.join(jsm, 'loaders', 'HDRLoader.js'), path.join(out, 'three', 'addons', 'loaders', 'HDRLoader.js'));
 
 const rapier = path.join(nm, '@dimforge', 'rapier3d-compat');
 copy(path.join(rapier, 'dist', 'rapier.mjs'), path.join(out, 'rapier', 'rapier.mjs'));

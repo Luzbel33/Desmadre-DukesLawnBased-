@@ -581,8 +581,14 @@ const BUILD = {
     scene.add(m);
   },
   dumpster(f, b) {
-    lbox(b, f, 'green', 0, 0.7, 0, 2.2, 1.4, 1.2);
-    lbox(b, f, 'darkgray', 0, 1.45, -0.1, 2.25, 0.1, 1.25, { collide: false, rx: -0.15 });
+    lbox(b, f, 'dumpsterMetal', 0, 0.78, 0, 2.2, 1.2, 1.2);
+    lbox(b, f, 'darkgray', 0, 1.43, -0.03, 2.25, 0.08, 1.25, { collide: false, rx: -0.05 });
+    for (const z of [-0.62, 0.62]) {
+      for (const y of [0.22, 1.33]) lbox(b, f, 'dumpsterMetal', 0, y, z, 2.24, 0.065, 0.055, { collide: false });
+      for (const x of [-0.75, -0.25, 0.25, 0.75]) lbox(b, f, 'dumpsterMetal', x, 0.77, z, 0.035, 1.1, 0.045, { collide: false });
+    }
+    for (const x of [-0.86, 0.86]) for (const z of [-0.43, 0.43]) lcyl(b, f, 'black', x, 0.12, z, 0.12, 0.12, 0.065, 10, { rx: Math.PI / 2, collide: false });
+    for (const x of [-0.6, 0.6]) lbox(b, f, 'darkgray', x, 1.5, 0.1, 0.32, 0.055, 0.055, { collide: false });
   },
   barrel_fire(f, b, scene, out) {
     if (lmodel(scene, f, 'd_barrel_stove', 0, 0, 0)) {
@@ -634,10 +640,26 @@ const BUILD = {
     lbox(b, f, 'concrete', 0, (f.h || 3) / 2, 0, f.len || 10, f.h || 3, 0.3);
     lbox(b, f, 'concrete', 0, (f.h || 3) + 0.08, 0, (f.len || 10) + 0.2, 0.16, 0.42, { collide: false });
   },
-  billboard(f, b) {
+  billboard(f, b, scene) {
     const w = f.w || 12, h = f.h || 5;
     for (const lx of [-w / 3, w / 3]) lbox(b, f, 'darkgray', lx, 3.5, 0.3, 0.35, 7, 0.35);
-    lbox(b, f, 'white', 0, 6, 0.2, w + 0.4, h + 0.4, 0.3, { collide: false });
+    lbox(b, f, 'darkgray', 0, 6, 0.2, w + 0.4, h + 0.4, 0.3, { collide: false });
+    // A real framed sign, with rear structural rails instead of a blank slab.
+    for (const y of [6-h*.35,6,6+h*.35]) lbox(b,f,'metal',0,y,.015,w,.08,.08,{collide:false});
+    const [x,z]=tp(f,0,.365);
+    const canvas=document.createElement('canvas');canvas.width=1536;canvas.height=640;
+    const ctx=canvas.getContext('2d');ctx.fillStyle='#243b3b';ctx.fillRect(0,0,1536,640);
+    ctx.strokeStyle='#c6aa76';ctx.lineWidth=8;ctx.strokeRect(24,24,1488,592);
+    ctx.textAlign='center';ctx.fillStyle='#eee3ca';ctx.font='bold 180px Georgia';ctx.fillText('DESMADRE',768,265);
+    ctx.font='64px Georgia';ctx.fillText('ESTA NOCHE · AUTOCINE',768,400);
+    ctx.font='40px Georgia';ctx.fillText('ENTRADA LIBRE',768,505);
+    for(let i=0;i<2400;i++) {
+      const x=(i*593)%1536,y=(i*227)%640;
+      ctx.fillStyle=i%3?'rgba(9,20,20,.08)':'rgba(238,227,202,.08)';ctx.fillRect(x,y,2+i%4,1+i%3);
+    }
+    const poster=new THREE.CanvasTexture(canvas);poster.colorSpace=THREE.SRGBColorSpace;poster.anisotropy=4;
+    const panel=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshStandardMaterial({map:poster,roughness:.93}));
+    panel.position.set(x,6,z);panel.rotation.y=f.r;scene.add(panel);
     lbox(b, f, 'darkgray', 0, 3.3, -0.4, w, 0.08, 0.9, { collide: false });
   },
   cooler(f, b, scene) {

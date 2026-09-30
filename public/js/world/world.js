@@ -1,7 +1,10 @@
 // Construye el mundo: cielo, luces, suelo, edificios, muebles, árboles y la máscara de pasto.
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { G, rng } from '../core/G.js';
+import { yieldToBrowser } from '../core/startup.js';
+import { ATMOSPHERES, configureSky } from '../core/atmosphere.js';
 import { Builder, pbrMaps } from './builder.js';
 import { TEX } from './textures.js';
 import { Forest } from './trees.js';
@@ -10,6 +13,7 @@ import { buildFurniture, WATER_T } from './furniture.js';
 import { makeFarSun } from './shadows.js';
 import { FireSet } from '../fx/fire.js';
 import { Culler } from './culler.js';
+import { buildHabitat } from './habitat.js';
 import {
   buildBar, buildCinema, buildAlley, buildForecourt, buildGarage,
   buildTown, buildAutocine, buildStuntPark, buildPerimeter,
@@ -41,14 +45,15 @@ export class World {
     this.sunDir = new THREE.Vector3(-0.82, 0.3, 0.42).normalize();
   }
 
-  build(renderer, quality) {
+  async build(renderer, quality) {
     this.renderer = renderer;
     const scene = this.scene;
-    this._sky(renderer);
+    await this._sky(renderer);
+    await yieldToBrowser();
     this._lights(quality);
     this._ground();
     // luces puntuales repartidas (ver lightpool.js) y fuego por shader (velas, antorchas, el fogón)
-    this.pool = new LightPool(scene, quality === 'baja' ? 8 : quality === 'ultra' ? 16 : 14, { shadow: quality !== 'baja' });
+    this.pool = new LightPool(scene, quality === 'baja' ? 8 : quality === 'ultra' ? 14 : 10, { shadow: quality !== 'baja' });
     this.flames = new Flames(scene, 700);
     // fuego volumétrico (fogón, chimeneas, braseros, antorchas): lo dibuja el pase de volumen; en 'baja' no hay
     // ese pase y el castillo usa las llamas planas de siempre
@@ -65,17 +70,31 @@ export class World {
     buildCinema(b, scene, this.lights);
     buildAlley(b);
     buildGarage(b, scene);
+    await yieldToBrowser();
     buildTown(b, scene);
     buildAutocine(b, scene);
     buildStuntPark(b);
     buildPerimeter(b);
     buildFurniture(FURNITURE, b, scene, out);
+    // Barriles y fogatas del mapa usan el mismo fuego que las chimeneas.
+    // Las partículas quedan para humo y brasas, no para fabricar el cuerpo.
+    for (const emitter of this.emitters) if (emitter.kind === 'fire') {
+      this.fires.add(emitter.x, emitter.y, emitter.z, 0.24, 0.24, 0.85, { wind: 0.6, speed: 1.25 });
+      const index = this.flames.add(emitter.x, emitter.y, emitter.z, 0.42, 0.85, { intensity: 0, wind: 0.6 });
+      (this.fireFallback ||= []).push({ index, intensity: 1 });
+      emitter.kind = 'embers'; emitter.rate = 3;
+      this.smoke.add(emitter.x, emitter.y + 0.7, emitter.z, 12, { radius: 0.23, height: 2.4, opacity: 0.08, speed: 0.15 });
+    }
     this._hedges(b);
     b.finish(scene);
+    await yieldToBrowser();
     this._medkits();
     // Castillo del terror + tormenta local (el castillo registra sus luces, asientos y puntos de uso)
     this.castle = new Castle(this).build();
+    await yieldToBrowser();
     decorateCastle(this.castle);
+    await yieldToBrowser();
+    this.habitat = buildHabitat(scene);
     for (const s of this.castle.seats) this.seats.push({ ...s, id: this.seats.length });
     for (const it of this.castle.interact) INTERACT.push(it);
     this.storm = new Storm(this, { quality });
@@ -93,7 +112,7 @@ export class World {
     this._bakeAt = performance.now() + 9000; // si los árboles no cargan, se hornea igual
   }
 
-  _sky(renderer) {
+  async _sky(renderer) {
     const sky = new Sky();
     sky.scale.setScalar(4000);
     const u = sky.material.uniforms;
@@ -111,30 +130,67 @@ export class World {
         uu.cloudSpeed.value = 0.00004;
       }
       uu.sunPosition.value.copy(this.sunDir).multiplyScalar(1000);
+      configureSky(uu, ATMOSPHERES[G.opts.atmosphere] || ATMOSPHERES.natural);
     };
     skyCfg(u);
-    // el cielo no pasa del umbral del bloom: se ve igual (el tone mapping ya lo satura) pero no genera halo
+    // La bruma no genera bloom; el disco solar conserva su brillo propio.
     sky.material.fragmentShader = sky.material.fragmentShader.replace(
       'gl_FragColor = vec4( texColor, 1.0 );',
-      'gl_FragColor = vec4( min( texColor, vec3( 1.35 ) ), 1.0 );',
+      'gl_FragColor = vec4( min( texColor, vec3( 1.35 + 5.0 * pow( max( cosTheta, 0.0 ), 4000.0 ) ) ), 1.0 );',
     );
     sky.material.needsUpdate = true;
     this.scene.add(sky);
     this.sky = sky;
+    this.atmosphere = G.opts.atmosphere || 'natural';
     // ambiente (IBL) a partir del cielo
     const pmrem = new THREE.PMREMGenerator(renderer);
     const skyScene = new THREE.Scene();
     const sky2 = new Sky();
     sky2.scale.setScalar(4000);
     skyCfg(sky2.material.uniforms);
+    sky2.material.uniforms.showSunDisc.value = false; // la luz solar ya tiene su propia fuente direccional
     skyScene.add(sky2);
     const env = pmrem.fromScene(skyScene, 0, 1, 5000);
+    this.environmentTarget = env;
     this.scene.environment = env.texture;
     // relleno del cielo: sombras que no quedan negras, cromo y pintura con reflejos
     this.scene.environmentIntensity = 0.3;
+    sky2.geometry.dispose(); sky2.material.dispose();
     pmrem.dispose();
     // bruma de distancia (perspectiva aérea): lo lejano se funde en celeste, como en la referencia
     this.scene.fog = new THREE.FogExp2(0xc3d3df, 0.0036);
+    try {
+      const [day, storm] = await Promise.all([
+        new HDRLoader().loadAsync('assets/environment/day.hdr'),
+        new HDRLoader().loadAsync('assets/environment/storm.hdr'),
+      ]);
+      day.mapping = THREE.EquirectangularReflectionMapping;
+      this.dayHDR = day; this.stormHDR = storm;
+      sky.visible = false;
+      this.scene.background = day;
+      this.scene.backgroundIntensity = 0.65;
+      const generator = new THREE.PMREMGenerator(renderer);
+      const target = generator.fromEquirectangular(day);
+      this.environmentTarget.dispose(); this.environmentTarget = target;
+      this.scene.environment = target.texture;
+      generator.dispose();
+    } catch (error) { console.warn('Cielo fotográfico', error); }
+  }
+
+  refreshEnvironment() {
+    if (this.dayHDR) return;
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const scene = new THREE.Scene();
+    const sky = this.sky.clone();
+    sky.material = this.sky.material.clone();
+    sky.material.uniforms.showSunDisc.value = false;
+    scene.add(sky);
+    const target = pmrem.fromScene(scene, 0, 1, 5000);
+    this.scene.environment = target.texture;
+    this.environmentTarget?.dispose();
+    this.environmentTarget = target;
+    sky.material.dispose();
+    pmrem.dispose();
   }
 
   _lights(quality) {
@@ -179,12 +235,17 @@ export class World {
     this.forest?.showAll(true);
     this.farSun.shadow.needsUpdate = true;
     const prev = this.renderer.getRenderTarget();
-    this.renderer.setRenderTarget(null);
-    this.renderer.render(this.scene, camera);
-    this.renderer.setRenderTarget(prev);
-    this.forest?.showAll(false);
-    for (const o of off) o.castShadow = true;
-    this._baked = true;
+    // Same output format as gameplay: drawing to the screen here creates a
+    // second, unprepared variant of every shader (tone mapping / color space).
+    this.renderer.setRenderTarget(G.post?.ao?.beautyRenderTarget || G.post?.composer?.renderTarget1 || prev);
+    try {
+      this.renderer.render(this.scene, camera);
+      this._baked = true;
+    } finally {
+      this.renderer.setRenderTarget(prev);
+      this.forest?.showAll(false);
+      for (const o of off) o.castShadow = true;
+    }
   }
 
   _ground() {
@@ -331,7 +392,7 @@ export class World {
     return c;
   }
 
-  update(dt, focus) {
+  update(dt, focus, { bake = true } = {}) {
     // tormenta (luz, niebla, lluvia, relámpagos), fuego y reparto de luces
     const cam3 = G.camera;
     if (this.storm && cam3) this.storm.update(dt, cam3);
@@ -363,7 +424,7 @@ export class World {
     if (this.forest) this.forest.update(G.camera ? G.camera.position : focus, G.time);
     if (this.sky?.material.uniforms.time) this.sky.material.uniforms.time.value = G.time;
     // sombra lejana: cuando están los árboles (o si tardan demasiado)
-    if (!this._baked && G.camera && (this.forest || performance.now() > this._bakeAt)) this.bakeFarShadows(G.camera);
+    if (bake && !this._baked && G.camera && (this.forest || performance.now() > this._bakeAt)) this.bakeFarShadows(G.camera);
     WATER_T.value = G.time;
     for (const a of this.anim) a(G.time, dt);
     // emisores (fuego, parrilla, fuente): solo los cercanos a la cámara
@@ -377,6 +438,7 @@ export class World {
           e.acc -= 1;
           E1.set(e.x, e.y, e.z);
           if (e.kind === 'fire') G.fx.fire(E1);
+          else if (e.kind === 'embers') G.fx.ember(E1);
           else if (e.kind === 'grill') { if (Math.random() < 0.5) G.fx.ember(E1.set(e.x + (Math.random() - 0.5) * 1.4, e.y, e.z + (Math.random() - 0.5) * 0.5)); else G.fx.puff(E1, E2.set(0, 1, 0), 0.25, 0xbbbbbb); }
           else if (e.kind === 'fountain') G.fx.water(E1, e.r || 0.2, e.up ?? 1.6);
         }

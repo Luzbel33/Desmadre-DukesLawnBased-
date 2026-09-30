@@ -7,6 +7,8 @@
 import * as THREE from 'three';
 import { rng } from '../core/G.js';
 import { CASTLE } from '../shared/mapdata.js';
+import { whenAsset, assetBounds } from '../game/assets.js';
+import { supportedMatrix } from '../game/placement.js';
 
 const F0 = CASTLE.keep.floor;
 const HAS_DOM = typeof document !== 'undefined';
@@ -26,27 +28,34 @@ function ctex(cv, srgb = true) { const t = new THREE.CanvasTexture(cv); if (srgb
 class Batch {
   constructor(d) { this.d = d; this.map = new Map(); }
   add(type, x, y, z, yaw = 0, s = 1, o = {}) {
-    if (!this.map.has(type)) this.map.set(type, { mats: [], shadow: false });
+    if (['c_chair', 'c_armchair'].includes(type) && y >= F0 - .05 && !o.rx && !o.rz) this.d.c.seats.push({x, y:y+(type==='c_chair'?.46:.48)*s, z, yaw});
+    if (!this.map.has(type)) this.map.set(type, { mats: [], supports: [], shadow: false });
     const b = this.map.get(type);
     b.mats.push(mx(x, y, z, yaw, s, o));
+    b.supports.push(o.ground ? { x, y, z, yaw, s, o } : null);
     if (o.shadow) b.shadow = true;
     return this;
   }
   // un modelo de alto `h` y ancho `w` acostado sobre su lado, con el centro en (cx, cz) apoyado en y
   lay(type, w, h, cx, y, cz, yaw = 0, o = {}) {
-    const ox = (h / 2) * Math.cos(yaw), oz = -(h / 2) * Math.sin(yaw);
-    return this.add(type, cx - ox, y + w / 2, cz - oz, yaw, 1, { ...o, rz: PI / 2 });
+    return this.add(type, cx, y, cz, yaw, 1, { ...o, rz: PI / 2, ground: true });
   }
   // un modelo plano (cara hacia +z, espesor t, alto h) apoyado boca arriba con el centro en (cx, cz)
   flat(type, h, t, cx, y, cz, yaw = 0, o = {}) {
-    return this.add(type, cx - (h / 2) * Math.sin(yaw), y + t / 2, cz - (h / 2) * Math.cos(yaw), yaw, 1, { ...o, rx: -PI / 2 });
+    return this.add(type, cx, y, cz, yaw, 1, { ...o, rx: -PI / 2, ground: true });
   }
   // un arma cruzada detrás de un escudo: gira alrededor de su punto medio (h = largo del modelo)
   cross(type, h, cx, cy, z, ang, s = 1) {
     return this.add(type, cx + Math.sin(ang) * (h * s) / 2, cy - Math.cos(ang) * (h * s) / 2, z, 0, s, { rz: ang });
   }
   flush() {
-    for (const [type, b] of this.map) this.d.instances(type, b.mats, { shadow: b.shadow });
+    for (const [type, b] of this.map) whenAsset(type, () => {
+      const bounds = assetBounds(type);
+      b.supports.forEach((p, i) => {
+        if (p && bounds) b.mats[i] = supportedMatrix(bounds, p.x, p.y, p.z, p.yaw, p.s, p.o);
+      });
+      this.d.instances(type, b.mats, { shadow: b.shadow });
+    });
     this.map.clear();
   }
 }
@@ -172,11 +181,11 @@ const RUGS = {
   green: { field: '#26382a', accent: '#a08a48', border: '#2a1a14', trim: '#6a5a3a' },
   brown: { field: '#4a3020', accent: '#b08a50', border: '#180e0a', trim: '#7a5a34' },
 };
-function rug(d, x, z, w, l, kind = 'red', yaw = 0, seed = 1) {
+function rug(d, x, z, w, l, kind = 'red', yaw = 0, seed = 1, floor = F0) {
   if (!HAS_DOM) return;
   const mat = new THREE.MeshStandardMaterial({ map: ctex(rugCanvas(RUGS[kind], seed * 77 + 5)), roughness: 1 });
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.018, l), mat);
-  m.position.set(x, F0 + 0.03, z);
+  m.position.set(x, floor + 0.03, z);
   m.rotation.y = yaw;
   m.receiveShadow = true;
   m.matrixAutoUpdate = false;
@@ -253,6 +262,7 @@ export function dressCastle(d) {
   const rnd = (a, b) => a + r() * (b - a);
   const ctx = { d, c, r, col, rnd };
   dressHall(ctx);
+  dressBalcony(ctx);
   dressDining(ctx);
   dressKitchen(ctx);
   dressLibrary(ctx);
@@ -287,8 +297,28 @@ function dressHall({ d, c, r, col }) {
     c.flame(x, F0 + 2.84, -115.3, 0.05, 0.1, {});
   }
   // una silla volcada al pie de la escalera
-  B.add('c_chair', -3.9, F0 + 0.32, -111.4, 0.7, 1, { rx: -PI / 2 + 0.12 });
+  B.add('c_chair', -3.9, F0 + 0.02, -111.4, 0.7, 1, { rx: -PI / 2 + 0.12, ground: true });
   B.flush();
+}
+
+// Galería superior EXISTENTE: rincón de lectura, archivos y velas sobre el balcón.
+// Una franja de 1.25 m queda libre frente a todo el mobiliario y a la escalera.
+function dressBalcony({ d, c, r, col }) {
+  const B = new Batch(d), y = 8;
+  rug(d, 1.0, -115.2, 6.5, 0.65, 'red', 0, 8, y);
+  B.add('c_console', 0.8, y, -116.12, 0, 0.7, { shadow: true });
+  col(0.8, y, -116.12, 1.08, 0.665, 0.41);
+  B.add('c_oillamp', 1.12, y + 0.665, -116.12, 0, 0.7);
+  B.lay('c_book_a', 0, 0, 0.45, y + 0.665, -116.12, 0.2);
+  B.add('c_stool2', 2.1, y, -116.0, 0, 0.8, { shadow: true });
+  col(2.1, y, -116.0, 0.38, 0.44, 0.38);
+  B.add('c_drawer', 6.6, y, -116.05, 0, 0.8, { shadow: true });
+  col(6.6, y, -116.05, 0.69, 0.44, 0.37);
+  B.add('c_vase_c2', 6.65, y + 0.44, -116.05, 0, 0.8);
+  B.flush();
+  c.flame(1.12, y + 1.015, -116.12, 0.035, 0.08, {});
+  c.light(1.12, y + 1.25, -115.9, 0xffc78b, 5, 7, { flicker: true, priority: 1.4 });
+  c.seats.push({ x: 2.1, y: y + 0.44, z: -116.0, yaw: -PI / 2 });
 }
 
 // ---------------------------------------------------------------- comedor (103): la cena quedó a medias
@@ -529,7 +559,7 @@ function dressCrypt({ d, c, r, col }) {
   // rincón del fondo: barriles rotos, duelas y una escalera caída
   B.add('c_barrel_a', 22.3, 0, -123.4, 0.4, 1, { shadow: true });
   col(22.3, 0, -123.4, 0.76, 0.92, 0.76);
-  B.add('c_barrel_b', 21.3, 0.38, -122.3, 0.8, 1, { rz: PI / 2 - 0.05, shadow: true });
+  B.add('c_barrel_b', 19.5, 0.02, -123.2, 0.8, 1, { rz: PI / 2 - 0.05, ground: true, shadow: true });
   B.add('c_staves', 20.5, 0, -124.6, 0.3, 0.9).add('c_staves', 22.6, 0, -121.0, 2.2, 0.7);
   B.add('c_ladder', 9.6, 0, -106.3, PI / 2, 1, { shadow: true });
   // urnas y floreros junto a los nichos, ramas secas y una trampa para ratas

@@ -266,8 +266,9 @@ F('bench', 12, 0, -60, 0, { len: 3, seats: 2 });
 // --- Decoración (modelos CC0 de Poly Haven; si no cargan, no se dibujan)
 // faroles en la vereda del pueblo, en la explanada y en los senderos
 for (const [x, z] of [[-36, -53.2], [-12, -53.2], [12, -53.2], [36, -53.2],
-  [50, -56.3], [66, -56.3], [80, -56.3], [-50, -56.3], [-66, -56.3], [-84.3, -40], [-84.3, -24]]) {
-  F('decor', x, 0, z, 0, { m: 'd_streetlamp', col: { r: 0.12, h: 4 } });
+  [50, -56.3], [66, -56.3], [77, -53.2], [-50, -56.3], [-66, -56.3], [-84.3, -40], [-84.3, -24]]) {
+  F('decor', x, 0, z, Math.abs(x)>70 ? Math.PI/2 : x<0 ? .35 : -.35,
+    { m: 'd_streetlamp', col: { r: 0.12, h: 4 }, light: {at:[0,3.54,0],color:0xffce89,i:3,d:8} });
 }
 // mesas de picnic en la explanada este
 F('decor', 27, 0, -63, Math.PI / 2, { m: 'd_picnic', col: [1.1, 0.36, 1.45] });
@@ -338,8 +339,8 @@ for (const [tx, tz] of [[99.5, -34.5], [104, -34.5], [99.5, -28.5]]) {
   P('chair', tx + 1.0, 0, tz, -Math.PI / 2);
   P('chair', tx, 0, tz - 1.0, 0);
   P('chair', tx, 0, tz + 1.0, Math.PI);
-  P('bottle', tx + 0.2, 1.02, tz + 0.1);
-  P('bottle', tx - 0.25, 1.02, tz - 0.15);
+  P('bottle', tx + 0.2, 0.825, tz + 0.1);
+  P('bottle', tx - 0.25, 0.825, tz - 0.15);
 }
 // Latas en la barra y pochoclos en el cine (se agarran, se toman, se revolean)
 for (let i = 0; i < 4; i++) P('can', 100.2 + i * 2.9, 1.18, -40.35, i);
@@ -367,7 +368,7 @@ P('trashcan', 98.2, 0, -13.4);
 P('crate', 118, 0, -13.2);
 P('crate', 118, 0.5, -13.2);
 P('cone', 100, 0, -16);
-P('bottle', 106.4, 0.55, -18.4);
+P('bottle', 106.4, 0.0, -18.4);
 
 // Estacionamiento
 for (let i = 0; i < 6; i++) P('cone', 104 + i * 2.4, 0, 33);
