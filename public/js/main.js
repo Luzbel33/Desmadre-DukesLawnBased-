@@ -58,7 +58,7 @@ import { Hud } from './ui/hud.js';
 import { RadialMenu } from './ui/radial.js';
 import { preloadHumans, MODELS, DEFAULT_MODEL } from './char/human.js';
 import { AudioEngine } from './audio/audio.js';
-import { voiceOf, voiceRate, vocalName } from './audio/vocals.js';
+import { voiceFor, voiceRate, vocalName } from './audio/vocals.js';
 import { YouTubeScreenManager } from './media/screens.js';
 import { youtubeId, mediaPosition } from './media/youtube.js';
 import { ZONES, zoneAt, isPvpAt, INTERACT, SCREENS, SCREEN_BY_ID, FIELD, STORM, CASTLE, MOON } from './shared/mapdata.js';
@@ -865,7 +865,7 @@ function throwPopcorn(side) {
 
 // Voz de dolor de un jugador (cada uno con su voz y su tono). pos null = la mía (sin espacializar)
 function playVocal(kind, vi, look, id, pos) {
-  const voice = voiceOf(MODELS[look?.model]?.gender || MODELS[DEFAULT_MODEL].gender, id);
+  const voice = voiceFor(MODELS[look?.model] || MODELS[DEFAULT_MODEL], id);
   G.sfx?.trigger(vocalName(kind, voice), pos, kind === 'hurt' ? 0.8 : 0.95, { variant: vi | 0, rate: voiceRate(id), full: 3, max: 32, slot: 'vo' + id });
 }
 

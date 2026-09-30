@@ -4,9 +4,11 @@
 // función por cuadro); acá solo el cuerpo, el globo y el mirar.
 import * as THREE from 'three';
 import { G, clamp } from '../core/G.js';
-import { HumanCharacter, humansReady, loadHuman } from '../char/human.js';
+import { HumanCharacter, humansReady, loadHuman, MODELS } from '../char/human.js';
+import { voiceFor, voiceRate, vocalName } from '../audio/vocals.js';
 import { Ragdoll, PART } from './ragdoll.js';
 import { GR } from '../core/physics.js';
+import { goreFor, branchOf } from './gore.js';
 
 const V1 = new THREE.Vector3();
 const V2 = new THREE.Vector3();
@@ -45,6 +47,76 @@ export class Npc {
     this.hp = 100;
     this.snap = { head: new THREE.Vector2(), headV: new THREE.Vector2(), torso: new THREE.Vector2(), torsoV: new THREE.Vector2() };
     this.onHurt = null; // (npc, s, point, byPlayer) => void
+    // muerte y vuelta: tirado un rato, desaparece y reaparece entero en su lugar
+    this.home = { pos: pos.clone(), yaw };
+    this.dead = false; this.deadT = 0;
+    this.respawnSecs = 25;
+    this.lost = 0; // miembros que perdió (bits de parte)
+    this.onRespawn = null;
+  }
+
+  // quejido / grito / muerte con la voz de su modelo (cada NPC la suya: el número sale del nombre)
+  vocal(kind) {
+    if (this.lost & (1 << PART.HEAD)) return;
+    const now = performance.now();
+    if (now - (this._vocT || 0) < (kind === 'hurt' ? 350 : 120)) return;
+    this._vocT = now;
+    let id = 0; for (const ch of this.name) id = (id * 31 + ch.charCodeAt(0)) | 0;
+    const voice = voiceFor(MODELS[this.look.model], id);
+    G.sfx?.trigger(vocalName(kind, voice), V1.copy(this.pos).setY(this.pos.y + 1.5), kind === 'hurt' ? 0.75 : 0.95, { rate: voiceRate(id), full: 3, max: 30, slot: 'npc' + this.name });
+  }
+
+  // pierde un miembro (con su chorro); sin pierna no se levanta más: se desangra y reaparece
+  loseLimb(part, vel = V2.set(0, 2, 0)) {
+    if (!this.char || part <= PART.TORSO) return;
+    const par = [-1, 0, 1, 1, 3, 1, 5, 0, 7, 0, 9][part];
+    if ((this.lost & (1 << part)) || (par > 0 && (this.lost & (1 << par)))) return;
+    this._ensureRag();
+    this.lost |= 1 << part;
+    try { G.gore?.sever(this.char, part, { vel: vel.clone() }); } catch (e) { console.warn(e); }
+    this.rag?.detachBranch(part, branchOf(part));
+    if (part === PART.HEAD) { this.die(vel); return; }
+    this.vocal('scream');
+    if (part >= PART.THIGH_L) { if (!this.down) this.knockout(V1.copy(vel).multiplyScalar(0.3), 6); }
+    else this.say(['¡MI BRAZO!', '¡AAAAH!', '¡La puta madre!'][Math.floor(Math.random() * 3)], 2);
+  }
+  _popHead(vel) {
+    if (!this.char || this.lost & (1 << PART.HEAD)) return;
+    this._ensureRag();
+    this.lost |= 1 << PART.HEAD;
+    try { G.gore?.explodeHead(this.char, { vel: vel.clone() }); } catch (e) { console.warn(e); }
+    this.rag?.detachBranch(PART.HEAD, branchOf(PART.HEAD));
+    this.die(vel);
+  }
+  die(vel = V2.set(0, 0.5, 0)) {
+    if (this.dead) return;
+    this.vocal('death');
+    this.dead = true; this.deadT = 0;
+    if (this.bubble) this.bubble.style.display = 'none';
+    this.bubbleT = 0;
+    if (!this.down) this.knockout(vel.clone(), 1e9);
+    else this.down = 1e9;
+  }
+  // una explosión (k: 0 lejos .. 1 encima)
+  blastGore(k, vel) {
+    if (!this.char) return;
+    this.hp -= k * 130;
+    if (k > 0.9 && Math.random() < 0.4) { this._popHead(vel); return; }
+    const limbs = [4, 6, 8, 10, 3, 5, 7, 9];
+    const n = Math.random() < k - 0.25 ? (k > 0.75 ? 2 : 1) : 0;
+    for (let j = 0; j < n; j++) this.loseLimb(limbs[(Math.random() * limbs.length) | 0], V1.copy(vel).add(V2.set(Math.random() - 0.5, 1, Math.random() - 0.5)));
+    if (this.hp < -40) this.die(vel);
+  }
+  respawn() {
+    this.rag?.destroy(); this.rag = null;
+    this.char?.root.removeFromParent();
+    this.char?.dispose?.();
+    this.char = null;
+    this.pos.copy(this.home.pos); this.yaw = this.baseYaw = this.home.yaw;
+    this.hp = 100; this.lost = 0; this.dead = false; this.deadT = 0; this.down = 0;
+    this.action = null; this.emote = null; this.speed = 0; this.data = {};
+    for (const k of Object.values(this.snap)) k.set(0, 0);
+    this.onRespawn?.(this);
   }
 
   _ensureRag() {
@@ -58,8 +130,8 @@ export class Npc {
   }
 
   // un golpe (de un jugador: la mano o el pie tocó uno de sus cuerpos; o de otro NPC): speed m/s, dir hacia donde empuja
-  punch(speed, point, dir, mass = 1, byPlayer = true) {
-    if (!this.char) return;
+  punch(speed, point, dir, mass = 1, byPlayer = true, kind = 'blunt') {
+    if (!this.char || this.dead) return;
     const s = Math.min(1.6, (speed / 8) * Math.sqrt(mass));
     // la parte más cercana al punto
     let part = PART.TORSO, best = 1e9;
@@ -71,9 +143,18 @@ export class Npc {
     const k = part === PART.HEAD ? this.snap.headV : this.snap.torsoV;
     k.x += -fwd * 9 * s; k.y += side * 7 * s;
     this.snap.torsoV.x += -fwd * 3 * s;
-    try { this.char.wound(part, this.char.worldToPart(part, point, V2), 'blunt', Math.min(1, s * 0.8), null, (Math.random() * 1e6) | 0); } catch { /* */ }
-    this.hp -= s * (part === PART.HEAD ? 28 : 16);
+    try { this.char.wound(part, this.char.worldToPart(part, point, V2), kind === 'bullet' ? 'cut' : 'blunt', Math.min(1, s * 0.8), null, (Math.random() * 1e6) | 0); } catch { /* */ }
+    this.hp -= s * (part === PART.HEAD ? 28 : 16) * (kind === 'bullet' ? 2.2 : 1);
     this.onHurt?.(this, s, point, byPlayer);
+    if (s > 0.25) this.vocal(s > 1 || kind === 'bullet' ? 'scream' : 'hurt');
+    // gore: un tiro puede reventar la cabeza o arrancar un brazo/una pierna (no siempre: si no, es una picadora)
+    if (kind !== 'blunt' && Math.random() < 0.55) {
+      const g = goreFor(part, (speed / 8) * Math.sqrt(mass), kind, 'remote');
+      const vel = V1.copy(dir).multiplyScalar(2 + s * 2).setY(1.2);
+      if (g.headPop) { this._popHead(vel); return; }
+      if (g.sever >= 0) this.loseLimb(g.sever, vel);
+    }
+    if (this.hp < -60) { this.die(V1.copy(dir).multiplyScalar(3).setY(1)); return; }
     if ((this.hp <= 0 || s > 1.25) && !this.down) this.knockout(V1.copy(dir).multiplyScalar(2 + s * 3).setY(1 + s));
   }
 
@@ -130,6 +211,14 @@ export class Npc {
     this.visible = show;
     this.char.root.visible = show;
     if (!show) { if (this.bubble) this.bubble.style.display = 'none'; return; }
+    if (this.dead) {
+      // muerto: tirado; al rato se va y vuelve entero
+      this.deadT += dt;
+      if (this.rag?.alive) this.char.applyWorldTransforms(this.rag.read());
+      this.char.update(dt);
+      if (this.deadT > this.respawnSecs) this.respawn();
+      return;
+    }
     this.role?.(this, dt);
     // mirar a alguien: la cabeza primero, el cuerpo si hace falta
     let want = this.baseYaw, hy = 0;
@@ -150,7 +239,11 @@ export class Npc {
       // tirado: el cuerpo es el ragdoll
       this.down -= dt;
       ch.applyWorldTransforms(this.rag.read());
-      if (this.down <= 0) this._getUp();
+      if (this.down <= 0) {
+        // sin una pierna no se levanta: se queda y se desangra
+        if (this.lost & ((1 << PART.THIGH_L) | (1 << PART.SHIN_L) | (1 << PART.THIGH_R) | (1 << PART.SHIN_R))) this.die();
+        else this._getUp();
+      }
     } else {
       ch.root.position.copy(this.pos);
       ch.root.rotation.set(0, this.yaw, 0);

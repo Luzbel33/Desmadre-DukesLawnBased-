@@ -2,7 +2,8 @@
 // y su número), así se reconoce quién grita. kind: 'hurt' (quejido) | 'scream' (golpe fuerte, KO) | 'death'.
 const A = 'assets/sfx/vo/';
 // voz -> cantidad de tomas [quejidos, gritos, muerte]
-const N = { m1: [6, 4, 0], m2: [4, 4, 2], m3: [5, 5, 2], m4: [4, 3, 3], m5: [5, 4, 3], f1: [3, 0, 0], f2: [3, 0, 0], f3: [3, 0, 0], f: [0, 2, 2] };
+const N = { m1: [6, 4, 0], m2: [4, 4, 2], m3: [5, 5, 2], m4: [4, 3, 3], m5: [5, 4, 3], f1: [3, 0, 0], f2: [3, 0, 0], f3: [3, 0, 0], f: [0, 2, 2], demon: [5, 4, 3], cookie: [5, 4, 3] };
+// demon (El Diablo) y cookie (La Galleta): derivadas de m3/m4 con assets/audio/gen_voices.py
 const KINDS = ['hurt', 'scream', 'death'];
 export const VOICES = { m: ['m1', 'm2', 'm3', 'm4', 'm5'], f: ['f1', 'f2', 'f3'] };
 
@@ -17,6 +18,10 @@ export function vocalManifest() {
   return out;
 }
 
+// voz de un modelo: los especiales tienen la suya (MODELS[..].voice); el resto, una de su género según el número
+export function voiceFor(model, id) {
+  return model?.voice || voiceOf(model?.gender, id);
+}
 export function voiceOf(gender, id) {
   const list = VOICES[gender === 'f' ? 'f' : 'm'];
   return list[Math.abs(id | 0) % list.length];

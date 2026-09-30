@@ -450,9 +450,15 @@ export function goreFor(part, sev, kind, src) {
   } else if (kind === 'cut') {
     // filo: hace falta un buen hachazo/sablazo (no cualquier roce)
     if (part === PART.HEAD && sev > 1.7) out.sever = PART.HEAD;
-    else if ((part === 4 || part === 6 || part === 8 || part === 10) && sev > 0.75) out.sever = part;
-    else if ((part === 3 || part === 5 || part === 7 || part === 9) && sev > 1.05) out.sever = part;
-    else if ((part === PART.TORSO || part === PART.PELVIS) && sev > 1.3) out.guts = true;
+    else if ((part === 4 || part === 6 || part === 8 || part === 10) && sev > 0.6) out.sever = part;
+    else if ((part === 3 || part === 5 || part === 7 || part === 9) && sev > 0.85) out.sever = part;
+    else if ((part === PART.TORSO || part === PART.PELVIS) && sev > 1.2) out.guts = true;
+  } else if (kind === 'bullet') {
+    // tiro: a quemarropa revienta la cabeza; en un brazo o una pierna, un tiro fuerte la arranca
+    if (part === PART.HEAD && sev > 2.1) out.headPop = true;
+    else if ((part === 4 || part === 6 || part === 8 || part === 10) && sev > 1.5) out.sever = part;
+    else if ((part === 3 || part === 5 || part === 7 || part === 9) && sev > 2) out.sever = part;
+    else if ((part === PART.TORSO || part === PART.PELVIS) && sev > 2.2) out.guts = true;
   } else {
     // contundente: la cabeza revienta con golpes brutales (maza, choque a toda velocidad)
     if (part === PART.HEAD && sev > (src === 'vehicle' ? 2.4 : 2.2)) out.headPop = true;

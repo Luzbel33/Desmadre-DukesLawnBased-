@@ -38,6 +38,12 @@ export const PROXY_FILTER = GR.RAGDOLL | GR.PROP | GR.DEBRIS | GR.VEHICLE;
 // umbral de impacto por parte (cambio de velocidad en m/s) para que duela (tirado en el piso)
 const HIT_DV = [5.2, 5.2, 3.4, 6.5, 6.5, 6.5, 6.5, 7.5, 9, 7.5, 9];
 const PART_DMG = [0.9, 1, 1.7, 0.45, 0.35, 0.45, 0.35, 0.55, 0.4, 0.55, 0.4];
+// los jugadores aguantan más (antes con dos tropezones te morías): todo el daño de golpes, tiros y choques por esto
+const PLAYER_DMG_K = 0.6;
+// la parte de la que cuelga cada una (un antebrazo ya no se corta si se fue el brazo entero)
+const PARENT_PART = [-1, 0, 1, 1, 3, 1, 5, 0, 7, 0, 9];
+// desangrarse por un miembro cortado no mata solo: la vida no baja de acá por la sangre (otro golpe sí)
+const BLEED_FLOOR = 12;
 const STATE_CODE = { active: 0, stun: 1, ko: 2, dead: 3, getup: 4, seated: 5, driving: 6 };
 const CODE_STATE = Object.fromEntries(Object.entries(STATE_CODE).map(([k, v]) => [v, k]));
 const CUT_PROPS = new Set(['sword', 'machete', 'knife', 'axe', 'broken_bottle', 'hatchet', 'katana']);
@@ -991,8 +997,10 @@ export class LocalPlayer {
     }
     const kind = hit.kind || 'blunt';
     const prof = hit.src === 'remote' ? BODY_HITS[hit.body] || BODY_HITS.p : null;
-    const base = prof ? prof.base : hit.src === 'vehicle' ? 36 : 22;
-    const dmg = harmless ? 0 : s * base * PART_DMG[part] * (kind === 'cut' ? 1.25 : kind === 'mulch' ? 3.5 : 1);
+    // contra el piso/las paredes (tropezón, porrazo del dive, rodar): duele poco y nunca tanto como una piña
+    const world = hit.src === 'world';
+    const base = prof ? prof.base : hit.src === 'vehicle' ? 36 : world ? 8 : 22;
+    const dmg = harmless ? 0 : (world ? Math.min(s, 1.4) : s) * base * PART_DMG[part] * (kind === 'cut' ? 1.25 : kind === 'mulch' ? 3.5 : 1) * PLAYER_DMG_K;
     if (dmg > 0) {
       this.damage(dmg, by);
       if (kind === 'cut') this.blood = Math.max(0, this.blood - s * 6);
@@ -1080,6 +1088,19 @@ export class LocalPlayer {
     // sin pierna: al piso un rato; después se levanta y rengea
     if (part >= PART.THIGH_L) this.knockout(3.5, by);
     else this.stun(0.8);
+  }
+
+  // una explosión cerca (k: 0 lejos .. 1 encima): arranca uno o dos miembros; encima de todo, la cabeza
+  blastGore(k, away, by = 0) {
+    if (this.dead || this.immortal || k < 0.5) return;
+    if (k > 0.93 && Math.random() < 0.35) { this._gore(GORE_HEAD_POP, away, by); return; }
+    const limbs = [PART.FARM_L, PART.FARM_R, PART.SHIN_L, PART.SHIN_R, PART.UARM_L, PART.UARM_R, PART.THIGH_L, PART.THIGH_R]
+      .filter((i) => !(this.gore & (1 << i)) && !(this.gore & (1 << PARENT_PART[i])));
+    const n = Math.random() < k - 0.3 ? (k > 0.78 ? 2 : 1) : 0;
+    for (let j = 0; j < n && limbs.length; j++) {
+      const i = limbs.splice((Math.random() * limbs.length) | 0, 1)[0];
+      this._gore(1 << i, V1.copy(away).add(V2.set(Math.random() - 0.5, 1, Math.random() - 0.5)), by);
+    }
   }
 
   hasHand(side) {
@@ -2276,10 +2297,9 @@ export class LocalPlayer {
     // desangrándose (miembros cortados, tripas afuera): el chorro se va cortando solo en ~15-20 s
     if (this.immortal) this.bleedRate = 0;
     if (this.bleedRate > 0 && !this.dead) {
-      this.hp -= this.bleedRate * dt;
+      if (this.hp > BLEED_FLOOR) this.hp = Math.max(BLEED_FLOOR, this.hp - this.bleedRate * dt);
       this.bleedRate = Math.max(0, this.bleedRate - dt * 0.13);
       this.lastHurtT = G.time;
-      if (this.hp <= 0) { this.hp = 0; this.die(); }
     }
     // se recupera solo: equilibrio siempre; vida y sangre si hace 5 s que nadie te pega (sentado, más rápido)
     if (!this.dead) {

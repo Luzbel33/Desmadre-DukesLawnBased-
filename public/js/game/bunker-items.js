@@ -12,6 +12,7 @@ import { isPvpAt } from '../shared/mapdata.js';
 
 const V1 = new THREE.Vector3();
 const V2 = new THREE.Vector3();
+const V3 = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 const FUSE = 2.8, BLAST = 7.5;
 const SHOT_GROUPS = groups(0xffff, GR.WORLD | GR.REMOTE | GR.PROP | GR.VEHICLE | GR.RAGDOLL);
@@ -108,7 +109,7 @@ export class BunkerItems {
       L._claimHit(info.id, info.part ?? 1, 22, point, 'pistol', 'g');
       G.fx?.blood(point.clone(), V1.copy(d).negate().add(UP).normalize(), 0.9);
     } else if (info?.kind === 'bag' && info.ref?.punch) {
-      info.ref.punch(16, point, d.clone(), 1.6, true);
+      info.ref.punch(16, point, d.clone(), 1.6, true, 'bullet');
     } else if (info?.kind === 'prop' && info.ref) {
       L._whack?.(info.ref, d.clone(), 12, point, { mass: 1 });
       G.fx?.sparks(point.clone(), V1.set(-d.x, -d.y, -d.z), 8);
@@ -179,6 +180,7 @@ export class BunkerItems {
         const away = V2.subVectors(L.pos, p).setY(0).normalize();
         const pvp = G.settings?.desmadre || isPvpAt(L.pos.x, L.pos.z);
         if (pvp) L.damage?.(k * 95, n.by !== G.myId ? n.by : 0);
+        if (pvp && !L.dead) L.blastGore?.(k, V3.copy(away).multiplyScalar(3 + k * 5).setY(2 + k * 3), n.by !== G.myId ? n.by : 0);
         if (!L.dead && k > 0.25) L.knockout?.(1.5 + k * 2.5, n.by !== G.myId ? n.by : 0, away.multiplyScalar(4 + k * 9).setY(2 + k * 5));
       }
     }
@@ -186,7 +188,11 @@ export class BunkerItems {
       const d = npc.pos.distanceTo(p);
       if (d < BLAST && npc.char) {
         const k = 1 - d / BLAST;
-        if (npc.physical) npc.knockout(V2.subVectors(npc.pos, p).setY(0).normalize().multiplyScalar(4 + k * 9).setY(2 + k * 5), 4 + k * 3);
+        if (npc.physical) {
+          const v = V2.subVectors(npc.pos, p).setY(0).normalize().multiplyScalar(4 + k * 9).setY(2 + k * 5);
+          npc.knockout(v, 4 + k * 3);
+          npc.blastGore?.(k, v);
+        }
         else { npc.emote = 'facepalm'; npc.emoteT = 0; npc.say?.(['¡¿QUÉ HACÉS?!', '¡La concha de...!', '¡Una granada, boludo!'][Math.floor(Math.random() * 3)], 2.2); }
       }
     }

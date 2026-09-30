@@ -13,10 +13,10 @@ export const MODELS = {
   eric: { file: 'assets/chars/eric.glb', label: 'Eric', gender: 'm' },
   carla: { file: 'assets/chars/carla.glb', label: 'Carla', gender: 'f' },
   claudia: { file: 'assets/chars/claudia.glb', label: 'Claudia', gender: 'f' },
-  galleta: { file: 'assets/chars/cookie.glb', label: 'Galleta', gender: 'm' },
+  galleta: { file: 'assets/chars/cookie.glb', label: 'Galleta', gender: 'm', voice: 'cookie' },
   // exclusivo del dueño (el servidor solo se lo deja a SmokePyro con su clave): "Demon" de VidovicArts (Sketchfab,
   // CC-BY 4.0), rig reparado en Blender (assets/blender/repair_demon.py + retarget_human.py)
-  diablo: { file: 'assets/chars/diablo.glb', label: 'El Diablo', gender: 'm', devil: true, owner: true },
+  diablo: { file: 'assets/chars/diablo.glb', label: 'El Diablo', gender: 'm', devil: true, owner: true, voice: 'demon' },
   // la gente del Búnker (MakeHuman CC0 + ropa procedural: assets/blender/mh/build_npc.py). Se bajan recién cerca del club
   portero: { file: 'assets/chars/npc/portero.glb', label: 'El Portero', gender: 'm', npc: true },
   lilith: { file: 'assets/chars/npc/lilith.glb', label: 'Lilith', gender: 'f', npc: true },
