@@ -254,8 +254,8 @@ function buildMeta(scene) {
   };
   // pies: compensación para que queden planos al caminar
   const feet = {
-    l: { rest: B.foot_l.quaternion.clone(), axis: localAxis('foot_l', new THREE.Vector3(1, 0, 0)) },
-    r: { rest: B.foot_r.quaternion.clone(), axis: localAxis('foot_r', new THREE.Vector3(1, 0, 0)) },
+    l: { rest: B.foot_l.quaternion.clone(), axis: localAxis('foot_l', new THREE.Vector3(1, 0, 0)), bindW: nWorld.foot_l.clone() },
+    r: { rest: B.foot_r.quaternion.clone(), axis: localAxis('foot_r', new THREE.Vector3(1, 0, 0)), bindW: nWorld.foot_r.clone() },
   };
   // palma (punto de agarre) en espacio local de la mano
   const grip = {};
@@ -773,6 +773,21 @@ export class HumanCharacter {
         const pitch = -(this.anim.cur[hi].x + this.anim.cur[kn].x) * 0.85;
         Q2.setFromAxisAngle(f.axis, pitch);
         B['foot_' + side].quaternion.copy(f.rest).multiply(Q2);
+      }
+    }
+    // agachado: los pies apoyados planos (como en la pose de reposo, girados con la cadera); si no, las puntas se
+    // clavaban en el piso al doblar las rodillas
+    if (this.flatFeet > 0 && !this._walkLegs) {
+      const mq = this.model.getWorldQuaternion(QA).invert();
+      const lx = V1.set(1, 0, 0).applyQuaternion(QB.copy(mq).multiply(J[0].getWorldQuaternion(QC)));
+      const yawQ = QD.setFromAxisAngle(V2.set(0, 1, 0), Math.atan2(-lx.z, lx.x));
+      for (const side of ['l', 'r']) {
+        const f = this.meta.feet[side], fb = B['foot_' + side];
+        if (!f.bindW || !fb || this.detached[side === 'l' ? 8 : 10]) continue;
+        fb.parent.updateWorldMatrix(true, false);
+        const pq = QB.copy(mq).multiply(fb.parent.getWorldQuaternion(QC)).invert();
+        Q2.copy(yawQ).multiply(f.bindW).premultiply(pq);
+        fb.quaternion.slerp(Q2, Math.min(1, this.flatFeet));
       }
     }
     // dedos: con algo en la mano cada falange se cierra hasta tocar su forma (un mango fino queda en puño, una

@@ -8,7 +8,7 @@
 const LOCK_KEYS = [
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyR', 'KeyT', 'KeyN', 'KeyF', 'KeyG', 'KeyH', 'KeyJ', 'KeyP',
   'KeyL', 'KeyK', 'KeyI', 'KeyO', 'KeyB', 'KeyM', 'KeyX', 'KeyZ', 'KeyC', 'KeyV', 'KeyY', 'Tab', 'Space',
-  'Digit1', 'Digit2', 'Digit3', 'Digit4', 'F1', 'F3', 'F5', 'F6', 'F7', 'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight',
+  'Digit1', 'Digit2', 'Digit3', 'Digit4', 'F1', 'F3', 'F5', 'F6', 'F7', 'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight', 'ControlLeft',
 ];
 // con Ctrl/Cmd: lo que se puede frenar en una página común (guardar, imprimir, buscar, recargar, marcadores, etc.)
 const CTRL_BLOCK = new Set(['KeyS', 'KeyP', 'KeyF', 'KeyR', 'KeyD', 'KeyH', 'KeyJ', 'KeyU', 'KeyG', 'KeyO', 'KeyE', 'KeyK', 'KeyL', 'KeyB', 'KeyA', 'KeyQ', 'KeyW', 'KeyT', 'KeyN', 'Tab', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Space']);

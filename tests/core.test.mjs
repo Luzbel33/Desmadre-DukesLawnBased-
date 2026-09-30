@@ -182,3 +182,9 @@ test('teclas configurables: la nueva hace la acción, la vieja queda libre y si 
  assert.equal(keys.set('use','Escape'),null); assert.equal(keys.of('use'),'KeyU','Esc no se puede asignar');
  keys.reset(); assert.equal(keys.map('KeyX'),'KeyX');
 });
+test('Ctrl camina despacio (le gana a correr)',async()=>{
+ const {p,ph}=await fixture(new Set(['KeyW','ShiftLeft','ControlLeft']));
+ for(let n=0;n<60;n++)frame(p,ph,1/60,0);
+ assert.ok(p.speed>1.2&&p.speed<2.2,`caminando va a ${p.speed.toFixed(2)} m/s`);
+ ph.world.free();
+});

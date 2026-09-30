@@ -7,6 +7,7 @@ export const ACTIONS = [
   { g: 'Moverse', a: 'left', label: 'Izquierda', def: 'KeyA' },
   { g: 'Moverse', a: 'right', label: 'Derecha', def: 'KeyD' },
   { g: 'Moverse', a: 'run', label: 'Correr', def: 'ShiftLeft' },
+  { g: 'Moverse', a: 'walk', label: 'Caminar despacio (mantener; en pantalla completa Ctrl+W no cierra nada)', def: 'ControlLeft' },
   { g: 'Moverse', a: 'jump', label: 'Saltar', def: 'Space' },
   { g: 'Moverse', a: 'crouch', label: 'Agacharse · corriendo: barrida · en el aire: dive', def: 'KeyC' },
   { g: 'Acciones', a: 'use', label: 'Usar (sentarse, subir, heladerita...)', def: 'KeyX' },
@@ -37,7 +38,7 @@ export const ACTIONS = [
 ];
 const BY = Object.fromEntries(ACTIONS.map((x) => [x.a, x]));
 // teclas que no se pueden asignar (las usa el navegador o el juego para salir)
-const RESERVED = new Set(['Escape', 'Enter', 'F11', 'F12', 'MetaLeft', 'MetaRight', 'ControlLeft', 'ControlRight', 'AltLeft', 'AltRight']);
+const RESERVED = new Set(['Escape', 'Enter', 'F11', 'F12', 'MetaLeft', 'MetaRight', 'AltLeft', 'AltRight']);
 
 export const keys = {
   bound: {}, // acción -> tecla física
@@ -65,6 +66,7 @@ export const keys = {
   // tecla física -> la tecla que entiende el juego (o null si no hace nada)
   map(code) {
     if (code === 'ShiftRight') return this.table.has('ShiftRight') ? this.table.get('ShiftRight') : (this.bound.run === 'ShiftLeft' ? 'ShiftLeft' : 'ShiftRight');
+    if (code === 'ControlRight' && !this.table.has('ControlRight') && this.bound.walk === 'ControlLeft') return 'ControlLeft';
     return this.table.has(code) ? this.table.get(code) : code;
   },
   // asigna; si la tecla la usaba otra acción, se la pasa a esa la tecla vieja. Devuelve la acción desplazada
@@ -88,7 +90,7 @@ export function keyName(code) {
   if (code.startsWith('Key')) return code.slice(3);
   if (code.startsWith('Digit')) return code.slice(5);
   if (code.startsWith('Numpad')) return 'Num ' + code.slice(6);
-  const names = { Space: 'Espacio', ShiftLeft: 'Shift', ShiftRight: 'Shift der.', Tab: 'Tab', CapsLock: 'Bloq Mayús', Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: 'Ñ', Quote: "'", Backslash: '\\', Comma: ',', Period: '.', Slash: '-', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Backspace: 'Borrar' };
+  const names = { Space: 'Espacio', ShiftLeft: 'Shift', ShiftRight: 'Shift der.', ControlLeft: 'Ctrl', ControlRight: 'Ctrl der.', Tab: 'Tab', CapsLock: 'Bloq Mayús', Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: 'Ñ', Quote: "'", Backslash: '\\', Comma: ',', Period: '.', Slash: '-', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Backspace: 'Borrar' };
   return names[code] || code;
 }
 export { ACTIONS as KEY_ACTIONS };

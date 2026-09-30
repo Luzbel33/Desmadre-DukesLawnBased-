@@ -425,6 +425,8 @@ export class LocalPlayer {
     const tr = this.body.translation();
     const center = { x: tr.x, y: tr.y + this.bodyY - oldY, z: tr.z };
     this.body.setTranslation(center, true); this.body.setNextKinematicTranslation(center);
+    // sin esto el colisionador se queda arriba hasta el próximo paso: el controlador lo ve flotando, "cae" y se hunde en el piso
+    G.phys.world.propagateModifiedBodyPositionsToColliders?.();
     this._poseContacts = null;
   }
 
@@ -1980,7 +1982,8 @@ export class LocalPlayer {
         dx = ndx; dz = ndz;
       }
       const run = active && (input.key('ShiftLeft') || input.key('ShiftRight'));
-      // C: agacharse; corriendo, barrida; en el aire, dive (Max Payne). Nada de Ctrl: Ctrl+W cierra la pestaña
+      const walk = active && input.key('ControlLeft'); // Ctrl: caminar despacio (le gana a correr)
+      // C: agacharse; corriendo, barrida; en el aire, dive (Max Payne)
       const mo = this.mv;
       const cDown = active && input.key('KeyC');
       const cHit = cDown && !mo.cPrev;
@@ -2000,7 +2003,7 @@ export class LocalPlayer {
           this.yaw = Math.atan2(ddx, ddz);
           this.onEvent?.('move', { k: 'dive' });
         } else if (hs > 5.2) {
-          mo.slideT = 0.9; mo.v = Math.max(hs, 6.8) + 1.4; mo.dx = this.velocity.x / hs; mo.dz = this.velocity.y / hs;
+          mo.slideT = 0.9; mo.airT = 0; mo.v = Math.max(hs, 6.8) + 1.4; mo.dx = this.velocity.x / hs; mo.dz = this.velocity.y / hs;
           this.onEvent?.('move', { k: 'slide' });
         }
       }
@@ -2008,7 +2011,7 @@ export class LocalPlayer {
       // la cápsula se achica de verdad (pasás por abajo de las cosas); al pararte, solo si hay lugar arriba
       this._crouch(this.crouching || mo.slideT > 0 || mo.dive === 2 || mo.dive === 3);
       if (this.crouched && !mo.slideT && !mo.dive) this.crouching = true; // bajo un techo sigue agachado aunque sueltes C
-      const targetSpeed = (run && !this.guard && !legGone && !this.crouching ? 6.8 : 3.9) * (this.crouching ? 0.5 : 1) * (1 + 0.35 * clamp(this.speedHigh || 0, 0, 1)) * (1 - clamp(this.drunk, 0, 1) * 0.2) * slow * load * limp;
+      const targetSpeed = (walk && !this.crouching ? 1.75 : run && !this.guard && !legGone && !this.crouching ? 6.8 : 3.9) * (this.crouching ? 0.5 : 1) * (1 + 0.35 * clamp(this.speedHigh || 0, 0, 1)) * (1 - clamp(this.drunk, 0, 1) * 0.2) * slow * load * limp;
       const blend = 1 - Math.exp(-(length ? 14 : 20) * dt);
       this.velocity.x += (dx * targetSpeed - this.velocity.x) * blend;
       this.velocity.y += (dz * targetSpeed - this.velocity.y) * blend;
@@ -2016,7 +2019,9 @@ export class LocalPlayer {
         // barrida: seguís de largo frenando de a poco; Espacio salta (y conserva la velocidad)
         mo.slideT -= dt; mo.v -= 6.5 * dt;
         this.velocity.set(mo.dx * mo.v, mo.dz * mo.v);
-        if (mo.slideT <= 0 || mo.v < 2.4 || !this.grounded) mo.slideT = 0;
+        // al achicarse la cápsula el piso "desaparece" un cuadro: solo corta si de verdad estás en el aire un rato
+        mo.airT = this.grounded ? 0 : (mo.airT || 0) + dt;
+        if (mo.slideT <= 0 || mo.v < 2.4 || mo.airT > 0.25) mo.slideT = 0;
       } else if (mo.dive) {
         mo.diveT += dt;
         if (mo.dive === 1) {
@@ -2397,10 +2402,12 @@ export class LocalPlayer {
         for (let i = 0; i < 11; i++) { const o = rp[i] || (rp[i] = new Array(7)), t = this._pose[i]; for (let k = 0; k < 7; k++) o[k] = t[k]; }
         this.react.apply(rp);
         this._followHeld(this._pose, rp);
+        this.char.flatFeet = 0;
         this.char.applyWorldTransforms(rp);
         return;
       }
     }
+    this.char.flatFeet = this.crouching && this.grounded ? 1 : 0;
     this.char.applyWorldTransforms(this._pose);
   }
 
@@ -2459,6 +2466,7 @@ export class LocalPlayer {
       ap: r3(this.aimPitch),
       hy: r3(this.headYaw),
       g: this.grounded ? 1 : 0,
+      ff: this.crouching && this.grounded ? 1 : 0,
       ac: this.action,
       at: r3(this.actionT),
       em: this.emote,
@@ -2667,6 +2675,7 @@ export class RemotePlayer {
     if (pose && this.gripViews?.length) this._gripView(pose);
     if (this.gripViews) this.gripViews.length = 0;
     if (pose) {
+      this.char.flatFeet = s.ff ? 1 : 0;
       this.char.applyWorldTransforms(pose);
       if (this.proxy.alive) {
         // teletransporte (respawn): mover sin arrastrar a nadie
