@@ -923,6 +923,18 @@ export class LocalPlayer {
     this._impact(part, this._severity(hit, speed), hit, point, n.clone());
   }
 
+  // Un NPC del Búnker me pegó (los peleadores de la jaula): mismas reglas que un golpe de otro jugador
+  npcHit(from, part = PART.HEAD, speed = 7, a = 'p') {
+    if (this.dead || this.state === 'driving' || this.state === 'seated') return;
+    const hit = { src: 'remote', by: 0, kind: 'blunt', thr: BODY_HITS[a]?.thr ?? 2, massK: 1, body: BODY_HITS[a] ? a : 'p' };
+    if (speed < hit.thr) return;
+    const point = this._partCenter(part, new THREE.Vector3());
+    const n = V4.set(this.pos.x - from.x, 0, this.pos.z - from.z);
+    if (n.lengthSq() < 1e-6) n.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    n.normalize();
+    this._impact(part, this._severity(hit, speed), hit, point, n.clone());
+  }
+
   // ¿Mi parte i está pegando?
   _attacking(i) {
     if ((i === PART.FARM_R || i === PART.UARM_R) && this.arm.r.armed > 0) return true;

@@ -252,23 +252,138 @@ export class ClubGame {
     try { D.collider.setEnabled(!(allowed && D.open > 0.75)); } catch { /* */ }
   }
 
-  // ---------------------------------------------------------------- NPCs (por ahora el portero; el resto con los modelos nuevos)
+  // ---------------------------------------------------------------- NPCs (modelos propios: assets/blender/mh)
   _makeNpcs() {
-    const scene = this.club.group;
+    const scene = this.club.group, A = this.club.anchors;
+    const add = (o) => { const n = new Npc(scene, o); this.npcs.push(n); return n; };
     const Dm = CLUB.doorman;
-    this.doorman = new Npc(scene, {
-      name: 'El Portero', look: { model: 'portero', hat: 'none', glasses: 'none' }, pos: new THREE.Vector3(Dm.x, 0, Dm.z), yaw: Dm.yaw, height: 1.08,
+    const near = (n, r) => { const L = this.getLocal(); return L && Math.hypot(L.pos.x - n.pos.x, L.pos.z - n.pos.z) < r ? L.pos : null; };
+    this.doorman = add({
+      name: 'El Portero', look: { model: 'portero' }, pos: new THREE.Vector3(Dm.x, 0, Dm.z), yaw: Dm.yaw, height: 1.08,
       role: (n, dt) => {
         const L = this.getLocal();
-        const near = L && Math.hypot(L.pos.x - n.pos.x, L.pos.z - n.pos.z) < 6 && L.pos.z > CLUB.door.z;
-        n.lookAt = near ? L.pos : null;
+        const close = L && Math.hypot(L.pos.x - n.pos.x, L.pos.z - n.pos.z) < 6 && L.pos.z > CLUB.door.z;
+        n.lookAt = close ? L.pos : null;
         n.data.t = (n.data.t || 0) - dt;
-        if (near && !n.data.greeted) { n.data.greeted = true; if (!this.authorized) n.say(DOORMAN_HI[Math.floor(Math.random() * DOORMAN_HI.length)], 3); }
-        if (!near) n.data.greeted = false;
+        if (close && !n.data.greeted) { n.data.greeted = true; if (!this.authorized) n.say(DOORMAN_HI[Math.floor(Math.random() * DOORMAN_HI.length)], 3); }
+        if (!close) n.data.greeted = false;
         if (!n.emote && n.data.t < 0) { n.data.t = 6 + Math.random() * 6; n.emote = Math.random() < 0.5 ? 'flex' : null; n.emoteT = 0; setTimeout(() => { if (n.emote === 'flex') n.emote = null; }, 2500); }
       },
     });
-    this.npcs.push(this.doorman);
+    // bailarinas del caño: giran alrededor, cambian de baile cada tanto y miran al que se acerca
+    const pole = (c, phase) => (n, dt) => {
+      const t = G.time * 0.45 + phase;
+      n.pos.set(c.x + Math.sin(t) * 0.42, c.y, c.z + Math.cos(t) * 0.42);
+      n.baseYaw = t + Math.PI / 2 + Math.sin(G.time * 0.3 + phase) * 0.8;
+      n.data.t = (n.data.t || 0) - dt;
+      if (n.data.t <= 0) { n.data.t = 5 + Math.random() * 5; n.emote = ['dance1', 'dance2', 'dance1', 'dance3'][Math.floor(Math.random() * 4)]; n.emoteT = 0; }
+      n.lookAt = near(n, 6);
+    };
+    const P = this.club.poles;
+    [['lilith', 'Lilith'], ['coneja', 'La Coneja'], ['venus', 'Venus']].forEach(([m, name], i) => { if (P[i]) add({ name, look: { model: m }, pos: P[i].clone(), role: pole(P[i], i * 2.1) }); });
+    // gogós en las jaulas colgantes
+    const cage = (c, phase) => (n, dt) => {
+      n.pos.copy(c);
+      n.baseYaw = G.time * 0.25 + phase;
+      n.data.t = (n.data.t || 0) - dt;
+      if (n.data.t <= 0) { n.data.t = 4 + Math.random() * 4; n.emote = ['dance2', 'dance3', 'dance1'][Math.floor(Math.random() * 3)]; n.emoteT = 0; }
+    };
+    const Gc = this.club.gogo || [];
+    [['raven', 'Raven'], ['emo', 'La Emo']].forEach(([m, name], i) => { if (Gc[i]) add({ name, look: { model: m }, pos: Gc[i].clone(), role: cage(Gc[i], i * 3) }); });
+    // el DJ
+    if (A.dj) add({ name: 'DJ Calavera', look: { model: 'dj' }, pos: A.dj.clone(), yaw: 0, role: (n, dt) => { n.emote = 'dance1'; n.lookAt = near(n, 8); } });
+    // el bartender (atiende: ver use 'bar')
+    if (A.bartender) this.bartender = add({ name: 'El Bartender', look: { model: 'bartender' }, pos: A.bartender.clone(), yaw: Math.PI / 2, role: (n, dt) => {
+      n.lookAt = near(n, 7);
+      n.data.t = (n.data.t || 0) - dt;
+      if (n.data.t <= 0) { n.data.t = 8 + Math.random() * 6; n.action = 'cheers'; n.actionT = 0; n.actionEnd = 1.5; }
+    } });
+    // la gente de la pista: cada uno en la suya
+    const dancer = (home) => (n, dt) => {
+      n.data.t = (n.data.t || 0) - dt;
+      if (n.data.t <= 0) {
+        n.data.t = 6 + Math.random() * 6;
+        n.emote = ['dance1', 'dance2', 'dance3', 'clap', 'dance1'][Math.floor(Math.random() * 5)]; n.emoteT = 0;
+        n.data.to = home.clone().add(V1.set((Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 3));
+        n.baseYaw = Math.random() * Math.PI * 2;
+      }
+      if (n.data.to) { const d = V2.subVectors(n.data.to, n.pos); d.y = 0; const l = d.length(); if (l > 0.05) n.pos.addScaledVector(d, Math.min(1, dt * 0.4 / l)); }
+      n.lookAt = near(n, 4);
+    };
+    for (const [m, name, x, z] of [['metalero', 'El Metalero', -3, -459], ['raver', 'El Raver', 3.5, -464], ['gordo', 'El Gordo', 0.5, -457.5]]) {
+      add({ name, look: { model: m }, pos: new THREE.Vector3(x, 0.05, z), role: dancer(new THREE.Vector3(x, 0.05, z)) });
+    }
+    // la jaula de peleas: El Toro contra El Chacal (cuerpos físicos: se tumban, festejan, y si les pegás, te buscan)
+    if (A.cage) {
+      const c = A.cage;
+      const toro = add({ name: 'El Toro', look: { model: 'toro' }, pos: c.clone().add(V1.set(-1, 0, 0)), yaw: Math.PI / 2 });
+      const chacal = add({ name: 'El Chacal', look: { model: 'chacal' }, pos: c.clone().add(V1.set(1, 0, 0)), yaw: -Math.PI / 2 });
+      for (const [a, b] of [[toro, chacal], [chacal, toro]]) {
+        a.physical = true;
+        a.role = (n, dt) => this._fighter(n, b, dt);
+        a.onHurt = (n, s, point, byPlayer) => {
+          G.sfx?.trigger(s > 0.8 ? 'hit' : 'hit-soft', point, Math.min(1, 0.4 + s * 0.4));
+          G.fx?.blood(point.clone(), V1.set(Math.random() - 0.5, 0.6, Math.random() - 0.5).normalize(), Math.min(1.2, s));
+          if (byPlayer) { n.data.aggroT = G.time + 15; if (!n.data.saidAggro || G.time > n.data.saidAggro) { n.data.saidAggro = G.time + 6; n.say(['¡¿Me pegaste a MÍ?!', 'Vení, vení, dale.', 'Te hago mierda, gil.'][Math.floor(Math.random() * 3)], 2.5); } }
+        };
+      }
+      this.fighters = [toro, chacal];
+    }
+  }
+
+  // un peleador: se acerca, gira alrededor, guardia, piñas y patadas; el golpe llega si está a distancia
+  _fighter(n, other, dt) {
+    const c = this.club.anchors.cage, R = this.club.anchors.cageR - 0.7;
+    const L = this.getLocal();
+    const vsPlayer = L && n.data.aggroT > G.time && !L.dead && Math.hypot(L.pos.x - c.x, L.pos.z - c.z) < R + 1.5;
+    const tgt = vsPlayer ? L.pos : other.pos;
+    if (!vsPlayer && other.down > 0) {
+      // el otro está en el piso: festeja
+      n.speed = 0; n.action = null;
+      if (n.emote !== 'flex') { n.emote = 'flex'; n.emoteT = 0; if (Math.random() < 0.5) n.say(['¡Levantate, flojo!', '¡ESTE ES MI BÚNKER!', 'Uno menos.'][Math.floor(Math.random() * 3)], 2.5); }
+      n.lookAt = tgt;
+      return;
+    }
+    if (n.emote === 'flex') n.emote = null;
+    const dx = tgt.x - n.pos.x, dz = tgt.z - n.pos.z, dist = Math.hypot(dx, dz) || 1;
+    n.baseYaw = Math.atan2(dx, dz);
+    n.lookAt = null;
+    // moverse: acercarse, alejarse o rodear
+    n.data.side = n.data.side || (Math.random() < 0.5 ? 1 : -1);
+    if (Math.random() < dt * 0.3) n.data.side *= -1;
+    let vx = 0, vz = 0;
+    if (dist > 1.25) { vx = dx / dist * 1.7; vz = dz / dist * 1.7; }
+    else if (dist < 0.8) { vx = -dx / dist * 1.2; vz = -dz / dist * 1.2; }
+    else { vx = -dz / dist * 0.7 * n.data.side; vz = dx / dist * 0.7 * n.data.side; }
+    if (n.action && n.action !== 'guard') { vx *= 0.3; vz *= 0.3; }
+    n.pos.x += vx * dt; n.pos.z += vz * dt;
+    const r = Math.hypot(n.pos.x - c.x, n.pos.z - c.z);
+    if (r > R) { n.pos.x = c.x + (n.pos.x - c.x) * R / r; n.pos.z = c.z + (n.pos.z - c.z) * R / r; }
+    n.pos.y = c.y;
+    n.speed = Math.hypot(vx, vz);
+    // atacar
+    n.data.atk = (n.data.atk ?? 1) - dt;
+    if (!n.action || n.action === 'guard') {
+      if (n.data.atk <= 0 && dist < 1.45) {
+        const r2 = Math.random();
+        n.action = r2 < 0.4 ? 'punchR' : r2 < 0.75 ? 'punchL' : 'kick';
+        n.actionT = 0; n.actionEnd = n.action === 'kick' ? 0.62 : 0.45;
+        n.data.hitAt = n.action === 'kick' ? 0.24 : 0.2; n.data.hit = false;
+        n.data.atk = 0.6 + Math.random() * 1.1;
+      } else if (!n.action) { n.action = 'guard'; n.actionT = 0; n.actionEnd = 0.5; }
+    }
+    if (n.action && n.action !== 'guard' && !n.data.hit && n.actionT >= n.data.hitAt) {
+      n.data.hit = true;
+      if (dist < 1.4) {
+        const kick = n.action === 'kick';
+        const dir = V1.set(dx / dist, 0, dz / dist);
+        if (vsPlayer) L.npcHit(n.pos, kick ? 1 : 2, kick ? 9 : 7.5, kick ? 'k' : 'p');
+        else if (Math.random() < 0.75) {
+          const pt = other.pos.clone().add(V2.set(0, kick ? 1.0 : 1.6, 0)).addScaledVector(dir, -0.12);
+          other.punch(kick ? 9 : 6 + Math.random() * 3, pt, dir, kick ? 1.6 : 1, false);
+        } else G.sfx?.trigger('swing', n.pos, 0.4);
+      }
+    }
   }
 
   // ---------------------------------------------------------------- pentagrama y ritual

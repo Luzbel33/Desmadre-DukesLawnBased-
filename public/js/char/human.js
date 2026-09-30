@@ -22,6 +22,15 @@ export const MODELS = {
   lilith: { file: 'assets/chars/npc/lilith.glb', label: 'Lilith', gender: 'f', npc: true },
   coneja: { file: 'assets/chars/npc/coneja.glb', label: 'La Coneja', gender: 'f', npc: true },
   dj: { file: 'assets/chars/npc/dj.glb', label: 'DJ Calavera', gender: 'm', npc: true },
+  venus: { file: 'assets/chars/npc/venus.glb', label: 'Venus', gender: 'f', npc: true },
+  raven: { file: 'assets/chars/npc/raven.glb', label: 'Raven', gender: 'f', npc: true },
+  bartender: { file: 'assets/chars/npc/bartender.glb', label: 'El Bartender', gender: 'm', npc: true },
+  toro: { file: 'assets/chars/npc/toro.glb', label: 'El Toro', gender: 'm', npc: true },
+  chacal: { file: 'assets/chars/npc/chacal.glb', label: 'El Chacal', gender: 'm', npc: true },
+  metalero: { file: 'assets/chars/npc/metalero.glb', label: 'El Metalero', gender: 'm', npc: true },
+  emo: { file: 'assets/chars/npc/emo.glb', label: 'La Emo', gender: 'f', npc: true },
+  raver: { file: 'assets/chars/npc/raver.glb', label: 'El Raver', gender: 'm', npc: true },
+  gordo: { file: 'assets/chars/npc/gordo.glb', label: 'El Gordo', gender: 'm', npc: true },
 };
 export const DEFAULT_MODEL = 'eric';
 const CACHE = new Map(); // modelo -> { scene, meta }
