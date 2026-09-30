@@ -70,4 +70,5 @@ export const SFX_MANIFEST = {
   knock: seq('impactWood_heavy_', 0, 4),
   // el Diablo (poder del dueño): risas CC0 (assets/sfx/diablo/CREDITOS.txt)
   'devil-laugh': [`${A}diablo/risa-1.ogg`, `${A}diablo/risa-2.ogg`, `${A}diablo/risa-3.ogg`],
+  'devil-growl': [`${A}diablo/grunido-1.ogg`, `${A}diablo/grunido-2.ogg`, `${A}diablo/grunido-3.ogg`],
 };

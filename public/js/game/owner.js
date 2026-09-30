@@ -1,6 +1,7 @@
 // Poderes del dueño (SmokePyro jugando con El Diablo). El servidor decide quién es el dueño; acá van las teclas,
 // el fuego por la boca, lo que se quema, el invisible, el inmortal y la risa.
-//   K/rueda: aliento · N: bola de fuego · I: invisible · O: inmortal · L: risa
+//   K: aliento (gruñe al arrancar) · N: bola de fuego · I: invisible · O: inmortal · L o menú de gestos: risa
+//   (el click de la rueda ahora abre el menú circular de gestos)
 // Las quemaduras las decide cada víctima (como los golpes): el dueño avisa "te quemé" y el otro se prende fuego.
 import * as THREE from 'three';
 import { G, clamp } from '../core/G.js';
@@ -49,8 +50,9 @@ export class OwnerPowers {
     const L = this.getLocal();
     const on = this.active();
     const net = this.getNet();
-    const want = on && !L.dead && (inp.key('KeyK') || inp.btn(1));
+    const want = on && !L.dead && inp.key('KeyK');
     if (want !== this.firing) {
+      if (want) this._growl(null);
       this.firing = want;
       this.breath.set('me', want);
       this.breath.attachLight('me', G.world?.pool);
@@ -76,13 +78,27 @@ export class OwnerPowers {
       if (L.immortal) { L.hp = 100; L.bleedRate = 0; }
       this.notify(L.immortal ? '☠ <b>INMORTAL</b>: nada te lastima.' : 'Inmortal: <b>apagado</b>.');
     }
-    if (inp.hit('KeyL') && performance.now() - this.laughT > 2200) {
-      this.laughT = performance.now();
-      const v = (Math.random() * 3) | 0;
-      this.laughEnd.set('me', G.time + LAUGH_S[v]);
-      G.sfx?.trigger('devil-laugh', null, 1, { variant: v, rate: 1 });
-      net?.send({ t: 'pow', a: 'laugh', v });
-    }
+    if (inp.hit('KeyL')) this.laugh();
+  }
+
+  // risa del Diablo (tecla L o el menú de gestos); devuelve false si todavía se está riendo
+  laugh() {
+    if (!this.active() || performance.now() - this.laughT < 2200) return false;
+    this.laughT = performance.now();
+    const v = (Math.random() * 3) | 0;
+    this.laughEnd.set('me', G.time + LAUGH_S[v]);
+    G.sfx?.trigger('devil-laugh', null, 1, { variant: v, rate: 1 });
+    this.getNet()?.send({ t: 'pow', a: 'laugh', v });
+    return true;
+  }
+
+  // gruñido al arrancar a escupir fuego (a lo sumo uno cada 1.2 s: soltar y volver a apretar no lo repite)
+  _growl(pos, id = 'me') {
+    const now = performance.now();
+    this._growlT = this._growlT || new Map();
+    if (now - (this._growlT.get(id) || -1e9) < 1200) return;
+    this._growlT.set(id, now);
+    G.sfx?.trigger('devil-growl', pos, 0.95, pos ? { full: 8, max: 60 } : {});
   }
 
   setInvisible(v) {
@@ -104,7 +120,7 @@ export class OwnerPowers {
     const rp = G.players.get(m.id);
     if (!rp) return;
     if (m.a === 'inv') { rp.inv = !!m.v; rp.char.root.visible = !rp.inv; }
-    else if (m.a === 'fire') { this.breath.set(m.id, !!m.v); this.breath.attachLight(m.id, G.world?.pool); if(fireVector(m.d))this.aims.set(m.id,new THREE.Vector3(...m.d).normalize()); }
+    else if (m.a === 'fire') { if (m.v && !this.breath.isOn(m.id)) this._growl(rp.pos, m.id); this.breath.set(m.id, !!m.v); this.breath.attachLight(m.id, G.world?.pool); if(fireVector(m.d))this.aims.set(m.id,new THREE.Vector3(...m.d).normalize()); }
     else if(m.a==='ball' && fireVector(m.o) && fireVector(m.d))this.balls.launch(`${m.id}:${m.shot}`,m.id,new THREE.Vector3(...m.o),new THREE.Vector3(...m.d));
     else if (m.a === 'laugh') {
       this.laughEnd.set(m.id, G.time + LAUGH_S[(m.v | 0) % 3]);

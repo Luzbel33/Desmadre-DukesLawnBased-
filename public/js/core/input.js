@@ -28,6 +28,7 @@ export class Input {
     });
     addEventListener('blur', () => this.releaseAll());
     canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 1) e.preventDefault(); // la rueda abre los gestos: sin autoscroll del navegador
       if (!this.enabled) return;
       if (!this.locked) return;
       this.mouse[e.button] = true;

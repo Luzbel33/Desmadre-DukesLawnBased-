@@ -696,3 +696,25 @@ test('cuerpo con peso: al frenar el torso se va, se pasa un poco y vuelve; al ca
   assert.ok(p.land < 0.02, 'las rodillas quedaron dobladas');
   ph.world.free();
 });
+
+// ------------------------------------------------------------------ menú circular de gestos
+test('menú circular: mover el mouse elige el sector; un toque sin mover lo deja abierto', async () => {
+  const node = () => ({ innerHTML: '', style: {}, children: [], className: '', classList: { toggle() {}, add() {}, remove() {} }, appendChild(c) { this.children.push(c); } });
+  globalThis.document = { createElement: node };
+  const { RadialMenu } = await import('../public/js/ui/radial.js');
+  const parts = { '.radial-label': node(), '.radial-items': node(), '.radial-cursor': node() };
+  const el = { ...node(), querySelector: (q) => parts[q] };
+  const m = new RadialMenu(el);
+  const items = ['a', 'b', 'c', 'd'].map((k) => ({ e: k, icon: k, label: k }));
+  m.show(items, 'mid');
+  m.move(0, -80); // arriba = el primero
+  assert.equal(m.sel, 0);
+  m.move(160, 80); // a la derecha = el segundo (sentido horario)
+  assert.equal(m.release()?.e, 'b');
+  m.show(items, 'z');
+  m.move(2, 1); // casi no se movió: en el centro no hay nada elegido
+  assert.equal(m.sel, -1);
+  assert.equal(m.release(), null, 'un toque rápido tiene que dejarlo abierto');
+  assert.ok(m.sticky);
+  delete globalThis.document;
+});

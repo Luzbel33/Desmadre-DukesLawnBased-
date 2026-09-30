@@ -46,6 +46,7 @@ import { ACTIVITIES, ActivityMarkers } from './ui/activities.js';
 import { AvatarPreview } from './ui/avatar-preview.js';
 import { OwnerPowers } from './game/owner.js';
 import { Hud } from './ui/hud.js';
+import { RadialMenu } from './ui/radial.js';
 import { preloadHumans, MODELS, DEFAULT_MODEL } from './char/human.js';
 import { AudioEngine } from './audio/audio.js';
 import { voiceOf, voiceRate, vocalName } from './audio/vocals.js';
@@ -101,7 +102,6 @@ function setMode(mode) {
   show($('menu'), mode === 'menu');
   show($('pause'), mode === 'pause');
   show($('media'), mode === 'media');
-  show($('emotes'), mode === 'emotes');
   show($('activities'), mode === 'activities');
   show($('palette'), mode === 'palette');
   show($('poker'), mode === 'poker');
@@ -463,7 +463,7 @@ function sendChat() {
 }
 
 function openPause() {
-  if (!G.inGame || ['chat', 'media', 'emotes', 'palette', 'menu', 'activities', 'poker'].includes(state.mode)) return;
+  if (!G.inGame || ['chat', 'media', 'palette', 'menu', 'activities', 'poker'].includes(state.mode)) return;
   setMode('pause');
 }
 
@@ -623,9 +623,39 @@ function puffFrom(p, amount = 1) {
   G.fx.puff(m, new THREE.Vector3(Math.sin(yaw), 0.15, Math.cos(yaw)), amount);
 }
 
-function openEmotes() {
-  if (state.mode !== 'game') return;
-  setMode('emotes'); G.input.unlock();
+// Gestos: menú circular (click de la rueda o Z) que no suelta el mouse; el Diablo tiene además su risa
+const EMOTES = [
+  { e: 'wave', icon: '👋', label: 'Saludar' }, { e: 'dance1', icon: '💃', label: 'Cumbia' },
+  { e: 'dance2', icon: '🙌', label: 'Descontrol' }, { e: 'dance3', icon: '🤖', label: 'Robot' },
+  { e: 'clap', icon: '👏', label: 'Aplaudir' }, { e: 'point', icon: '👉', label: 'Señalar' },
+  { e: 'facepalm', icon: '🤦', label: 'Facepalm' }, { e: 'flex', icon: '💪', label: 'Músculo' },
+  { e: 'sitfloor', icon: '🧘', label: 'Sentarse' }, { e: 'cheers', icon: '🍻', label: '¡Salud!' },
+];
+function openEmotes(by) {
+  if (state.mode !== 'game' || state.radial.open) return;
+  const items = EMOTES.slice();
+  if (G.owner?.active()) items.splice(0, 0, { e: 'laugh', icon: '😈', label: 'Risa del Diablo', special: true });
+  state.radial.show(items, by);
+}
+function chooseEmote(it) {
+  state.radial.hide();
+  if (!it) return;
+  if (it.e === 'laugh') { if (!G.owner?.laugh()) G.sfx?.trigger('ui-err', null, 0.4); return; }
+  state.local?.setEmote(it.e); state.net?.send({ t: 'ev', k: 'emote', e: it.e });
+}
+// cada cuadro con el menú abierto: el mouse elige (la cámara no gira); soltar/click confirma
+function stepRadial(inp) {
+  const R = state.radial;
+  R.move(inp.dx, inp.dy);
+  inp.dx = inp.dy = 0;
+  const released = R.by === 'mid' ? inp.btnUp(1) : inp.up('KeyZ');
+  if (!R.sticky && released) {
+    const it = R.release();
+    if (it !== null) chooseEmote(it || null);
+  } else if (R.sticky) {
+    if (inp.btnHit(0)) chooseEmote(R.items[R.sel] || null);
+    else if (inp.btnHit(2) || inp.btnHit(1) || inp.hit('KeyZ')) chooseEmote(null);
+  }
 }
 // Cerrar un menú vuelve directo al juego (nunca pasa por la pausa). Si el navegador no deja recapturar el mouse
 // (pasa después de un Esc), queda el juego a la vista con un aviso: un click y seguís.
@@ -1249,9 +1279,6 @@ function setupUIEvents() {
     const m = mediaState(state.mediaScreen); if (m.cur) state.net.send({ t: 'media', s: state.mediaScreen, a: 'seek', pos: mediaPos(m) + 10 });
   });
 
-  document.querySelectorAll('#emotes button').forEach((b) => b.addEventListener('click', () => {
-    const e = b.dataset.e; state.local?.setEmote(e); state.net?.send({ t: 'ev', k: 'emote', e }); closeOverlayToGame();
-  }));
 
   $('o-sens').addEventListener('input', (e) => { G.opts.sens = +e.target.value; });
   $('o-fov').addEventListener('input', (e) => { G.opts.fov = +e.target.value; G.camera.fov = G.opts.fov; G.camera.updateProjectionMatrix(); });
@@ -1274,7 +1301,7 @@ function setupUIEvents() {
       if (e.code === 'KeyV') { G.sfx?.unlock(); G.voice?.setPTT(true); }
     }
     if (state.mode === 'activities' && (e.key === 'Escape' || e.code === 'KeyJ')) { e.preventDefault(); closeOverlayToGame(e.key === 'Escape'); return; }
-    if (state.mode === 'media' || state.mode === 'emotes' || state.mode === 'palette') {
+    if (state.mode === 'media' || state.mode === 'palette') {
       if (e.key === 'Escape' || (state.mode === 'palette' && e.code === 'KeyR')) { e.preventDefault(); closeOverlayToGame(e.key === 'Escape'); }
     } else if (state.mode === 'pause' && e.key === 'Escape' && !escJustClosed()) { e.preventDefault(); state.escT = performance.now(); resumeGame(); }
     else if (state.mode === 'poker' && !typing) {
@@ -1298,6 +1325,7 @@ function updateInput(dt) {
   const L = state.local;
   const inp = G.input;
   const sens = 0.0022 * G.opts.sens;
+  if (state.radial?.open) { stepRadial(inp); return; } // menú de gestos: el mouse elige, la cámara queda quieta
   // al subirte a un vehículo la mirada baja un poco: se ven el volante, el tablero y las manos
   if (!!L.vehicle !== !!state.driving) {
     state.driving = L.vehicle || null;
@@ -1330,7 +1358,8 @@ function updateInput(dt) {
   }
   if (inp.hit('KeyF') && onFoot) L.kick();
   if (inp.hit('KeyR') && onFoot) L.headbutt();
-  if (inp.hit('KeyZ')) openEmotes();
+  if (inp.hit('KeyZ')) openEmotes('z');
+  else if (inp.btnHit(1)) openEmotes('mid');
   if (inp.hit('KeyJ')) openActivities();
   if (inp.hit('KeyB') && L.hands.r.item === 'spray') openPalette();
   // rueda del mouse: tamaño del aerosol, o qué tan estirado va el brazo que controlás
@@ -1605,7 +1634,12 @@ async function boot() {
     };
     G.fx.onBloodLand = (x, z, size) => G.blood.add(x, z, size);
     G.input = new Input(canvas); G.input.enabled = false;
-    G.input.onLockChange = (locked) => { if (!locked && G.inGame && state.mode === 'game' && !escJustClosed()) openPause(); };
+    state.radial = new RadialMenu($('radial'));
+    // Esc con el menú de gestos abierto: lo cierra (el navegador suelta el mouse igual; no es para pausar)
+    G.input.onLockChange = (locked) => {
+      if (!locked && state.radial.open) { state.radial.hide(); state.escT = performance.now(); G.hud?.notify('<b>Click</b> para seguir jugando', 2200); return; }
+      if (!locked && G.inGame && state.mode === 'game' && !escJustClosed()) openPause();
+    };
     canvas.addEventListener('click', () => { if (G.inGame && (state.mode === 'game' || state.mode === 'poker') && !G.input.locked) { guard.enter(); G.input.lock(); } });
     guard.init({ isPlaying: () => G.inGame && !!state.local });
 

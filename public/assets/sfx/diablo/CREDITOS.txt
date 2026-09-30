@@ -5,3 +5,5 @@ Risas del Diablo (poder del dueño, tecla L). Todas CC0 (dominio público), de O
 - risa-3.ogg: "Evil Laugh 2" (evil_laugh_02.ogg), con tono más grave y eco — https://opengameart.org/content/evil-laugh-2
 
 Procesadas con ffmpeg (mono, volumen normalizado; 2 y 3 con el tono bajado).
+
+- grunido-1..3.ogg: gruñidos al escupir fuego. Síntesis propia (assets/audio/gen_growl.py), sin grabaciones de terceros.

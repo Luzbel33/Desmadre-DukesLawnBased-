@@ -64,7 +64,7 @@ Se puede agarrar una cosa con las dos manos, agarrar a otro jugador con una mano
 - **YouTube compartido** en el cine, la rockola del bar y el autocine.
 - **Voz por proximidad** (WebRTC, se escucha según la distancia y la dirección) y **chat** con globos.
 - Birra y faso con efectos de borrachera y de estar fumado; coma alcohólico si te pasás.
-- **Personajes**: Eric, Carla y Claudia (Renderpeople), la **Galleta** (masa dorada con ojos, sonrisa y botones de chocolate) y **El Diablo**, exclusivo del dueño: con el nombre reservado SmokePyro y su clave (la valida el servidor; se cambia con la variable `OWNER_KEY`) aparece el demonio, que abre la boca al hablar, reírse y escupir fuego, y trae poderes para trollear: **K** (o el botón del medio) fuego por la boca (quema a los que agarra el chorro y deja fuego en las paredes y el piso), **N** bola de fuego, **I** invisible, **O** inmortal, **L** risa.
+- **Personajes**: Eric, Carla y Claudia (Renderpeople), la **Galleta** (masa dorada con ojos, sonrisa y botones de chocolate) y **El Diablo**, exclusivo del dueño: con el nombre reservado SmokePyro y su clave (la valida el servidor; se cambia con la variable `OWNER_KEY`) aparece el demonio, que abre la boca al hablar, reírse y escupir fuego, y trae poderes para trollear: **K** fuego por la boca (gruñe al arrancar) (quema a los que agarra el chorro y deja fuego en las paredes y el piso), **N** bola de fuego, **I** invisible, **O** inmortal, **L** (o desde el menú de gestos) risa.
 
 Al entrar el juego pasa a pantalla completa y bloquea los atajos del navegador (Chrome solo deja frenar Ctrl+W, Ctrl+T y Ctrl+N así); se apaga en la pausa. Si igual se intenta cerrar la pestaña, el navegador pregunta antes.
 

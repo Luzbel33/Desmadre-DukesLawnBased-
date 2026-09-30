@@ -205,10 +205,23 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; border-radius: 5
 #act-list .t { font-weight: 700; font-size: 14px; }
 #act-list .w { font-size: 12px; color: var(--accent); }
 #act-list .h { font-size: 12px; color: var(--dim); line-height: 1.35; }
-#emotes { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 6; display: grid;
-  grid-template-columns: repeat(5, 120px); gap: 8px; }
-#emotes button { height: 58px; font-size: 14px; background: var(--panel-solid); border: 1px solid var(--line); }
-#emotes button:hover { border-color: var(--accent); }
+/* menú circular de gestos */
+#radial { position: fixed; left: 50%; top: 50%; width: 0; height: 0; z-index: 6; pointer-events: none; }
+#radial .radial-disc { position: absolute; left: -205px; top: -205px; width: 410px; height: 410px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(10, 10, 12, 0.35) 0 22%, rgba(10, 10, 12, 0.78) 23% 100%);
+  border: 1px solid var(--line); box-shadow: var(--shadow); }
+#radial .radial-items { position: absolute; left: 0; top: 0; }
+#radial .radial-item { position: absolute; left: -44px; top: -32px; width: 88px; height: 64px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; border-radius: 14px; color: #eee; transition: background 0.08s, transform 0.08s; }
+#radial .radial-item .ic { font-size: 26px; line-height: 1; }
+#radial .radial-item .tx { font-size: 12px; margin-top: 3px; text-align: center; white-space: nowrap; }
+#radial .radial-item.sel { background: var(--accent); color: #111; box-shadow: 0 0 18px rgba(255, 204, 51, 0.55); }
+#radial .radial-item.special .tx { color: #ff6b4a; }
+#radial .radial-item.special.sel .tx { color: #3a0800; }
+#radial .radial-cursor { position: absolute; left: -7px; top: -7px; width: 14px; height: 14px; border-radius: 50%;
+  background: #fff; opacity: 0.8; }
+#radial .radial-label { position: absolute; left: -120px; top: 34px; width: 240px; text-align: center; color: #fff;
+  text-shadow: 0 1px 3px #000; font-size: 15px; }
 
 /* ---------- menús ---------- */
 #menu, #pause, #loading { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
