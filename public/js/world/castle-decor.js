@@ -97,6 +97,42 @@ function cobwebCanvas() {
   return cv;
 }
 
+// Soga de tres cabos torcidos por una curva (la de la horca): tubos finos que giran alrededor del eje
+function twistedRope(pts, radius, twist = 95) {
+  const curve = new THREE.CatmullRomCurve3(pts);
+  const L = curve.getLength(), n = Math.max(8, Math.ceil(L / 0.015)), sides = 5;
+  const pos = [], idx = [], uv = [];
+  const T = new THREE.Vector3(), N = new THREE.Vector3(), B = new THREE.Vector3(), P = new THREE.Vector3(), C = new THREE.Vector3();
+  const frames = curve.computeFrenetFrames(n, false);
+  for (let s = 0; s < 3; s++) {
+    const base = pos.length / 3;
+    for (let i = 0; i <= n; i++) {
+      curve.getPointAt(i / n, C);
+      N.copy(frames.normals[i]); B.copy(frames.binormals[i]);
+      const a = (i / n) * L * twist + s * Math.PI * 2 / 3;
+      const cx = C.x + (N.x * Math.cos(a) + B.x * Math.sin(a)) * radius * 0.5;
+      const cy = C.y + (N.y * Math.cos(a) + B.y * Math.sin(a)) * radius * 0.5;
+      const cz = C.z + (N.z * Math.cos(a) + B.z * Math.sin(a)) * radius * 0.5;
+      for (let k = 0; k < sides; k++) {
+        const b = (k / sides) * Math.PI * 2;
+        P.set(cx, cy, cz).addScaledVector(N, Math.cos(b) * radius * 0.56).addScaledVector(B, Math.sin(b) * radius * 0.56);
+        pos.push(P.x, P.y, P.z); uv.push(k / sides, (i / n) * L * 4);
+      }
+      if (i) for (let k = 0; k < sides; k++) {
+        const a0 = base + (i - 1) * sides + k, a1 = base + (i - 1) * sides + (k + 1) % sides, b0 = a0 + sides, b1 = a1 + sides;
+        idx.push(a0, b0, a1, a1, b0, b1);
+      }
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  void T;
+  return g;
+}
+
 function epitaphCanvas(lines) {
   const W = 256, H = 320, cv = canvas(W, H), c = cv.getContext('2d');
   c.fillStyle = '#6f6d66'; c.fillRect(0, 0, W, H);
@@ -710,17 +746,71 @@ export class Decor {
     this.instances('c_pumpkin_b', cart);
   }
   _gallows(x, z) {
-    whenAsset('c_gallows', () => { const m = placeModel(this.scene, 'c_gallows', x, -0.13, z, 0, 1); if (m) m.traverse((o) => { if (o.isMesh) o.layers.enable(1); }); });
-    // tarima (x ±1.4, z -1.33..1.4, arriba a 1.6 m), escalera (x 0.25..0.85, sube de z 3.1 a 1.4) y los postes
-    this.phys.box(x, 0.74, z + 0.035, 1.4, 0.74, 1.37, 0, { paint: false, mat: 'wood' });
+    const Y0 = -0.13, DECK = 1.55 + Y0; // el modelo va un poco enterrado; arriba de la tarima a 1.42 m
+    // la trampilla ABIERTA (assets/blender/artpass/gallows.py): hueco de x +0.03..+0.97 y z -1.24..-0.52
+    const HX0 = x + 0.03, HX1 = x + 0.97, HZ0 = z - 1.24, HZ1 = z - 0.52;
+    // colisión: la tarima alrededor del hueco (se puede caer por la trampilla y salir gateando por abajo),
+    // los seis postes, la escalera y el poste alto
+    const slab = (x0, x1, z0, z1) => this.phys.box((x0 + x1) / 2, DECK - 0.05, (z0 + z1) / 2, (x1 - x0) / 2, 0.05, (z1 - z0) / 2, 0, { paint: false, mat: 'wood' });
+    slab(x - 1.4, HX0, z - 1.37, z + 1.37);
+    slab(HX1, x + 1.4, z - 1.37, z + 1.37);
+    slab(HX0, HX1, HZ1, z + 1.37);
+    slab(HX0, HX1, z - 1.37, HZ0);
+    for (const [px, pz] of [[-1.3, 1.2], [0, 1.2], [1.3, 1.2], [-1.3, -1.2], [-0.22, -1.2], [1.3, -1.2]]) this.phys.box(x + px, DECK / 2, z + pz, 0.09, DECK / 2, 0.09, 0, { paint: false, mat: 'wood' });
     this.phys.wedge(x + 0.55, 0, z + 2.25, 0.8, 1.7, 1.48, Math.PI, { mat: 'wood' });
-    this.phys.box(x - 1.25, 3.3, z + 1.2, 0.1, 1.8, 0.1, 0, { paint: false, mat: 'wood' });
-    // el ahorcado: esqueleto colgando del lazo, por la trampilla abierta (se hamaca con el viento)
-    const hang = new THREE.Group();
-    hang.position.set(x + 0.5, 2.66, z - 0.95);
-    this.scene.add(hang);
-    whenAsset('c_skel_hang', () => { const m = assetModel('c_skel_hang'); if (!m) return; m.position.y = -1.56; hang.add(m); });
-    this.anim.push((t) => { hang.rotation.set(Math.sin(t * 0.7) * 0.05, Math.sin(t * 0.31) * 0.6, Math.sin(t * 0.53 + 1) * 0.04); });
+    this.phys.box(x - 1.15, 2.5, z - 0.95, 0.12, 2.5, 0.12, 0, { paint: false, mat: 'wood' });
+    // el ahorcado: soga, nudo, lazo al cuello y esqueleto cuelgan juntos de donde la soga deja el travesaño y se
+    // hamacan como un péndulo (y giran despacio sobre la soga, como las sogas de verdad). Antes la soga era parte de
+    // la horca (quieta) y el esqueleto se hamacaba solo, parado sobre la trampilla cerrada.
+    const pivot = new THREE.Group();
+    pivot.position.set(x + 0.52, 4.65 + Y0, z - 0.97);
+    this.scene.add(pivot);
+    const NECK_Y = DECK + 0.62 - pivot.position.y; // el cuello a 62 cm sobre la tarima (el cuerpo pasa por el hueco)
+    const knot = new THREE.Vector3(0.0, NECK_Y + 0.075, -0.01); // el nudo detrás de la oreja izquierda, arriba del cuello
+    const neck = new THREE.Vector3(-0.06, NECK_Y - 0.01, 0.045);
+    let ropeMat = getMat('hemp');
+    whenAsset('c_gallows', () => {
+      const m = placeModel(this.scene, 'c_gallows', x, Y0, z, 0, 1);
+      if (!m) return;
+      m.traverse((o) => { if (o.isMesh) { o.layers.enable(1); if (/rope/i.test(o.name) && o.material) ropeMat = o.material; } });
+      buildRope();
+    });
+    const buildRope = () => {
+      if (pivot.userData.rope) return;
+      pivot.userData.rope = true;
+      const add = (geo) => { const mm = new THREE.Mesh(geo, ropeMat); mm.castShadow = true; mm.receiveShadow = true; mm.layers.enable(1); pivot.add(mm); return mm; };
+      // soga de tres cabos torcidos, del travesaño al nudo
+      add(twistedRope([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, (knot.y) * 0.5, 0), knot.clone()], 0.017));
+      // nudo de verdugo: espiras apretadas
+      const coil = new THREE.TorusGeometry(0.02, 0.0085, 6, 12);
+      for (let k = 0; k < 7; k++) {
+        const r = new THREE.Mesh(coil, ropeMat);
+        r.rotation.x = Math.PI / 2; r.position.set(knot.x, knot.y - k * 0.0165, knot.z);
+        r.castShadow = true; pivot.add(r);
+      }
+      // el lazo: un aro apretado al cuello, bajo la mandíbula y subiendo hacia el nudo
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.048, 0.013, 7, 28), ropeMat);
+      ring.position.copy(neck);
+      ring.rotation.set(Math.PI / 2 + 0.3, 0.6, 0.35, 'YXZ');
+      ring.castShadow = true; pivot.add(ring);
+      // del nudo baja la cola del lazo hasta el aro
+      add(twistedRope([new THREE.Vector3(knot.x, knot.y - 0.11, knot.z), new THREE.Vector3(neck.x + 0.035, neck.y + 0.02, neck.z - 0.03)], 0.012));
+    };
+    whenAsset('c_skel_noose', () => {
+      const m = assetModel('c_skel_noose');
+      if (!m) return;
+      m.updateMatrixWorld(true);
+      const nk = m.getObjectByName('neck');
+      const at = nk ? nk.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(-0.033, 1.589, -0.037);
+      m.position.set(neck.x - at.x, neck.y - at.y, neck.z - at.z);
+      m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.layers.enable(1); } });
+      pivot.add(m);
+    });
+    // péndulo: poco vaivén (pesa) y un giro lento sobre la soga; con la tormenta, un poco más
+    this.anim.push((t) => {
+      const w = 1 + (this.world.storm?.s || 0) * 0.8;
+      pivot.rotation.set(Math.sin(t * 0.83) * 0.028 * w, Math.sin(t * 0.21) * 0.45 + Math.sin(t * 0.47) * 0.12, Math.sin(t * 0.71 + 1.3) * 0.022 * w, 'YXZ');
+    });
   }
   _fireplace(b, x, z, yaw) {
     // hogar de piedra contra el muro, con fuego y luz

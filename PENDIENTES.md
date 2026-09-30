@@ -42,7 +42,10 @@ bajar la calidad. Orden: primero bugs y lo importante, lo "random" al final.
 - [ ] Banderas de la fachada que atraviesan el castillo; cartel más lindo.
 - [ ] Palanca afuera y adentro para subir/bajar el rastrillo de metal del portón.
 - [ ] Carro de calabazas: las calabazas lo atraviesan.
-- [ ] Ahorcado: soga que acompañe y calce en el cuello; escotilla abierta (que no la atraviese).
+- [x] Ahorcado: horca rehecha en Blender con la trampilla ABIERTA (hueco en el piso y las dos hojas colgando);
+      esqueleto nuevo colgado del cuello (cabeza quebrada, puntas de los pies abajo) que pasa por el hueco; soga de
+      tres cabos, nudo de verdugo detrás de la oreja y lazo bajo la mandíbula, todo hamacándose junto. La tarima
+      tiene el hueco también en la colisión (te podés caer y salir gateando por abajo).
 - [ ] Tierra del calabazar y del espantapájaros redondeada y natural como las tumbas (nada de cajas).
 - [x] Sandías flotando: estaban cargadas a 0,4 m del piso al lado de la parrilla (se ve al reiniciar el servidor).
 - [ ] Piso de arriba ampliado con más lugares.

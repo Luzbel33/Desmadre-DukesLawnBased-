@@ -1,7 +1,7 @@
 """Esqueletos y calaveras de verdad: el esqueleto anatómico CC0 de "Human Base Meshes" (Blender Studio) posado hueso por
 hueso (cada pieza gira en su articulación), reducido para el juego y con un material de hueso viejo horneado
 (color con manchas y mugre en las cavidades, rugosidad, normal).
-  blender -b --factory-startup -P skeleton.py -- sit|hang|lie|skull|pile
+  blender -b --factory-startup -P skeleton.py -- sit|hang|noose|lie|skull|pile
 Salidas en public/assets/props/art/: skeleton_<pose>.glb, skull.glb, bones_pile.glb (origen en el piso; frente -Y de
 Blender = +Z del juego)
 """
@@ -99,6 +99,20 @@ def pose_hang(by):
           fore={'L': (0.05, -0.18, -1), 'R': (-0.04, -0.3, -1)})
 
 
+def pose_noose(by):
+    """Ahorcado: colgando derecho del cuello, la cabeza quebrada hacia un costado (lejos del nudo, que va detrás de la
+    oreja izquierda), hombros caídos, brazos colgando, rodillas apenas flojas y las puntas de los pies para abajo."""
+    torso(by, (0.02, 0.03, 1), (0.03, -0.02, 1), (-0.42, 0.08, 0.9))
+    rot(by['skull'], Y, -24); rot(by['skull'], X, 10)
+    limbs(by,
+          fem={'L': (0.05, -0.08, -1), 'R': (-0.04, -0.03, -1)},
+          tib={'L': (0.02, 0.12, -1), 'R': (-0.03, 0.08, -1)},
+          hum={'L': (0.1, 0.02, -1), 'R': (-0.12, 0.05, -1)},
+          fore={'L': (0.06, -0.12, -1), 'R': (-0.05, -0.08, -1)})
+    for s in ('L', 'R'):
+        rot(by['foot_talus.' + s], X, -48)      # puntas para abajo
+
+
 def pose_lie(by):
     """Boca arriba, brazos abiertos, la cabeza girada de costado."""
     torso(by, (0, 0.04, 1), (0, 0.02, 1), (0.3, 0.05, 1))
@@ -189,9 +203,9 @@ def finish(objs, name, target_tris, tex=1024, keep_names=()):
     # apoyar en el piso y centrar en x/y
     ws = [j.matrix_world @ v.co for v in j.data.vertices]
     zmin = min(v.z for v in ws)
-    j.location.z -= zmin
-    j.location.x -= (min(v.x for v in ws) + max(v.x for v in ws)) / 2
-    j.location.y -= (min(v.y for v in ws) + max(v.y for v in ws)) / 2
+    off = Vector((-(min(v.x for v in ws) + max(v.x for v in ws)) / 2, -(min(v.y for v in ws) + max(v.y for v in ws)) / 2, -zmin))
+    j['off'] = tuple(off)
+    j.location += off
     select([j]); bpy.ops.object.transform_apply(location=True)
     j.data.materials.clear(); j.data.materials.append(bone_material())
     me = j.data
@@ -227,9 +241,17 @@ def main():
         preview(os.path.join(RENDERS, 'skull_prev.png'), (0.25, -0.45, 0.2), (0, 0, 0.1), lens=50, w=700, h=600)
         return
     by = append_skeleton()
-    {'sit': pose_sit, 'hang': pose_hang, 'lie': pose_lie}[what](by)
+    {'sit': pose_sit, 'hang': pose_hang, 'noose': pose_noose, 'lie': pose_lie}[what](by)
+    # el cuello (entre C2 y C3): ahí va el lazo del ahorcado
+    neck = (by['spine_cervical_c2'].matrix_world.translation + by['spine_cervical_c3'].matrix_world.translation) / 2 if what == 'noose' else None
     j = finish(list(by.values()), 'skeleton_' + what, 14000, tex=1024)
-    export([j], 'skeleton_' + what, tex_res=1024)
+    objs = [j]
+    if neck is not None:
+        nd = bpy.data.objects.new('neck', None); bpy.context.scene.collection.objects.link(nd)
+        nd.location = neck + Vector(j['off'])
+        print('cuello', [round(c, 3) for c in nd.location])
+        objs.append(nd)
+    export(objs, 'skeleton_' + what, tex_res=1024)
     preview(os.path.join(RENDERS, f'skeleton_{what}_prev.png'), (1.3, -2.2, 1.3), (0, 0, 0.6 if what != 'lie' else 0.1), lens=40, w=800, h=800)
 
 

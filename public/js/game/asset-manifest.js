@@ -103,6 +103,8 @@ export const CASTLE_MANIFEST = {
   c_skel_sit: { url: P + 'art/skeleton_sit.glb', scale: 1, center: false },
   c_skel_lie: { url: P + 'art/skeleton_lie.glb', scale: 1, center: false },
   c_skel_hang: { url: P + 'art/skeleton_hang.glb', scale: 1, center: false },
+  // el ahorcado: colgando del cuello, cabeza quebrada; nodo "neck" = donde va el lazo
+  c_skel_noose: { url: P + 'art/skeleton_noose.glb', scale: 1, center: false },
   c_gibbet: { url: P + 'art/gibbet.glb', scale: 1, center: false },
   c_gallows: { url: P + 'art/gallows.glb', scale: 1, center: false },
   c_throne: { url: P + 'art/throne.glb', scale: 1, center: false },

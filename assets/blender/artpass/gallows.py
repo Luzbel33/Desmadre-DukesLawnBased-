@@ -1,9 +1,10 @@
 """Horca: tarima de tablones sobre postes con cruces de San Andrés, escalera con baranda, trampilla con bisagras, poste
-alto con travesaño y jabalcón, pernos de hierro. La soga (tres cabos torcidos) da dos vueltas al travesaño, baja y
-termina en el nudo de verdugo (espiras) con el lazo abajo.
+alto con travesaño y jabalcón, pernos de hierro. Trampilla ABIERTA: hueco en el piso y las dos hojas colgando de sus
+bisagras. La soga da dos vueltas al travesaño; lo que cae (soga, nudo y lazo al cuello del ahorcado) lo arma el juego
+para que se hamaque junto con el cuerpo (castle-decor.js: _gallows).
   blender -b --factory-startup -P gallows.py
 Salidas: public/assets/props/art/gallows.glb (origen en el piso, centro de la tarima; la escalera mira a -Y de Blender =
-+Z del juego). Nodo "noose" en el centro del lazo.
++Z del juego). Nodo "ropeTop": donde la soga deja el travesaño; nodo "trap": centro del hueco de la trampilla.
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -14,6 +15,8 @@ DW, DD, DH = 2.8, 2.6, 1.55      # tarima: ancho (x), fondo (y), alto
 UPX, UPY = -1.15, 0.95           # poste alto
 BEAM_Z = 4.85                    # altura del travesaño
 NOOSE_X = 0.45                   # donde cae la soga
+# hueco de la trampilla (entero adentro de la tarima): x de TX0 a TX1, y de TY0 a TY1
+TX0, TX1, TY0, TY1 = 0.03, 0.97, 0.52, 1.24
 
 
 def rope_mesh(name, pts, radius, mat, closed=False, twist=95.0):
@@ -105,17 +108,28 @@ def main():
     # postes de la tarima (4 esquinas y 2 al medio)
     for x in (-DW / 2 + 0.1, 0, DW / 2 - 0.1):
         for y in (-DD / 2 + 0.1, DD / 2 - 0.1):
-            V.append(cube('post', (x, y, DH / 2 - 0.05), (0.18, 0.18, DH - 0.1), wood_v, 0.015))
-    # vigas bajo el piso
-    for y in (-DD / 2 + 0.1, 0, DD / 2 - 0.1):
+            xx = -0.22 if (x == 0 and y > 0) else x   # el del medio de atrás, afuera del hueco
+            V.append(cube('post', (xx, y, DH / 2 - 0.05), (0.18, 0.18, DH - 0.1), wood_v, 0.015))
+    # vigas bajo el piso (la de atrás se corta en el hueco; dos cabezales enmarcan la trampilla)
+    for y in (-DD / 2 + 0.1, 0):
         H.append(cube('joist', (0, y, DH - 0.16), (DW, 0.12, 0.2), wood, 0.012))
+    yb = DD / 2 - 0.1
+    for xa, xb in ((-DW / 2, TX0 - 0.02), (TX1 + 0.02, DW / 2)):
+        H.append(cube('joist', ((xa + xb) / 2, yb, DH - 0.16), (xb - xa, 0.12, 0.2), wood, 0.012))
+    for xh in (TX0 - 0.08, TX1 + 0.08):
+        H.append(cube('header', (xh, (TY0 + TY1) / 2, DH - 0.16), (0.12, TY1 - TY0 + 0.3, 0.2), wood, 0.012))
     # piso de tablones a lo largo de y, con la trampilla bajo la soga
     n = 13
+    pw = DW / n
     for i in range(n):
-        x = -DW / 2 + (i + 0.5) * DW / n
-        o = cube(f'deck{i}', (x, 0, DH - 0.03 + rnd.uniform(0, 0.008)), (DW / n - 0.012, DD + 0.06, 0.06), wood_v, 0.006,
-                 rot=(0, 0, rnd.uniform(-0.004, 0.004)))
-        V.append(o)
+        x = -DW / 2 + (i + 0.5) * pw
+        z = DH - 0.03 + rnd.uniform(0, 0.008)
+        if x + pw / 2 <= TX0 or x - pw / 2 >= TX1:
+            V.append(cube(f'deck{i}', (x, 0, z), (pw - 0.012, DD + 0.06, 0.06), wood_v, 0.006, rot=(0, 0, rnd.uniform(-0.004, 0.004))))
+            continue
+        # tablón cortado por el hueco: pedazo de adelante y de atrás
+        for y0, y1 in ((-DD / 2 - 0.03, TY0), (TY1, DD / 2 + 0.03)):
+            V.append(cube(f'deckc{i}', (x, (y0 + y1) / 2, z), (pw - 0.012, y1 - y0, 0.06), wood_v, 0.006))
     # cruces de San Andrés en los costados
     for y in (-DD / 2 + 0.1, DD / 2 - 0.1):
         for sx in (-1, 1):
@@ -124,12 +138,29 @@ def main():
             ang = math.atan2(DH - 0.4, DW / 2 - 0.2)
             for sg in (-1, 1):
                 H.append(cube('xbrace', (cx, y + (0.1 if y > 0 else -0.1), DH / 2 - 0.1), (ln, 0.05, 0.11), wood, 0.008, rot=(0, sg * ang, 0)))
-    # trampilla: marco de hierro y bisagras sobre el piso, bajo la soga
-    tx, ty = NOOSE_X + 0.05, UPY
-    for dx, dy, sx, sy in ((0, -0.45, 0.95, 0.03), (0, 0.45, 0.95, 0.03), (-0.46, 0, 0.03, 0.93), (0.46, 0, 0.03, 0.93)):
-        I.append(cube('trap', (tx + dx, ty + dy, DH + 0.004), (sx, sy, 0.012), iron, 0.003))
-    for dy in (-0.3, 0.3):
-        I.append(cube('hinge', (tx - 0.46, ty + dy, DH + 0.01), (0.2, 0.05, 0.015), iron, 0.003))
+    # trampilla ABIERTA: marco de hierro alrededor del hueco y las dos hojas colgando de sus bisagras (se abrieron
+    # hacia abajo desde el medio: cada una cuelga de su borde, casi vertical)
+    tcx, tcy, tw, td = (TX0 + TX1) / 2, (TY0 + TY1) / 2, TX1 - TX0, TY1 - TY0
+    for dx, dy, sx, sy in ((0, -td / 2 - 0.015, tw + 0.06, 0.03), (0, td / 2 + 0.015, tw + 0.06, 0.03), (-tw / 2 - 0.015, 0, 0.03, td), (tw / 2 + 0.015, 0, 0.03, td)):
+        I.append(cube('trap', (tcx + dx, tcy + dy, DH + 0.004), (sx, sy, 0.012), iron, 0.003))
+    lw = tw / 2 - 0.01
+    for side in (-1, 1):
+        hx = tcx + side * tw / 2
+        leaf = []
+        for k in range(3):
+            leaf.append(cube('leaf', (0, -td / 2 + (k + 0.5) * td / 3, -lw / 2), (0.055, td / 3 - 0.01, lw), wood_v, 0.005))
+        for yy in (-td / 2 + 0.12, td / 2 - 0.12):
+            leaf.append(cube('strap', (-side * 0.032, yy, -lw / 2), (0.008, 0.05, lw - 0.02), iron, 0.002))
+        for o in leaf:
+            apply_all(o)
+            select([o]); bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+        lo = join(leaf, 'leaf')   # origen en la bisagra (0, 0, 0): arriba de la hoja, en su borde
+        lo.location = (hx - side * 0.03, tcy, DH - 0.02)
+        lo.rotation_euler = (0, side * math.radians(6), 0)
+        apply_all(lo)
+        V.append(lo)
+        for yy in (-td / 2 + 0.12, td / 2 - 0.12):
+            I.append(cube('hinge', (hx + side * 0.06, tcy + yy, DH + 0.01), (0.16, 0.05, 0.015), iron, 0.003))
     # escalera en el frente (-Y): largueros, peldaños y baranda
     steps = 7
     sx0 = 0.55
@@ -165,33 +196,20 @@ def main():
     ho = join(H, 'gallows_h'); box_uv(ho, 1.6)
     vo = join(V, 'gallows_v'); box_uv(vo, 1.6)
     io = join(I, 'gallows_iron'); box_uv(io, 0.4)
-    # soga
+    # soga: solo las dos vueltas al travesaño y el arranque hacia abajo (lo que cuelga lo arma el juego)
     pts, knot_top = noose_curve()
-    rope = rope_mesh('rope', pts, 0.018, hemp)
-    # nudo de verdugo: espiras alrededor de la soga doble
-    coils = []
-    kx, ky = NOOSE_X + 0.05, UPY
-    for k in range(9 * 12 + 1):
-        a = 2 * math.pi * k / 12
-        coils.append((kx + math.cos(a) * 0.028, ky + math.sin(a) * 0.028, knot_top - k / (9 * 12) * 0.24))
-    knot = rope_mesh('knot', coils, 0.016, hemp, twist=60)
-    # lazo: círculo vertical abajo del nudo
-    loop = []
-    lr = 0.14
-    lc = Vector((kx, ky, knot_top - 0.24 - lr + 0.02))
-    for k in range(25):
-        a = math.pi / 2 + 2 * math.pi * k / 24
-        loop.append((lc.x + math.cos(a) * lr * 0.9, lc.y + math.sin(a) * 0.02, lc.z + math.sin(a) * lr))
-    lo = rope_mesh('loop', loop, 0.017, hemp)
-    ro = join([rope, knot, lo], 'gallows_rope')
-    nd = bpy.data.objects.new('noose', None); bpy.context.scene.collection.objects.link(nd)
-    nd.location = lc
-    print('lazo', [round(c, 3) for c in lc], 'tris', tris(ho) + tris(vo) + tris(io) + tris(ro))
+    pts = pts[:30] + [(NOOSE_X + 0.07, UPY + 0.02, BEAM_Z - 0.2)]
+    ro = rope_mesh('gallows_rope', pts, 0.018, hemp)
+    top = bpy.data.objects.new('ropeTop', None); bpy.context.scene.collection.objects.link(top)
+    top.location = (NOOSE_X + 0.07, UPY + 0.02, BEAM_Z - 0.2)
+    trap = bpy.data.objects.new('trap', None); bpy.context.scene.collection.objects.link(trap)
+    trap.location = ((TX0 + TX1) / 2, (TY0 + TY1) / 2, DH)
+    print('soga', [round(c, 3) for c in top.location], 'trampilla', [round(c, 3) for c in trap.location], 'tris', tris(ho) + tris(vo) + tris(io) + tris(ro))
     for o in (ho, vo, io, ro):
         smooth(o, 35)
-    export([ho, vo, io, ro, nd], 'gallows', tex_res=1024)
+    export([ho, vo, io, ro, top, trap], 'gallows', tex_res=1024)
     preview(os.path.join(RENDERS, 'gallows_prev.png'), (4.0, -6.0, 3.4), (0, 0, 2.2), lens=32, w=900, h=900)
-    preview(os.path.join(RENDERS, 'gallows_prev2.png'), (1.4, -0.6, 3.2), (NOOSE_X + 0.05, UPY, 2.9), lens=40, w=700, h=900)
+    preview(os.path.join(RENDERS, 'gallows_prev2.png'), (1.9, -1.6, 3.1), (0.5, 0.9, 1.2), lens=32, w=800, h=900)
 
 
 main()
