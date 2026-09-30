@@ -43,12 +43,45 @@ export function createEquippedModel(slot){
     group.add(cylinder(.011,.018,cap,.143));
     const nozzle=mesh(new THREE.CylinderGeometry(.0028,.0028,.014,12),new THREE.MeshStandardMaterial({color:0x202020}),0,.143,.009);nozzle.rotation.x=Math.PI/2;group.add(nozzle);
   }
+  if(slot===5){
+    // fajo de billetes con su faja
+    const bill=new THREE.MeshStandardMaterial({map:billTexture(),roughness:.9});
+    const edge=new THREE.MeshStandardMaterial({color:0xcfe0c0,roughness:1});
+    const stack=mesh(new THREE.BoxGeometry(.155,.035,.068),[edge,edge,bill,bill,edge,edge]);stack.position.set(0,0,.02);group.add(stack);
+    const band=mesh(new THREE.BoxGeometry(.03,.037,.07),new THREE.MeshStandardMaterial({color:0xc9a13b,roughness:.5}));band.position.set(0,0,.02);group.add(band);
+  } else if(slot===6){
+    // pistola: armazón negro, corredera, cañón hacia adelante
+    const black=new THREE.MeshStandardMaterial({color:0x151517,roughness:.35,metalness:.6});
+    const grip=new THREE.MeshStandardMaterial({color:0x2a2420,roughness:.8});
+    group.add(mesh(new THREE.BoxGeometry(.03,.034,.19),black,0,.035,.07));
+    const g2=mesh(new THREE.BoxGeometry(.028,.11,.045),grip,0,-.02,-.005);g2.rotation.x=-.25;group.add(g2);
+    const barrel=mesh(new THREE.CylinderGeometry(.007,.007,.03,12),black,0,.035,.17);barrel.rotation.x=Math.PI/2;group.add(barrel);
+    const flash=new THREE.Mesh(new THREE.ConeGeometry(.035,.14,10),new THREE.MeshBasicMaterial({color:0xffd070,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}));
+    flash.rotation.x=Math.PI/2;flash.position.set(0,.035,.25);flash.name='flash';group.add(flash);
+  } else if(slot===7){
+    // granada de mano con su palanca y el anillo
+    const olive=new THREE.MeshStandardMaterial({color:0x3d4a26,roughness:.7,metalness:.2});
+    const body=mesh(new THREE.SphereGeometry(.036,16,12),olive,0,.02,0);body.scale.set(1,1.2,1);group.add(body);
+    group.add(mesh(new THREE.CylinderGeometry(.013,.015,.022,12),metal,0,.07,0));
+    const lever=mesh(new THREE.BoxGeometry(.012,.06,.006),metal,.018,.05,0);lever.rotation.z=-.25;group.add(lever);
+    const ring=mesh(new THREE.TorusGeometry(.012,.002,6,16),metal,-.018,.078,0);ring.rotation.y=Math.PI/2;group.add(ring);
+  }
   return group;
 }
+let _bill=null;
+function billTexture(){
+  if(_bill||typeof document==='undefined')return _bill;
+  const c=document.createElement('canvas');c.width=256;c.height=112;const g=c.getContext('2d');
+  g.fillStyle='#b9d4a0';g.fillRect(0,0,256,112);g.strokeStyle='#3e6a3a';g.lineWidth=5;g.strokeRect(6,6,244,100);
+  g.fillStyle='#2f5a2e';g.font='bold 40px Georgia, serif';g.textAlign='center';g.fillText('666',60,72);g.fillText('666',196,72);
+  g.beginPath();g.ellipse(128,56,26,34,0,0,7);g.fill();g.fillStyle='#b9d4a0';g.font='bold 26px Georgia';g.fillText('⛧',128,66);
+  _bill=new THREE.CanvasTexture(c);_bill.colorSpace=THREE.SRGBColorSpace;return _bill;
+}
+export { billTexture };
 export class EquipmentView {
   constructor(scene){this.scene=scene;this.group=null;this.slot=0;}
   update(char,slot,yaw,action,actionT=0,hidden=false){
-    const desired=hidden||![1,2,3].includes(slot)?0:slot;
+    const desired=hidden||![1,2,3,5,6,7].includes(slot)?0:slot;
     if(desired!==this.slot){this.dispose();this.slot=desired;if(desired){this.group=createEquippedModel(desired);this.scene.add(this.group);}}
     if(!this.group)return;
     char.root.updateWorldMatrix(true,true);char.handR.getWorldPosition(this.group.position);
@@ -56,7 +89,9 @@ export class EquipmentView {
     if(action==='drink'&&slot===1)this.group.rotateX(-1.3*Math.sin(Math.min(1,actionT/1.7)*Math.PI));
     if(slot===2){this.group.position.y+=.018;const ember=this.group.getObjectByName('ember');if(ember)ember.material.emissiveIntensity=action==='smoke'?2:.65;}
     if(slot===3&&action==='spray')this.group.rotateX(-.15);
+    if(slot===6){this.group.rotateX(-(char.aimPitch||0));const f=this.group.getObjectByName('flash');if(f){this.flashT=Math.max(0,(this.flashT||0)-1/60);f.material.opacity=this.flashT>0?1:0;}}
   }
+  shoot(){this.flashT=.05;}
   dispose(){
     if(this.group){const geos=new Set(),mats=new Set(),maps=new Set();this.group.traverse(o=>{if(o.geometry)geos.add(o.geometry);for(const m of o.material?Array.isArray(o.material)?o.material:[o.material]:[]){mats.add(m);if(m.map)maps.add(m.map);}});this.group.removeFromParent();for(const g of geos)g.dispose();for(const m of mats)m.dispose();for(const t of maps)t.dispose();}
     this.group=null;this.slot=0;

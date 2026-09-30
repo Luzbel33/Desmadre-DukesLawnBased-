@@ -52,6 +52,7 @@ export const BODY_HITS = {
   p: { thr: 2.8, span: 4.5, cap: 1.3, base: 10, bal: 1, push: 1 },
   k: { thr: 2.2, span: 3.4, cap: 1.8, base: 14, bal: 1.7, push: 1.45 },
   h: { thr: 1.4, span: 2.4, cap: 1.5, base: 13, bal: 1.5, push: 1.3 },
+  g: { thr: 0, span: 7, cap: 2.4, base: 30, bal: 0.8, push: 0.5 }, // tiro (pistola del Búnker)
 };
 
 // Radio del mango de cada cosa que se empuña (los dedos se cierran hasta él): fino = puño, grueso = mano abierta
@@ -900,6 +901,19 @@ export class LocalPlayer {
   hitClaim(m) {
     const rp = G.players.get(m.id);
     if (!rp || this.dead || this.state === 'driving') return;
+    if (m.a === 'g') {
+      // un tiro: llega de lejos (hasta 95 m) y deja herida de bala
+      if (rp.pos.distanceTo(this.pos) > 95) return;
+      const part = clamp(m.p | 0, 0, 10);
+      const hit = { src: 'remote', by: m.id, kind: 'bullet', thr: 0, massK: 1, body: 'g' };
+      const point = this._partCenter(part, new THREE.Vector3());
+      const n = V4.set(this.pos.x - rp.pos.x, 0, this.pos.z - rp.pos.z);
+      if (n.lengthSq() < 1e-6) n.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+      n.normalize();
+      this.hitBy.set(m.id, performance.now());
+      this._impact(part, this._severity(hit, clamp(+m.s || 16, 0, 22)), hit, point, n.clone());
+      return;
+    }
     if (rp.pos.distanceTo(this.pos) > 22) return;
     const now = performance.now();
     if (now - (this.hitBy.get(m.id) || 0) < 250) return; // ya lo conté por contacto
@@ -1460,6 +1474,10 @@ export class LocalPlayer {
     if (h.item === 'beer') { startScript(a, 'drink', 1.5); this.setAction('drink-arm', 1.5); return 'drink'; }
     if (h.item === 'smoke') { startScript(a, 'smoke', 1.3); return 'smoke'; }
     if (h.item === 'spray') return 'spray';
+    // el Búnker: tirar billetes, disparar, revolear la granada
+    if (h.item === 'cash') { startScript(a, 'throw', 0.42, this._aimLocal(side, V3, 0.9)); return 'cash'; }
+    if (h.item === 'pistol') return 'shoot';
+    if (h.item === 'grenade') { startScript(a, 'throw', 0.42, this._aimLocal(side, V3, 0.95)); this.hands[side].item = null; return 'nade'; }
     const held = h.prop ? G.props?.get(h.prop) : null;
     if (held?.type === 'popcorn') { startScript(a, 'eat', 1.1); return 'eat'; }
     // mano libre y en la otra un balde de pochoclos: agarra un puñado y lo revolea
@@ -1990,7 +2008,7 @@ export class LocalPlayer {
       // la cápsula se achica de verdad (pasás por abajo de las cosas); al pararte, solo si hay lugar arriba
       this._crouch(this.crouching || mo.slideT > 0 || mo.dive === 2 || mo.dive === 3);
       if (this.crouched && !mo.slideT && !mo.dive) this.crouching = true; // bajo un techo sigue agachado aunque sueltes C
-      const targetSpeed = (run && !this.guard && !legGone && !this.crouching ? 6.8 : 3.9) * (this.crouching ? 0.5 : 1) * (1 - clamp(this.drunk, 0, 1) * 0.2) * slow * load * limp;
+      const targetSpeed = (run && !this.guard && !legGone && !this.crouching ? 6.8 : 3.9) * (this.crouching ? 0.5 : 1) * (1 + 0.35 * clamp(this.speedHigh || 0, 0, 1)) * (1 - clamp(this.drunk, 0, 1) * 0.2) * slow * load * limp;
       const blend = 1 - Math.exp(-(length ? 14 : 20) * dt);
       this.velocity.x += (dx * targetSpeed - this.velocity.x) * blend;
       this.velocity.y += (dz * targetSpeed - this.velocity.y) * blend;
@@ -2297,6 +2315,9 @@ export class LocalPlayer {
     if (this.physMode === 'rag') this.react.reset(); else this.react.update(dt);
     this.drunk = Math.max(0, this.drunk - dt * 0.006);
     this.high = Math.max(0, this.high - dt * 0.004);
+    // el Búnker: la pastilla (colores) y la línea (velocidad) se van en unos 40 s
+    this.pill = Math.max(0, (this.pill || 0) - dt * 0.025);
+    this.speedHigh = Math.max(0, (this.speedHigh || 0) - dt * 0.03);
     this.headYaw = clamp(angleDiff(this.yaw, this.viewYaw), -1.35, 1.35);
     // animación objetivo
     const rigAction = ['drink-arm', 'headbutt', 'eat'].includes(this.action) ? null : this.action;
@@ -2339,7 +2360,7 @@ export class LocalPlayer {
     this.char.grip.r = curl('r') ?? (this.hands.r.item || this.hands.r.joint || fist(this.arm.r) || this.arm.r.script ? 1 : 0.3);
     this.char.grip.l = curl('l') ?? (this.hands.l.joint || fist(this.arm.l) || this.arm.l.script ? 1 : 0.3);
     this.char.update(dt);
-    const eqSlot = { beer: 1, smoke: 2, spray: 3 }[this.hands.r.item] || 4;
+    const eqSlot = { beer: 1, smoke: 2, spray: 3, cash: 5, pistol: 6, grenade: 7 }[this.hands.r.item] || 4;
     this.equipment?.update(this.char, eqSlot, this.yaw, this.action === 'drink-arm' ? 'drink' : this.action, this.actionT, this.dead);
   }
 
@@ -2430,7 +2451,7 @@ export class LocalPlayer {
       p: [r3(this.pos.x), r3(this.pos.y), r3(this.pos.z)],
       y: r3(this.yaw),
       sp: r3(this.speed),
-      eq: { beer: 1, smoke: 2, spray: 3 }[this.hands.r.item] || 4,
+      eq: { beer: 1, smoke: 2, spray: 3, cash: 5, pistol: 6, grenade: 7 }[this.hands.r.item] || 4,
       hd: this.hands.r.prop || 0,
       hl: this.hands.l.prop || 0,
       // con las dos manos: cuál manda (los demás calculan la pose del arma desde esa mano)

@@ -20,6 +20,7 @@ import { PropManager, defOf } from './game/props.js';
 import { preloadAssets, registerManifest } from './game/assets.js';
 import { Haunt } from './game/haunt.js';
 import { ClubGame } from './game/club.js';
+import { BunkerItems } from './game/bunker-items.js';
 import { pbrReady } from './world/builder.js';
 import { yieldToBrowser, prepareScene } from './core/startup.js';
 
@@ -534,6 +535,9 @@ function updatePrompt() {
     if (it === 'beer') H.hint('beer', 'Click', 'Tomar');
     else if (it === 'smoke') H.hint('smoke', 'Click', 'Pitar');
     else if (it === 'spray') H.hint('spray', 'Click', `Pintar (sostenido) · ${keys.label('palette')} colores`);
+    else if (it === 'cash') H.hint('cash', 'Click', 'Tirar billetes');
+    else if (it === 'pistol') H.hint('pistol', 'Click', 'Disparar');
+    else if (it === 'grenade') H.hint('grenade', 'Click', 'Revolear la granada (explota a los 3 s)');
   };
   const popcornHint = () => {
     const pl = state.props?.get(L.hands.l.prop)?.type === 'popcorn', pr = state.props?.get(L.hands.r.prop)?.type === 'popcorn';
@@ -895,7 +899,10 @@ function doTap(side) {
     }, 900);
   } else if (r === 'eat') {
     setTimeout(() => { state.local?.heal(3); G.sfx?.trigger('munch', null, 0.55); }, 450);
-  } else if (r === 'punch' || r === 'swing') G.sfx?.trigger('swing', null, r === 'swing' ? 0.45 : 0.28);
+  } else if (r === 'cash') G.items?.throwCash(L);
+  else if (r === 'shoot') G.items?.shoot(L);
+  else if (r === 'nade') { G.items?.throwNade(L); updateHotbar(); }
+  else if (r === 'punch' || r === 'swing') G.sfx?.trigger('swing', null, r === 'swing' ? 0.45 : 0.28);
 }
 
 function handleEvent(m) {
@@ -912,6 +919,15 @@ function handleEvent(m) {
       break;
     case 'club': // el Búnker: la tumba, el ascensor, quién tiene la clave
       G.club?.remote(m);
+      break;
+    case 'cash': // otro tiró billetes
+      if (Array.isArray(m.o) && Array.isArray(m.d)) G.items?.cash(new THREE.Vector3().fromArray(m.o), new THREE.Vector3().fromArray(m.d));
+      break;
+    case 'shot': // otro disparó (el daño llega aparte, como un golpe: 'hc')
+      G.items?.remoteShot(m);
+      break;
+    case 'nade': // otro revoleó una granada: la simulo igual acá
+      if (Array.isArray(m.o) && Array.isArray(m.v)) G.items?.nade(new THREE.Vector3().fromArray(m.o), new THREE.Vector3().fromArray(m.v), m.id);
       break;
     case 'mv': // barrida / dive de otro (la pose ya llega con su cuerpo; acá el ruido)
       if (rp) moveSound(m.m, rp.pos);
@@ -1738,6 +1754,8 @@ function updatePost() {
   const u = G.post.u;
   u.uDrunk.value = state.local.drunk;
   u.uHigh.value = state.local.high;
+  u.uPill.value = state.local.pill || 0;
+  u.uSpeed.value = state.local.speedHigh || 0;
   u.uHurt.value = state.hurt;
   u.uLowBlood.value = clamp((40 - state.local.blood) / 40, 0, 1);
   u.uBlack.value = state.local.dead ? clamp(state.local.deadT / 2, 0, 0.85) : 0;
@@ -1820,8 +1838,13 @@ async function boot() {
         puff: (p, a) => G.fx?.puff(p, new THREE.Vector3(0, 1, 0), a, 0x9a9090),
         openUI: (name) => { setMode('club'); state.clubUI = name; G.input.unlock(); },
         closeUI: () => { state.clubUI = null; if (state.mode === 'club') closeOverlayToGame(); },
+        onItems: () => updateHotbar(),
       });
     } catch (e) { console.warn('búnker', e); }
+    G.items = new BunkerItems({
+      getLocal: () => state.local, getNet: () => state.net,
+      kick: (k) => { camKick.v.x -= k * 12; }, shake: (k) => { state.shake = Math.max(state.shake || 0, k); },
+    });
     G.sfx.ambientHook = (dt, sfx) => {
       const st = G.world?.storm;
       if (st) { sfx.birdMute = st.s; st.ambience(dt, sfx); }
@@ -1905,7 +1928,7 @@ async function boot() {
         }
         G.poker?.update(G.camera, dt);
         updateNameTags(); updatePrompt(); updateHud(dt); updatePost();
-        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.club?.update(dt); G.owner?.update(dt);
+        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.club?.update(dt); G.items?.update(dt); G.owner?.update(dt);
         { const hide = (G.world.storm?.indoor || 0) > 0.95; for (const m of G.grass.meshes) m.visible = !hide; }
         G.fx.update(dt); G.blood.update(dt); G.football?.update(dt); G.gore?.update(dt); state.graffiti?.flush();
         G.bag?.update(dt);

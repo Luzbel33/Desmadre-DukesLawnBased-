@@ -28,7 +28,8 @@ const DOORMAN_OK = ['Pasá, rey. Portate mal.', 'Adelante. Lo que pasa en el Bú
 const DOORMAN_NO = ['¿Qué te pasa, gil? Tomatela.', 'Esa no es. Andá a la cripta a pensar.', 'Contraseña incorrecta. Te anoto en la lista negra.', 'Casi. No. Para nada. Rajá.'];
 
 export class ClubGame {
-  constructor({ world, getLocal, getNet, notify, big, teleport, fade, openUI, closeUI, shake, puff, isOwner }) {
+  constructor({ world, getLocal, getNet, notify, big, teleport, fade, openUI, closeUI, shake, puff, isOwner, onItems }) {
+    this.onItems = onItems;
     this.world = world;
     this.club = world.club;
     this.getLocal = getLocal; this.getNet = getNet;
@@ -70,13 +71,41 @@ export class ClubGame {
       case 'call': this._liftCall(it.side); break;
       case 'ride': this._liftRide(); break;
       case 'doorman': this._askPassword(); break;
-      case 'bar': L.giveItem('beer'); G.sfx?.trigger('pickup'); this.bartender?.say(['Tomá, invita la casa.', 'Esa te va a pegar.', 'Una birra del infierno.'][Math.floor(Math.random() * 3)], 2.4); break;
+      case 'give':
+        L.giveItem(it.item); G.sfx?.trigger('pickup'); this.onItems?.();
+        if (it.item === 'cash') this.notify('💸 <b>Click</b>: tirar billetes. La plata del Diablo no se termina.');
+        else if (it.item === 'pistol') this.notify('🔫 <b>Click</b>: disparar (apuntás con la mira). El Búnker es zona PvP.');
+        else if (it.item === 'grenade') this.notify('💣 <b>Click</b>: revolearla. Explota a los 3 segundos.');
+        break;
+      case 'drug': this._drug(L, it.drug); break;
+      case 'bar': L.giveItem('beer'); G.sfx?.trigger('pickup'); this.onItems?.(); this.bartender?.say(['Tomá, invita la casa.', 'Esa te va a pegar.', 'Una birra del infierno.'][Math.floor(Math.random() * 3)], 2.4); break;
       case 'monitors': this.notify('📺 Las cámaras de seguridad todavía no están conectadas.'); break;
       case 'ritual': this._openRitual(); break;
       default: break;
     }
   }
   _send(m) { this.getNet()?.send({ t: 'ev', k: 'club', ...m }); }
+  _drug(L, kind) {
+    const now = G.time;
+    if (now < (this._drugT || 0)) { G.sfx?.trigger('ui-err', null, 0.4); this.notify('Pará un poco, campeón.'); return; }
+    this._drugT = now + 2.5;
+    if (kind === 'line') {
+      L.speedHigh = Math.min(1.3, (L.speedHigh || 0) + 1);
+      G.sfx?.trigger('cough', null, 0.4, { rate: 1.6 });
+      this.big('¡ZAS!', 'Corrés como si te persiguiera el Diablo', 1800);
+    } else if (kind === 'pill') {
+      L.pill = Math.min(1.4, (L.pill || 0) + 0.8);
+      L.high = Math.min(1.6, L.high + 0.15);
+      G.sfx?.trigger('gulp', null, 0.6);
+      this.big('🌈', 'Todo late con la música', 1800);
+    } else {
+      L.high = Math.min(1.6, L.high + 0.85);
+      L.setAction?.('eat', 1.2);
+      G.sfx?.trigger('munch', null, 0.6);
+      this.big('🍄', 'Uh... las paredes respiran', 1800);
+    }
+    this._send({ e: 'drug' });
+  }
 
   // eventos de otros jugadores
   remote(m) {

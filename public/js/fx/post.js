@@ -104,6 +104,8 @@ const IntoxShader = {
     uLowBlood: { value: 0 },
     uBlack: { value: 0 },
     uSmoke: { value: 0 },
+    uPill: { value: 0 },
+    uSpeed: { value: 0 },
     uRes: { value: new THREE.Vector2(1, 1) },
   },
   vertexShader: /* glsl */ `
@@ -113,7 +115,7 @@ const IntoxShader = {
   fragmentShader: /* glsl */ `
     uniform sampler2D tDiffuse;
     uniform sampler2D tPrev;
-    uniform float uTime, uDrunk, uHigh, uHurt, uLowBlood, uBlack, uSmoke;
+    uniform float uTime, uDrunk, uHigh, uHurt, uLowBlood, uBlack, uSmoke, uPill, uSpeed;
     uniform vec2 uRes;
     varying vec2 vUv;
     vec3 hue(vec3 c, float a) {
@@ -139,6 +141,16 @@ const IntoxShader = {
         vec2 kal = vec2(cos(a2), sin(a2)) * r + 0.5;
         uv = mix(uv, kal, clamp((h - 0.85) * 1.2, 0.0, 0.45));
       }
+      // pastilla: el mundo respira (zoom que late) y se ondula en anillos
+      float pl = clamp(uPill, 0.0, 1.5);
+      if (pl > 0.01) {
+        vec2 c = uv - 0.5;
+        float br = 1.0 - pl * 0.035 * (0.5 + 0.5 * sin(uTime * 4.2));
+        uv = 0.5 + c * br + pl * 0.004 * vec2(sin(length(c) * 40.0 - uTime * 6.0), cos(length(c) * 40.0 - uTime * 6.0));
+      }
+      // línea: temblor fino y todo más nítido y cerrado
+      float sp = clamp(uSpeed, 0.0, 1.5);
+      if (sp > 0.01) uv += sp * 0.0016 * vec2(sin(uTime * 97.0), cos(uTime * 83.0));
       vec4 base = texture2D(tDiffuse, uv);
       vec3 col = base.rgb;
       // visión doble
@@ -163,6 +175,24 @@ const IntoxShader = {
         // estelas (se mezcla con el frame anterior)
         vec3 prev = texture2D(tPrev, vUv).rgb;
         col = mix(col, max(col, prev), clamp(h * 0.55, 0.0, 0.7));
+      }
+      // pastilla: arcoíris que gira, estrobo suave y bordes de colores
+      if (pl > 0.01) {
+        col = mix(col, hue(col, uTime * 1.7), clamp(pl, 0.0, 1.0) * 0.8);
+        float lum2 = dot(col, vec3(0.299, 0.587, 0.114));
+        col = mix(vec3(lum2), col, 1.0 + pl * 0.8);
+        col *= 1.0 + pl * 0.25 * step(0.8, fract(uTime * 2.1));
+        vec3 e = abs(texture2D(tDiffuse, uv + vec2(0.003, 0.0)).rgb - texture2D(tDiffuse, uv - vec2(0.003, 0.0)).rgb);
+        col += hue(vec3(1.0, 0.2, 0.6), uTime * 2.0 + uv.y * 6.0) * dot(e, vec3(0.6)) * pl * 1.6;
+      }
+      // línea: visión de túnel (los bordes se estiran hacia afuera) y más contraste
+      if (sp > 0.01) {
+        vec2 dirT = (uv - 0.5) * 0.035 * sp;
+        vec3 acc2 = col;
+        for (int i = 1; i < 5; i++) acc2 += texture2D(tDiffuse, uv - dirT * float(i)).rgb;
+        float edgeK = smoothstep(0.1, 0.5, length(vUv - 0.5));
+        col = mix(col, acc2 / 5.0, edgeK * clamp(sp, 0.0, 1.0));
+        col = (col - 0.5) * (1.0 + sp * 0.35) + 0.5;
       }
       // humo alrededor (hotbox)
       col = mix(col, vec3(0.75, 0.78, 0.75) * (0.6 + 0.4 * dot(col, vec3(0.33))), clamp(uSmoke, 0.0, 0.75));
@@ -326,7 +356,7 @@ export class Post {
     this.composer.renderer.info.autoReset = false;
     this.composer.renderer.info.reset();
     const u = this.u;
-    const active = u.uDrunk.value > 0.01 || u.uHigh.value > 0.01 || u.uHurt.value > 0.01 || u.uLowBlood.value > 0.01 || u.uBlack.value > 0.001 || u.uSmoke.value > 0.01;
+    const active = u.uDrunk.value > 0.01 || u.uHigh.value > 0.01 || u.uPill.value > 0.01 || u.uSpeed.value > 0.01 || u.uHurt.value > 0.01 || u.uLowBlood.value > 0.01 || u.uBlack.value > 0.001 || u.uSmoke.value > 0.01;
     this.intox.enabled = active;
     this.composer.render(dt);
   }

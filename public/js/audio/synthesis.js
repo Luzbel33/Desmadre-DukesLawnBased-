@@ -4,7 +4,7 @@
 // un seno sostenido suena a "señal de radio".
 const TAU=Math.PI*2;
 const GAIN={engine:3,blades:1.4,water:1.6};
-const DURATIONS={gulp:.32,cough:.9,pain:.42,burp:.7,'step-grass':.18,'step-hard':.16,jump:.2,land:.28,hit:.22,swing:.24,pickup:.18,throw:.3,drink:1.0,smoke:.8,spray:2,engine:2,blades:2,horn:.55,wind:6,birds:1.6,water:4,ui:.18,munch:.5,drip:.42};
+const DURATIONS={gulp:.32,cough:.9,pain:.42,burp:.7,'step-grass':.18,'step-hard':.16,jump:.2,land:.28,hit:.22,swing:.24,pickup:.18,throw:.3,drink:1.0,smoke:.8,spray:2,engine:2,blades:2,horn:.55,wind:6,birds:1.6,water:4,ui:.18,munch:.5,drip:.42,shot:.55,boom:2.4,bills:.7};
 
 // Filtro de dos polos (RBJ): pasabanda de ganancia 0 dB en el pico, o pasabajos.
 function biquad(kind,f,q,sr){
@@ -60,6 +60,10 @@ export function synthesize(name, sampleRate=22050, seed=1) {
       case 'jump': v=.65*lo+.15*n;env=Math.sin(Math.PI*u)*Math.exp(-u*2);break;
       case 'land': v=.6*Math.sin(TAU*(72*t-45*t*t))+.4*lo+.11*n;env=Math.exp(-t*17);break;
       case 'hit': v=.6*Math.sin(TAU*(130*t-180*t*t))+.45*lo+.18*n;env=Math.exp(-t*24);break;
+      // el Búnker: disparo (chasquido + estampido grave + cola), explosión (golpe sordo + ruido que rueda), billetes al aire
+      case 'shot': v=.9*n*Math.exp(-t*70)+.7*Math.sin(TAU*(95*t-60*t*t))*Math.exp(-t*18)+.35*lo*Math.exp(-t*6);env=Math.min(1,t*4000);break;
+      case 'boom': v=1.1*Math.sin(TAU*(55*t-18*t*t))*Math.exp(-t*3.5)+.9*slow*6*Math.exp(-t*1.4)+.5*n*Math.exp(-t*9);env=Math.min(1,t*800);break;
+      case 'bills': {const fl=Math.abs(Math.sin(TAU*14*t+Math.sin(TAU*3*t)*2));v=.35*(n-lo)*fl+.15*n;env=Math.sin(Math.PI*u)**.6;break;}
       case 'swing': v=.7*lo+.06*n;env=Math.sin(Math.PI*u)**2;break;
       case 'pickup': v=.5*Math.sin(TAU*340*t)+.22*Math.sin(TAU*680*t)+.10*n;env=Math.exp(-t*32);break;
       case 'throw': v=.65*lo+.13*n;env=Math.sin(Math.PI*u)*Math.exp(-u);break;

@@ -142,6 +142,7 @@ export class Club {
     this._lounge();
     this._dungeon();
     this._control();
+    this._stash();
     const meshes = this.b.finish(this.group);
     for (const m of meshes) m.userData.club = true;
     if (HAS_DOM) {
@@ -533,6 +534,32 @@ export class Club {
     this.cyl('leatherBlack', x + 1.2, 0.3, z, 0.3, 0.3, 0.6, 12);
     this.seat(x + 1.2, 0.62, z, -Math.PI / 2);
     this.use('club_monitors', [x + 0.9, 1.0, z], 2.2, 'Mirar las cámaras', { e: 'monitors' });
+  }
+
+  // ---------------------------------------------------------------- armería, la plata y la mesa de las drogas
+  _stash() {
+    // armería contra el muro este (entre la jaula y el trono): tablero con pistolas y un cajón de granadas
+    const ax = H.x1 - 0.12, az = -457.2;
+    this.box('bunkerIron', ax, 1.6, az, 0.1, 1.6, 2.6);
+    this.deco('hazard', ax - 0.06, 2.45, az, 0.02, 0.1, 2.6);
+    for (let k = 0; k < 4; k++) this.deco('black', ax - 0.08, 1.2 + (k % 2) * 0.45, az - 0.8 + Math.floor(k / 2) * 0.55, 0.06, 0.1, 0.24);
+    this.box('blackWood', ax - 0.5, 0.35, az + 0.9, 0.7, 0.7, 0.6);
+    for (let k = 0; k < 6; k++) this.cyl('bunkerIron', ax - 0.66 + (k % 3) * 0.15, 0.74, az + 0.8 + Math.floor(k / 3) * 0.16, 0.045, 0.045, 0.1, 10);
+    this.light(ax - 0.8, 2.6, az, 0xffe0b0, 3, 5, { priority: 1 });
+    this.use('club_pistol', [ax - 0.7, 1.1, az - 0.5], 1.6, 'Agarrar una pistola', { e: 'give', item: 'pistol' });
+    this.use('club_nade', [ax - 0.7, 1.0, az + 0.9], 1.5, 'Agarrar una granada', { e: 'give', item: 'grenade' });
+    // la plata del Diablo: una pila de fajos al lado del trono
+    const px = 21.4, pz = -452.6;
+    for (let k = 0; k < 40; k++) this.deco('green', px + ((k % 5) - 2) * 0.17, 0.6 + 0.04 + Math.floor(k / 20) * 0.036, pz + ((Math.floor(k / 5) % 4) - 1.5) * 0.075, 0.155, 0.035, 0.068, { yaw: (k * 0.37) % 0.2 });
+    this.use('club_cash', [px, 1.2, pz], 1.8, 'Agarrar un fajo de billetes', { e: 'give', item: 'cash' });
+    // la mesa ratona del medio: rayas en el espejo, pastillas de colores y hongos
+    const d = this.anchors.drugTable;
+    for (let k = 0; k < 3; k++) this.deco('white', d.x - 0.3 + k * 0.1, 0.462, d.z - 0.05, 0.012, 0.004, 0.22);
+    for (let k = 0; k < 14; k++) this.cyl(['neonPink', 'neonCyan', 'neonGreen', 'yellow'][k % 4], d.x + 0.2 + (k % 4) * 0.04, 0.47, d.z + (Math.floor(k / 4) - 1.5) * 0.04, 0.012, 0.012, 0.008, 8);
+    for (let k = 0; k < 5; k++) { this.cyl('cream', d.x - 0.55 + k * 0.06, 0.475, d.z + 0.15, 0.008, 0.01, 0.03, 6); this.cyl('red', d.x - 0.55 + k * 0.06, 0.495, d.z + 0.15, 0.022, 0.012, 0.018, 10); }
+    this.use('club_line', [d.x - 0.2, 0.9, d.z], 1.3, 'Tomarse una línea (corrés como loco)', { e: 'drug', drug: 'line' });
+    this.use('club_pill', [d.x + 0.3, 0.9, d.z], 1.3, 'Tomar una pastilla de colores', { e: 'drug', drug: 'pill' });
+    this.use('club_shroom', [d.x - 0.5, 0.9, d.z + 0.2], 1.3, 'Comerse unos hongos', { e: 'drug', drug: 'shroom' });
   }
 
   // ---------------------------------------------------------------- efectos
