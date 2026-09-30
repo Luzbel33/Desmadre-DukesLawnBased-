@@ -40,6 +40,8 @@ const HIT_DV = [5.2, 5.2, 3.4, 6.5, 6.5, 6.5, 6.5, 7.5, 9, 7.5, 9];
 const PART_DMG = [0.9, 1, 1.7, 0.45, 0.35, 0.45, 0.35, 0.55, 0.4, 0.55, 0.4];
 // los jugadores aguantan más (antes con dos tropezones te morías): todo el daño de golpes, tiros y choques por esto
 const PLAYER_DMG_K = 0.6;
+// cosa en la mano -> modelo que se ve (equipment.js); 4 = mano libre
+export const ITEM_EQ = { beer: 1, smoke: 2, spray: 3, cash: 5, pistol: 6, grenade: 7, potion: 8, chori: 9, apple: 10 };
 // la parte de la que cuelga cada una (un antebrazo ya no se corta si se fue el brazo entero)
 const PARENT_PART = [-1, 0, 1, 1, 3, 1, 5, 0, 7, 0, 9];
 // desangrarse por un miembro cortado no mata solo: la vida no baja de acá por la sangre (otro golpe sí)
@@ -1432,6 +1434,7 @@ export class LocalPlayer {
     const h = this.hands[side];
     if (h.joint) this.release(side, false);
     h.item = item;
+    h.bites = 0;
   }
 
   // ---------------------------------------------------------------- brazos (mouse)
@@ -1496,6 +1499,9 @@ export class LocalPlayer {
     if (a.script && a.t < a.dur * 0.55) return null; // sin spamear: termina el movimiento anterior
     if (h.item === 'beer') { startScript(a, 'drink', 1.5); this.setAction('drink-arm', 1.5); return 'drink'; }
     if (h.item === 'smoke') { startScript(a, 'smoke', 1.3); return 'smoke'; }
+    // lo que se compra en la feria: la poción se toma de un trago; el choripán y la manzana, de a mordiscos
+    if (h.item === 'potion') { startScript(a, 'drink', 1.5); this.setAction('drink-arm', 1.5); return 'potion'; }
+    if (h.item === 'chori' || h.item === 'apple') { startScript(a, 'eat', 1.1); return 'food'; }
     if (h.item === 'spray') return 'spray';
     // el Búnker: tirar billetes, disparar, revolear la granada
     if (h.item === 'cash') { startScript(a, 'throw', 0.42, this._aimLocal(side, V3, 0.9)); return 'cash'; }
@@ -2385,7 +2391,7 @@ export class LocalPlayer {
     this.char.grip.r = curl('r') ?? (this.hands.r.item || this.hands.r.joint || fist(this.arm.r) || this.arm.r.script ? 1 : 0.3);
     this.char.grip.l = curl('l') ?? (this.hands.l.joint || fist(this.arm.l) || this.arm.l.script ? 1 : 0.3);
     this.char.update(dt);
-    const eqSlot = { beer: 1, smoke: 2, spray: 3, cash: 5, pistol: 6, grenade: 7 }[this.hands.r.item] || 4;
+    const eqSlot = ITEM_EQ[this.hands.r.item] || 4;
     this.equipment?.update(this.char, eqSlot, this.yaw, this.action === 'drink-arm' ? 'drink' : this.action, this.actionT, this.dead);
   }
 
@@ -2478,7 +2484,7 @@ export class LocalPlayer {
       p: [r3(this.pos.x), r3(this.pos.y), r3(this.pos.z)],
       y: r3(this.yaw),
       sp: r3(this.speed),
-      eq: { beer: 1, smoke: 2, spray: 3, cash: 5, pistol: 6, grenade: 7 }[this.hands.r.item] || 4,
+      eq: ITEM_EQ[this.hands.r.item] || 4,
       hd: this.hands.r.prop || 0,
       hl: this.hands.l.prop || 0,
       // con las dos manos: cuál manda (los demás calculan la pose del arma desde esa mano)

@@ -55,8 +55,9 @@ def _tri(v):
 
 
 def morph(V, gender=0.0, muscle=0.5, weight=0.5, height=0.5, proportions=0.5, cup=0.5, firmness=0.5,
-          race=None, extra=None):
-    """Aplica los modificadores macro de un adulto joven. gender: 0 mujer, 1 hombre. extra: [(target, peso)]."""
+          race=None, extra=None, age=0.5):
+    """Aplica los modificadores macro. gender: 0 mujer, 1 hombre. age: 0.5 adulto joven .. 1 viejo (mezcla young/old,
+    como MakeHuman). extra: [(target, peso)]."""
     V = V.copy()
     T = os.path.join(MH, 'targets')
     g = {'female': 1 - gender, 'male': gender}
@@ -72,10 +73,16 @@ def morph(V, gender=0.0, muscle=0.5, weight=0.5, height=0.5, proportions=0.5, cu
         i, d = read_target(p)
         if len(i):
             V[i] += d * w
-    for gn, gw in g.items():
+    wo = min(1.0, max(0.0, (age - 0.5) * 2))
+    ages = {'young': 1 - wo, 'old': wo}
+    for gn, gw0 in g.items():
+      for an, aw in ages.items():
+        if aw <= 1e-4:
+            continue
+        gw = gw0 * aw
         for mn, mw in mu.items():
             for wn, ww in we.items():
-                base = f'{gn}-young-{mn}muscle-{wn}weight'
+                base = f'{gn}-{an}-{mn}muscle-{wn}weight'
                 w = gw * mw * ww
                 add(f'macrodetails/universal-{base}.target', w)
                 h = height
@@ -96,7 +103,7 @@ def morph(V, gender=0.0, muscle=0.5, weight=0.5, height=0.5, proportions=0.5, cu
                                 continue
                             add(f'breast/{base}-{cn}cup-{fn}firmness.target', w * cw * fw)
         for rn, rw in race.items():
-            add(f'macrodetails/{rn}-{gn}-young.target', gw * rw)
+            add(f'macrodetails/{rn}-{gn}-{an}.target', gw * rw)
     for rel, w in (extra or []):
         add(rel, w)
     return V

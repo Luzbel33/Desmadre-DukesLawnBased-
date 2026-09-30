@@ -352,4 +352,55 @@ def accessories(C, ctx):
         elif k == 'shades':
             v, f = _box([0, ctx.eyeL[1], ctx.eyeL[2] + 0.018], 0.13, 0.03, 0.01)
             out.append({'v': v, 'f': f, 'bone': 'head', 'color': [0.01, 0.01, 0.01], 'rough': 0.08})
+        # ---- aldeanos del castillo y del mapa: sombreros, rodete, anteojos
+        elif k == 'witchhat':
+            col = a.get('color', [0.04, 0.03, 0.05])
+            v, f = _sphere([0, top - 0.035, hd[2] + 0.0], 0.23, 1, 0.05, 1, 20, 4)
+            out.append({'v': v, 'f': f, 'bone': 'head', 'color': col, 'rough': 0.85})
+            v, f = _bent_horn([0, top - 0.04, hd[2] - 0.005], [[0, 0.09, -0.005], [0, 0.08, -0.02], [0, 0.06, -0.05], [0, 0.02, -0.07]], 0.1, 14, 6)
+            out.append({'v': v, 'f': f, 'bone': 'head', 'color': col, 'rough': 0.85})
+            v, f = _sphere([0, top - 0.015, hd[2] - 0.005], 0.104, 1, 0.14, 1, 16, 4)
+            out.append({'v': v, 'f': f, 'bone': 'head', 'color': a.get('band', [0.35, 0.05, 0.4]), 'rough': 0.6})
+        elif k == 'strawhat':
+            v, f = _sphere([0, top - 0.03, hd[2] - 0.005], 0.25, 1, 0.045, 1, 22, 4)
+            out.append({'v': v, 'f': f, 'bone': 'head', 'color': [0.78, 0.64, 0.36], 'rough': 0.9})
+            v, f = _sphere([0, top - 0.005, hd[2] - 0.005], 0.115, 1, 0.55, 1, 16, 8)
+            out.append({'v': v, 'f': f, 'bone': 'head', 'color': [0.74, 0.6, 0.33], 'rough': 0.9})
+            v, f = _sphere([0, top - 0.035, hd[2] - 0.005], 0.117, 1, 0.14, 1, 16, 4)
+            out.append({'v': v, 'f': f, 'bone': 'head', 'color': [0.5, 0.12, 0.1], 'rough': 0.7})
+        elif k == 'cap':
+            col = a.get('color', [0.2, 0.2, 0.22])
+            v, f = _sphere([0, top - 0.03, hd[2] - 0.0], 0.108, 1.02, 0.5, 1.08, 16, 8)
+            out.append({'v': v, 'f': f, 'bone': 'head', 'color': col, 'rough': 0.85})
+            v, f = _sphere([0, top - 0.055, hd[2] + 0.095], 0.075, 1, 0.1, 0.75, 12, 4)
+            out.append({'v': v, 'f': f, 'bone': 'head', 'color': a.get('visor', col), 'rough': 0.6})
+        elif k == 'tophat':
+            col = a.get('color', [0.03, 0.03, 0.03])
+            v, f = _sphere([0, top - 0.035, hd[2] - 0.005], 0.17, 1, 0.05, 1.1, 18, 4)
+            out.append({'v': v, 'f': f, 'bone': 'head', 'color': col, 'rough': 0.5})
+            v, f = _cyl([0, top - 0.04, hd[2] - 0.005], [0, top + 0.16, hd[2] - 0.005], 0.098, 0.104, 16)
+            out.append({'v': v, 'f': f, 'bone': 'head', 'color': col, 'rough': 0.5})
+            v, f = _cyl([0, top - 0.02, hd[2] - 0.005], [0, top + 0.015, hd[2] - 0.005], 0.101, 0.101, 16)
+            out.append({'v': v, 'f': f, 'bone': 'head', 'color': a.get('band', [0.25, 0.02, 0.03]), 'rough': 0.4})
+        elif k == 'bun':
+            v, f = _sphere([0, top - 0.02, hd[2] - 0.09], a.get('r', 0.045), 1, 0.9, 1, 12, 8)
+            out.append({'v': v, 'f': f, 'bone': 'head', 'color': C.get('hairColor', [0.6, 0.6, 0.6]), 'rough': 0.5})
+        elif k == 'glasses':
+            for s in (1, -1):
+                v, f = _sphere([s * 0.032, ctx.eyeL[1], ctx.eyeL[2] + 0.02], 0.02, 1, 0.8, 0.12, 12, 4)
+                out.append({'v': v, 'f': f, 'bone': 'head', 'color': [0.55, 0.6, 0.62], 'rough': 0.05})
+            v, f = _box([0, ctx.eyeL[1] + 0.012, ctx.eyeL[2] + 0.02], 0.12, 0.006, 0.006)
+            out.append({'v': v, 'f': f, 'bone': 'head', 'color': [0.35, 0.22, 0.12], 'rough': 0.4})
     return out
+
+
+def _cyl(a, b, r0, r1, seg=16):
+    a, b = np.array(a, float), np.array(b, float)
+    V = []
+    for c, r in ((a, r0), (b, r1)):
+        for t in np.linspace(0, 2 * np.pi, seg, endpoint=False):
+            V.append(c + np.array([np.cos(t) * r, 0, np.sin(t) * r]))
+    V.append(b)
+    # mismo sentido que _sphere (arriba k, abajo k, abajo k+1, arriba k+1): caras hacia afuera
+    F = [[seg + k, k, (k + 1) % seg, seg + (k + 1) % seg] for k in range(seg)] + [[2 * seg, seg + k, seg + (k + 1) % seg] for k in range(seg)]
+    return np.array(V), F

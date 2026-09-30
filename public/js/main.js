@@ -20,6 +20,7 @@ import { PropManager, defOf } from './game/props.js';
 import { preloadAssets, registerManifest } from './game/assets.js';
 import { Haunt } from './game/haunt.js';
 import { ClubGame } from './game/club.js';
+import { Villagers } from './game/villagers.js';
 import { BunkerItems } from './game/bunker-items.js';
 import { pbrReady } from './world/builder.js';
 import { yieldToBrowser, prepareScene } from './core/startup.js';
@@ -115,6 +116,7 @@ function setMode(mode) {
   show($('activities'), mode === 'activities');
   show($('palette'), mode === 'palette');
   show($('poker'), mode === 'poker');
+  show($('shop'), mode === 'shop');
   // sentado al póker no hay HUD del juego (zona, barras, etc.): solo la mesa
   show($('hud'), ingame && mode !== 'menu' && mode !== 'poker');
   show($('chat'), ingame);
@@ -538,6 +540,9 @@ function updatePrompt() {
     else if (it === 'cash') H.hint('cash', 'Click', 'Tirar billetes');
     else if (it === 'pistol') H.hint('pistol', 'Click', 'Disparar');
     else if (it === 'grenade') H.hint('grenade', 'Click', 'Revolear la granada (explota a los 3 s)');
+    else if (it === 'potion') H.hint('potion', 'Click', 'Tomarse la poción (vaya uno a saber qué hace)');
+    else if (it === 'chori') H.hint('chori', 'Click', 'Morder el choripán');
+    else if (it === 'apple') H.hint('apple', 'Click', 'Morder la manzana acaramelada');
   };
   const popcornHint = () => {
     const pl = state.props?.get(L.hands.l.prop)?.type === 'popcorn', pr = state.props?.get(L.hands.r.prop)?.type === 'popcorn';
@@ -621,6 +626,10 @@ function interact() {
       state.net.send({ t: 'ev', k: 'bong' });
       return;
     }
+    // la barra del bar y la parrilla tienen quien atienda (si está vivo): te abre su menú
+    if (it.id === 'barra' && G.villagers?.byKey.rulo && !G.villagers.byKey.rulo.dead) { G.villagers.use({ shop: 'barra' }); return; }
+    if (it.k === 'grill' && G.villagers?.byKey.pepe && !G.villagers.byKey.pepe.dead) { G.villagers.use({ shop: 'grill' }); return; }
+    if (it.k === 'npc') { G.villagers?.use(it); return; }
     if (it.k === 'cooler') { L.giveItem('beer'); updateHotbar(); G.sfx?.trigger('pickup'); return; }
     if (it.k === 'grill') {
       L.setAction('eat', 1.6);
@@ -899,6 +908,33 @@ function doTap(side) {
     }, 900);
   } else if (r === 'eat') {
     setTimeout(() => { state.local?.heal(3); G.sfx?.trigger('munch', null, 0.55); }, 450);
+  } else if (r === 'potion') {
+    // la poción de la bruja: un efecto al azar (y el frasco se termina)
+    setTimeout(() => {
+      const P = state.local;
+      if (!P) return;
+      G.sfx?.trigger('gulp', null, 0.7);
+      P.hands.r.item = null; updateHotbar();
+      const fx = [
+        () => { P.speedHigh = 1; bigMessage('¡PATAS DE LIEBRE!', 'Corrés como si te persiguiera el Diablo', 1800); },
+        () => { P.pill = 1; bigMessage('TODO BRILLA', 'La poción era de colores', 1800); },
+        () => { P.heal(55, { blood: 40, stopBleed: true }); bigMessage('+ VIDA', 'Sabe a remedio de la abuela', 1600); },
+        () => { P.drunk = clamp(P.drunk + 0.55, 0, 1.25); bigMessage('¡HIP!', 'Era grapa con colorante', 1600); },
+        () => { P.high = clamp(P.high + 0.5, 0, 1.6); bigMessage('MMMH...', 'Hierbas "medicinales"', 1600); },
+      ];
+      fx[Math.floor(Math.random() * fx.length)]();
+      state.net.send({ t: 'ev', k: 'drink' });
+    }, 900);
+  } else if (r === 'food') {
+    setTimeout(() => {
+      const P = state.local;
+      if (!P) return;
+      G.sfx?.trigger('munch', null, 0.6);
+      P.heal(14, { blood: 8 });
+      // tres mordiscos y se terminó
+      P.hands.r.bites = (P.hands.r.bites || 0) + 1;
+      if (P.hands.r.bites >= 3) { P.hands.r.item = null; P.hands.r.bites = 0; updateHotbar(); }
+    }, 450);
   } else if (r === 'cash') G.items?.throwCash(L);
   else if (r === 'shoot') G.items?.shoot(L);
   else if (r === 'nade') { G.items?.throwNade(L); updateHotbar(); }
@@ -1472,6 +1508,7 @@ function setupUIEvents() {
       if (kc === 'KeyV') { G.sfx?.unlock(); G.voice?.setPTT(true); }
     }
     if (state.mode === 'activities' && (e.key === 'Escape' || kc === 'KeyJ')) { e.preventDefault(); closeOverlayToGame(e.key === 'Escape'); return; }
+    if (state.mode === 'shop' && e.key === 'Escape') { e.preventDefault(); state.escT = performance.now(); G.villagers?.close(); return; }
     if (state.mode === 'club' && e.key === 'Escape') { e.preventDefault(); state.escT = performance.now(); if (state.clubUI === 'ritual') G.club?.closeRitual(); else G.club?.closePassword(); return; }
     if (state.mode === 'media' || state.mode === 'palette') {
       if (e.key === 'Escape' || (state.mode === 'palette' && kc === 'KeyR')) { e.preventDefault(); closeOverlayToGame(e.key === 'Escape'); }
@@ -1841,6 +1878,15 @@ async function boot() {
         onItems: () => updateHotbar(),
       });
     } catch (e) { console.warn('búnker', e); }
+    // la gente del mapa (vendedores, parroquianos, guardias...): ver game/villagers.js
+    try {
+      G.villagers = new Villagers({
+        scene: G.scene, world: G.world, getLocal: () => state.local, onItems: () => updateHotbar(),
+        big: (t, s, ms) => bigMessage(t, s, ms),
+        openUI: () => { setMode('shop'); G.input.unlock(); },
+        closeUI: () => { if (state.mode === 'shop') closeOverlayToGame(); },
+      }).build();
+    } catch (e) { console.warn('aldeanos', e); }
     G.items = new BunkerItems({
       getLocal: () => state.local, getNet: () => state.net,
       kick: (k) => { camKick.v.x -= k * 12; }, shake: (k) => { state.shake = Math.max(state.shake || 0, k); },
@@ -1928,7 +1974,7 @@ async function boot() {
         }
         G.poker?.update(G.camera, dt);
         updateNameTags(); updatePrompt(); updateHud(dt); updatePost();
-        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.club?.update(dt); G.items?.update(dt); G.owner?.update(dt);
+        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.club?.update(dt); G.villagers?.update(dt, G.camera); G.items?.update(dt); G.owner?.update(dt);
         { const hide = (G.world.storm?.indoor || 0) > 0.95; for (const m of G.grass.meshes) m.visible = !hide; }
         G.fx.update(dt); G.blood.update(dt); G.football?.update(dt); G.gore?.update(dt); state.graffiti?.flush();
         G.bag?.update(dt);

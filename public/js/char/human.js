@@ -31,6 +31,19 @@ export const MODELS = {
   emo: { file: 'assets/chars/npc/emo.glb', label: 'La Emo', gender: 'f', npc: true },
   raver: { file: 'assets/chars/npc/raver.glb', label: 'El Raver', gender: 'm', npc: true },
   gordo: { file: 'assets/chars/npc/gordo.glb', label: 'El Gordo', gender: 'm', npc: true },
+  // la gente del castillo y del resto del mapa (assets/blender/mh/villagers_cast.py)
+  v_bruja: { file: 'assets/chars/npc/v_bruja.glb', label: 'La Bruja Morgana', gender: 'f', npc: true },
+  v_parrillero: { file: 'assets/chars/npc/v_parrillero.glb', label: 'El Parrillero', gender: 'm', npc: true },
+  v_tabernero: { file: 'assets/chars/npc/v_tabernero.glb', label: 'El Tabernero', gender: 'm', npc: true },
+  v_sepulturero: { file: 'assets/chars/npc/v_sepulturero.glb', label: 'El Sepulturero', gender: 'm', npc: true },
+  v_guardia: { file: 'assets/chars/npc/v_guardia.glb', label: 'Guardia', gender: 'm', npc: true },
+  v_granjero: { file: 'assets/chars/npc/v_granjero.glb', label: 'El Granjero', gender: 'm', npc: true },
+  v_aldeana: { file: 'assets/chars/npc/v_aldeana.glb', label: 'Aldeana', gender: 'f', npc: true },
+  v_vecino: { file: 'assets/chars/npc/v_vecino.glb', label: 'Vecino', gender: 'm', npc: true },
+  v_punk: { file: 'assets/chars/npc/v_punk.glb', label: 'Punk', gender: 'f', npc: true },
+  v_abuela: { file: 'assets/chars/npc/v_abuela.glb', label: 'La Abuela Nieves', gender: 'f', npc: true },
+  v_hincha: { file: 'assets/chars/npc/v_hincha.glb', label: 'Hincha', gender: 'm', npc: true },
+  v_corredora: { file: 'assets/chars/npc/v_corredora.glb', label: 'Corredora', gender: 'f', npc: true },
 };
 export const DEFAULT_MODEL = 'eric';
 const CACHE = new Map(); // modelo -> { scene, meta }
@@ -116,6 +129,26 @@ export async function preloadHumans(onProgress) {
   }));
   for (const [k, m] of Object.entries(MODELS)) if (m.base && CACHE.has(m.base)) CACHE.set(k, CACHE.get(m.base));
 }
+function shrinkTextures(root, max) {
+  if (typeof document === 'undefined') return;
+  const done = new Set();
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      for (const k of ['map', 'roughnessMap', 'metalnessMap', 'normalMap', 'emissiveMap']) {
+        const t = m?.[k], img = t?.image;
+        if (!t || done.has(t) || !img || !(img.width > max)) continue;
+        done.add(t);
+        const s = max / Math.max(img.width, img.height);
+        const cv = document.createElement('canvas');
+        cv.width = Math.round(img.width * s); cv.height = Math.round(img.height * s);
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        t.image = cv;
+        t.needsUpdate = true;
+      }
+    }
+  });
+}
 export function humansReady(key = null) { return key ? CACHE.has(key) : CACHE.size > 0; }
 // modelos que se bajan cuando hacen falta (los del Búnker): devuelve una promesa; mientras tanto humansReady(key) = false
 const LOADING = new Map();
@@ -124,6 +157,8 @@ export function loadHuman(key) {
   if (!MODELS[key]) return Promise.resolve(false);
   if (!LOADING.has(key)) {
     LOADING.set(key, new GLTFLoader().loadAsync(MODELS[key].file).then((gltf) => {
+      // los NPC se ven de lejos y son muchos: sus texturas van a 1024 (4 veces menos memoria de video)
+      if (MODELS[key].npc) shrinkTextures(gltf.scene, 1024);
       CACHE.set(key, { scene: gltf.scene, meta: buildMeta(gltf.scene) });
       return true;
     }).catch((e) => { console.warn('modelo', key, e); return false; }));
@@ -827,6 +862,21 @@ export class HumanCharacter {
     this._dripStep(dt);
     this._retarget(dt);
     this.devil?.update(dt);
+    this._cullSphere();
+  }
+  // Recorte: la malla con huesos no tiene una caja que siga la pose, así que se dibujaba en TODAS las vistas y en cada
+  // cara de cada sombra de las luces del mapa (lejos o cerca). Una esfera alrededor de la cadera, en el espacio de la
+  // malla, alcanza para que three la descarte donde no está (la cámara y cada sombra por separado)
+  _cullSphere() {
+    const sk = this.skinned;
+    if (!sk) return;
+    sk.updateWorldMatrix(true, false);
+    this.joints[0].updateWorldMatrix(true, false);
+    V1.setFromMatrixPosition(this.joints[0].matrixWorld).applyMatrix4(M1.copy(sk.matrixWorld).invert());
+    const bs = sk.boundingSphere || (sk.boundingSphere = new THREE.Sphere());
+    bs.center.copy(V1);
+    bs.radius = (1.45 * (this.meta.height || 1.8) / 1.8) / Math.max(1e-6, sk.matrixWorld.getMaxScaleOnAxis()) * Math.max(1e-6, this.root.matrixWorld.getMaxScaleOnAxis());
+    sk.frustumCulled = true;
   }
 
   // ---------------------------------------------------------------- daño visual

@@ -3,15 +3,18 @@
 // murciélagos, cuervos y el espantapájaros. Todo lo repetido va instanciado.
 import * as THREE from 'three';
 import { G, rng } from '../core/G.js';
-import { whenAsset, assetModel, instanceModel, artwork } from '../game/assets.js';
+import { whenAsset, assetModel, instanceModel, artwork, placeModel } from '../game/assets.js';
 import { Builder, getMat } from './builder.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CASTLE, CLUB } from '../shared/mapdata.js';
 import { stainCastle } from './castle-stains.js';
 import { dressCastle } from './castle-dress.js';
 import { Corpse } from './castle-corpse.js';
+import { Fair } from './fair.js';
 
 const F0 = CASTLE.keep.floor;
 const HAS_DOM = typeof document !== 'undefined';
+const mergeGeos = (list) => mergeGeometries(list, false);
 const V = new THREE.Vector3();
 const M = new THREE.Matrix4();
 const Q = new THREE.Quaternion();
@@ -150,18 +153,6 @@ function signCanvas() {
   return cv;
 }
 
-function skullCanvas() {
-  const W = 128, H = 64, cv = canvas(W, H), c = cv.getContext('2d');
-  c.fillStyle = '#d6ccb2'; c.fillRect(0, 0, W, H);
-  for (let i = 0; i < 200; i++) { c.fillStyle = `rgba(90,70,40,${Math.random() * 0.2})`; c.fillRect(Math.random() * W, Math.random() * H, 2, 2); }
-  const cx = W * 0.25; // frente
-  c.fillStyle = '#120c08';
-  for (const s of [-1, 1]) { c.beginPath(); c.ellipse(cx + s * 7, 28, 5.5, 6, 0, 0, Math.PI * 2); c.fill(); }
-  c.beginPath(); c.moveTo(cx, 34); c.lineTo(cx - 3, 41); c.lineTo(cx + 3, 41); c.fill();
-  for (let i = -3; i <= 3; i++) c.fillRect(cx + i * 2.6 - 1, 46, 1.6, 5);
-  return cv;
-}
-
 // ---------------------------------------------------------------- geometrías
 export class Decor {
   constructor(castle) {
@@ -190,6 +181,10 @@ export class Decor {
     this._deadTrees();
     this._models();
     dressCastle(this); // muebles, vajilla, libros, alfombras y demás (castle-dress.js)
+    // la explanada con vida: feria, taberna y fogata (la gente la pone game/villagers.js)
+    this.fair = new Fair(this).build();
+    this.c.fair = this.fair;
+    this.anim.push((t) => this.fair.update(t));
   }
 
   // ---------------------------------------------------------------- modelos repetidos (instanciados cuando llegan)
@@ -234,14 +229,22 @@ export class Decor {
     // galpón del fogón: en las esquinas
     for (const [x, z, sc, lit] of [[-39.4, -85.3, 0.72, true], [-14.7, -85.1, 0.62, true], [-14.8, -99.8, 0.8, false], [-39.3, -99.8, 0.6, true]]) put(x, 0.05, z, sc, lit, Math.PI, lit);
     // huerta: un calabazar entero (surcos de barro con calabazas grandes y chicas)
+    const rows = [];
     for (let row = 0; row < 5; row++) {
+      const list = [];
       for (let k = 0; k < 7; k++) {
         const x = -41.2 + row * 3.1 + (r() - 0.5) * 0.6, z = -107 - k * 3.1 + (r() - 0.5) * 0.8;
         const lit = r() < 0.14;
-        put(x, 0.08, z, 0.55 + r() * 0.55, lit, null, lit && r() < 0.5);
+        const s = 0.55 + r() * 0.55;
+        put(x, 0.08, z, s, lit, null, lit && r() < 0.5);
+        list.push([x, z, s]);
+        // las chiquitas que recién crecen, al lado de la guía
+        if (r() < 0.6) put(x + (r() - 0.5) * 1.2, 0.06, z - 1.2 - r() * 0.6, 0.18 + r() * 0.16);
       }
+      rows.push(list);
       this.c.deco('mud', -41.2 + row * 3.1, 0.06, -116.3, 1.2, 0.12, 20, { mask: false, noShadow: true });
     }
+    this._vines(rows);
     this.instances('c_pumpkin_a', plainA);
     this.instances('c_pumpkin_b', plainB);
     this.instances('c_jack', carved, { onReady: (ims) => {
@@ -250,6 +253,40 @@ export class Decor {
     } });
   }
 
+  // guías del zapallo: un tallo que serpentea por el surco pasando por cada calabaza, con zarcillos y hojas grandes
+  _vines(rows) {
+    if (!HAS_DOM) return;
+    const r = this.r, geos = [], leaves = [];
+    for (const list of rows) {
+      const pts = [];
+      for (let i = 0; i < list.length; i++) {
+        const [x, z, s] = list[i];
+        pts.push(new THREE.Vector3(x - 0.35 * s, 0.1, z + 0.2), new THREE.Vector3(x + (r() - 0.5) * 0.9, 0.09, z - 1.5 + (r() - 0.5) * 0.5));
+      }
+      const curve = new THREE.CatmullRomCurve3(pts);
+      geos.push(new THREE.TubeGeometry(curve, pts.length * 10, 0.022, 5, false));
+      // zarcillos (rulitos) y hojas a lo largo
+      const n = pts.length * 4;
+      for (let i = 1; i < n; i++) {
+        const p = curve.getPointAt(i / n), t = curve.getTangentAt(i / n);
+        const side = r() < 0.5 ? -1 : 1;
+        const lx = p.x + t.z * side * 0.18, lz = p.z - t.x * side * 0.18;
+        leaves.push(this.mat4(lx, 0.07, lz, Math.atan2(t.x, t.z) + side * (0.8 + r() * 0.8), 1.6 + r() * 1.3, 1.2 + r() * 0.6));
+        if (r() < 0.35) {
+          const c = [];
+          for (let k = 0; k <= 12; k++) { const a = k * 0.9, rr = 0.06 * (1 - k / 14); c.push(new THREE.Vector3(p.x + t.z * side * (0.05 + k * 0.012) + Math.cos(a) * rr, 0.1 + Math.sin(a) * rr * 0.6 + k * 0.004, p.z - t.x * side * (0.05 + k * 0.012) + Math.sin(a) * rr)); }
+          geos.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(c), 16, 0.004, 3, false));
+        }
+      }
+    }
+    const g = mergeGeos(geos);
+    if (g) {
+      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x3d5a22, roughness: 0.8 }));
+      m.castShadow = true; m.receiveShadow = true;
+      this.scene.add(m);
+    }
+    this.instances('c_vineleaf', leaves, { shadow: false });
+  }
   // ---------------------------------------------------------------- velas (modelos de Blender, instanciadas) con llama
   // variantes: alta 0.26 m, media 0.17 m, baja 0.09 m (radios 0.03 / 0.028 / 0.034)
   candle(x, y, z, h = 0.2, r = 0.03, light = 0) {
@@ -501,9 +538,6 @@ export class Decor {
   // ---------------------------------------------------------------- calaveras (cripta, cuarto secreto, cementerio)
   _skulls() {
     if (!HAS_DOM) return;
-    const mat = new THREE.MeshStandardMaterial({ map: tex(skullCanvas()), roughness: 0.6 });
-    const g = new THREE.SphereGeometry(0.1, 14, 10);
-    g.scale(0.85, 0.95, 1.1);
     const spots = [];
     const r = this.r;
     // montones en nichos de la cripta y del cuarto secreto
@@ -511,10 +545,30 @@ export class Decor {
       for (let i = 0; i < n; i++) spots.push([x + (r() - 0.5) * 0.5, y + (i > 4 ? 0.17 : 0) + r() * 0.03, z + (r() - 0.5) * 0.9, (r() - 0.5) * 1.5]);
     }
     for (const [x, z] of [[33, -109.2], [29.7, -125.5], [42.3, -113]]) spots.push([x, 0.1, z, r() * 3]);
-    const im = new THREE.InstancedMesh(g, mat, spots.length);
-    spots.forEach(([x, y, z, yaw], i) => { Q.setFromAxisAngle(UP, yaw + Math.PI / 2); im.setMatrixAt(i, M.compose(V.set(x, y, z), Q, S.set(1, 1, 1))); });
-    im.castShadow = true;
-    this.scene.add(im);
+    // calavera anatómica del pase de arte (antes: esferas pintadas); la base del modelo apoya en el piso
+    this.instances('c_skull', spots.map(([x, y, z, yaw]) => this.mat4(x, y - 0.09, z, yaw + Math.PI / 2, 0.95 + r() * 0.1)));
+    // cementerio y cripta: huesos sueltos, un esqueleto en la tumba abierta y otro sentado contra una lápida
+    this.instances('c_bones', [this.mat4(9.2, 0.02, -110.1, 0.4, 0.8), this.mat4(23.0, 0.02, -114.9, 2.1, 0.7), this.mat4(41.6, 0.01, -121.2, 1.2, 1), this.mat4(28.4, 0.01, -127.6, 3, 0.9)]);
+    whenAsset('c_skel_lie', () => placeModel(this.scene, 'c_skel_lie', 38.4, 0.02, -127.1, Math.PI / 2 + 0.15, 1));
+    whenAsset('c_skel_sit', () => placeModel(this.scene, 'c_skel_sit', 42.9, 0, -117.2, -Math.PI / 2 - 0.2, 1));
+    // jaula colgante (gibbet) de un poste con brazo, a la entrada del cementerio, con un esqueleto sentado adentro
+    this._gibbet(25.8, -106.2, 0.4);
+  }
+  _gibbet(x, z, yaw) {
+    const b = new Builder(this.phys);
+    const c = Math.cos(yaw), s = Math.sin(yaw);
+    b.box('woodDark', x, 2.3, z, 0.22, 4.6, 0.22, { yaw });
+    b.box('woodDark', x + c * 0.8, 4.35, z - s * 0.8, 1.9, 0.18, 0.18, { yaw, collide: false });
+    b.box('woodDark', x + c * 0.35, 3.95, z - s * 0.35, 0.12, 0.9, 0.12, { yaw, rz: 0.8, collide: false });
+    b.finish(this.scene);
+    const hx = x + c * 1.55, hz = z - s * 1.55, top = 4.25;
+    const g = new THREE.Group();
+    g.position.set(hx, top, hz);
+    this.scene.add(g);
+    // el modelo: origen en el enganche de arriba, cuelga 3.15 m (1.2 de cadena y la jaula)
+    whenAsset('c_gibbet', () => { const m = assetModel('c_gibbet'); if (m) { m.position.y = -3.17; g.add(m); } });
+    whenAsset('c_skel_sit', () => { const m = assetModel('c_skel_sit'); if (m) { m.position.y = -3.1; m.scale.setScalar(0.82); m.rotation.y = 0.6; g.add(m); } });
+    this.anim.push((t) => { g.rotation.set(Math.sin(t * 0.8) * 0.035, Math.sin(t * 0.23) * 0.25, Math.sin(t * 0.61) * 0.03); });
   }
 
   // ---------------------------------------------------------------- utilería procedural (tumbas de la cripta, cocina, patio)
@@ -595,30 +649,15 @@ export class Decor {
     // biblioteca: mesa de lectura
     b.box('woodDark', 17.5, F0 + 0.76, -108.5, 2.0, 0.08, 1.1);
     for (const [dx, dz] of [[-0.9, -0.45], [0.9, -0.45], [-0.9, 0.45], [0.9, 0.45]]) b.box('woodDark', 17.5 + dx, F0 + 0.37, -108.5 + dz, 0.1, 0.74, 0.1, { collide: false });
-    // patio: horca con la soga, fardos de heno y un carro de calabazas
-    b.box('woodDark', 30, 0.25, -90, 3.2, 0.5, 3.2);
-    b.box('woodDark', 29, 2.5, -90, 0.3, 5, 0.3);
-    b.box('woodDark', 30.4, 4.9, -90, 3.0, 0.28, 0.28, { collide: false });
-    b.box('woodDark', 29.6, 4.35, -90, 0.2, 1.1, 0.2, { rz: 0.75, collide: false });
-    b.cylinder('hemp', 31.4, 4.1, -90, 0.02, 0.02, 1.5, 5, {});
-    const noose = new THREE.TorusGeometry(0.2, 0.025, 6, 16);
-    noose.translate(31.4, 3.15, -90);
-    b.geo('hemp', noose);
-    for (const [x, z, yaw] of [[22, -83.2, 0.1], [23.3, -83.3, -0.1], [22.6, -83.3, 0], [42.4 - 1, -99, 1.5], [-42.4 + 1, -84, 1.6]]) b.box('hay', x, 0.3, z, 1.2, 0.6, 0.7, { yaw });
-    b.box('hay', 22.6, 0.9, -83.3, 1.2, 0.6, 0.7, { yaw: 0.05 });
+    // patio: horca (modelo del pase de arte: tarima a 1.6 m, escalera al sur, lazo sobre la trampilla), fardos y el carro
+    this._gallows(30, -90);
+    this._hay([[22, -83.2, 0.1], [23.3, -83.3, -0.1], [22.6, -83.3, 0], [42.4 - 1, -99, 1.5], [-42.4 + 1, -84, 1.6]], [[22.6, -83.3, 0.05]]);
     // sentado ARRIBA de los fardos de abajo (a los costados del de arriba), no en el aire delante de ellos
     this.c.seats.push({ x: 21.8, y: 0.62, z: -83.45, yaw: Math.PI }, { x: 23.5, y: 0.62, z: -83.55, yaw: Math.PI });
-    // carro
-    b.box('woodDark', 16.5, 0.95, -85.2, 3.0, 0.12, 1.6);
-    for (const s of [-1, 1]) b.box('woodDark', 16.5, 1.3, -85.2 + s * 0.8, 3.0, 0.6, 0.08, { collide: false });
-    for (const [dx, dz] of [[-1.0, -0.95], [-1.0, 0.95]]) b.cylinder('woodDark', 16.5 + dx, 0.55, -85.2 + dz, 0.55, 0.55, 0.1, 14, { rx: Math.PI / 2 });
-    b.box('woodDark', 18.6, 0.8, -85.2, 1.4, 0.08, 0.1, { rz: 0.4, collide: false });
+    // carro de campo con las varas apoyadas en el piso (y calabazas en la caja)
+    this._cart(16.2, -85.2, Math.PI);
     // mesas, sarcófagos, altar y demás: también hacen sombra con el fuego y el candelabro (luz heroica, capa 1)
     for (const m of b.finish(this.scene) || []) m.layers.enable(1);
-    // calabazas en el carro
-    const cart = [];
-    for (let i = 0; i < 6; i++) cart.push(this.mat4(15.5 + (i % 3) * 0.8, 1.01, -85.6 + Math.floor(i / 3) * 0.8, i * 1.3, 0.62));
-    this.instances('c_pumpkin_b', cart);
     // caldero con brebaje verde que burbujea (y la luz verde)
     const cauldron = new THREE.LatheGeometry([[0, 0], [.36, .04], [.5, .3], [.46, .6], [.4, .66], [.37, .66], [.43, .58], [.46, .3], [.34, .09], [0, .09]].map(([r2, y]) => new THREE.Vector2(r2, y)), 32);
     const cm = new THREE.Mesh(cauldron, getMat('iron'));
@@ -644,6 +683,44 @@ export class Decor {
     this.world.embers?.add(-22.8, F0 + 0.3, -123.2, 10, { radius: 0.35, height: 1.2, strength: 0.7 });
     this.world.smoke?.add(-22.7, F0 + 0.8, -123.2, 8, { radius: 0.3, height: 1.2, opacity: 0.1, speed: 0.1 });
     this.anim.push((t) => { brew.material.emissiveIntensity = 1.1 + Math.sin(t * 3.1) * 0.25 + Math.sin(t * 7.3) * 0.1; });
+  }
+  // fardos de heno (modelo horneado); stack: los de arriba. Colisión: una caja por fardo
+  _hay(list, stack = []) {
+    const S = 1.4, W = 0.92 * S, D = 0.46 * S, H = 0.36 * S; // ~1.29 x 0.64 x 0.5 m
+    const mats = [];
+    for (const [x, z, yaw] of list) { mats.push(this.mat4(x, 0, z, yaw, S)); this.phys.box(x, H / 2, z, W / 2, H / 2, D / 2, yaw, { paint: false, mat: 'wood' }); }
+    for (const [x, z, yaw] of stack) { mats.push(this.mat4(x, H, z, yaw, S)); this.phys.box(x, H * 1.5, z, W / 2, H / 2, D / 2, yaw, { paint: false, mat: 'wood' }); }
+    this.instances('c_haybale', mats);
+    return H;
+  }
+  _cart(x, z, yaw, pumpkins = true) {
+    // origen del modelo: en el piso, al centro del eje; la caja va de -1 a 1.4 m (x local) y las varas hasta 3.6 m
+    whenAsset('c_cart', () => { const m = placeModel(this.scene, 'c_cart', x, 0, z, yaw, 1); if (m) m.traverse((o) => { if (o.isMesh) o.layers.enable(1); }); });
+    const c = Math.cos(yaw), s = Math.sin(yaw);
+    const at = (lx, lz) => [x + lx * c + lz * s, z - lx * s + lz * c];
+    const [bx, bz] = at(0.2, 0);
+    this.phys.box(bx, 0.6, bz, 1.2, 0.55, 0.95, yaw, { paint: false, mat: 'wood' });
+    for (const sd of [-1, 1]) { const [wx, wz] = at(0, sd * 0.95); this.phys.cylinder(wx, 0.62, wz, 0.06, 0.62, { mat: 'wood' }); }
+    if (!pumpkins) return;
+    const cart = [];
+    for (let i = 0; i < 7; i++) {
+      const [px, pz] = at(-0.65 + (i % 4) * 0.55, (Math.floor(i / 4) - 0.5) * 0.6 + (this.r() - 0.5) * 0.1);
+      cart.push(this.mat4(px, 0.92 + (i === 6 ? 0.25 : 0), pz, i * 1.3, 0.5 + this.r() * 0.12));
+    }
+    this.instances('c_pumpkin_b', cart);
+  }
+  _gallows(x, z) {
+    whenAsset('c_gallows', () => { const m = placeModel(this.scene, 'c_gallows', x, -0.13, z, 0, 1); if (m) m.traverse((o) => { if (o.isMesh) o.layers.enable(1); }); });
+    // tarima (x ±1.4, z -1.33..1.4, arriba a 1.6 m), escalera (x 0.25..0.85, sube de z 3.1 a 1.4) y los postes
+    this.phys.box(x, 0.74, z + 0.035, 1.4, 0.74, 1.37, 0, { paint: false, mat: 'wood' });
+    this.phys.wedge(x + 0.55, 0, z + 2.25, 0.8, 1.7, 1.48, Math.PI, { mat: 'wood' });
+    this.phys.box(x - 1.25, 3.3, z + 1.2, 0.1, 1.8, 0.1, 0, { paint: false, mat: 'wood' });
+    // el ahorcado: esqueleto colgando del lazo, por la trampilla abierta (se hamaca con el viento)
+    const hang = new THREE.Group();
+    hang.position.set(x + 0.5, 2.66, z - 0.95);
+    this.scene.add(hang);
+    whenAsset('c_skel_hang', () => { const m = assetModel('c_skel_hang'); if (!m) return; m.position.y = -1.56; hang.add(m); });
+    this.anim.push((t) => { hang.rotation.set(Math.sin(t * 0.7) * 0.05, Math.sin(t * 0.31) * 0.6, Math.sin(t * 0.53 + 1) * 0.04); });
   }
   _fireplace(b, x, z, yaw) {
     // hogar de piedra contra el muro, con fuego y luz
@@ -675,13 +752,10 @@ export class Decor {
   // ---------------------------------------------------------------- espantapájaros con cabeza de calabaza (que te sigue con la mirada)
   _scarecrow() {
     const x = -35.2, z = -121.5;
-    const b = new Builder(this.phys);
-    b.box('woodDark', x, 1.3, z, 0.14, 2.6, 0.14);
-    b.box('woodDark', x, 1.9, z, 1.9, 0.1, 0.1, { collide: false });
-    b.box('banner', x, 1.55, z, 0.7, 0.9, 0.34, { collide: false });
-    for (const s of [-1, 1]) b.box('banner', x + s * 0.62, 1.82, z, 0.58, 0.22, 0.24, { collide: false, rz: s * 0.12 });
-    b.box('hay', x, 1.02, z, 0.4, 0.18, 0.3, { collide: false });
-    b.finish(this.scene);
+    // cuerpo: modelo del pase de arte (assets/blender/artpass/scarecrow.py): camisa leñadora rellena de paja, pantalón
+    // de arpillera, cinto de soga; el poste con colisión
+    whenAsset('c_scarecrow', () => placeModel(this.scene, 'c_scarecrow', x, 0, z, 0, 1));
+    this.phys.cylinder(x, 1.35, z, 1.35, 0.08, { mat: 'wood' });
     const head = new THREE.Group();
     head.position.set(x, 2.1, z);
     whenAsset('c_jack', () => {
@@ -691,13 +765,8 @@ export class Decor {
       pm.position.y = -0.12;
       head.add(pm);
     });
-    const hat = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.5, 10), getMat('blackWood'));
-    hat.position.y = 0.55;
-    hat.rotation.z = 0.2;
-    head.add(hat);
-    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.52, 0.03, 16), getMat('blackWood'));
-    brim.position.y = 0.34;
-    head.add(brim);
+    // sombrero de bruja caído (con la punta doblada), un poco ladeado
+    whenAsset('c_scarecrow_hat', () => { const h = assetModel('c_scarecrow_hat'); if (!h) return; h.position.set(0.02, 0.26, 0); h.rotation.set(0.12, 0.5, -0.18); h.scale.setScalar(1.15); head.add(h); });
     this.scene.add(head);
     this.c.flame(x, 2.05, z, 0.13, 0.2, {});
     this.scarecrow = { head, x, z, yaw: 0 };

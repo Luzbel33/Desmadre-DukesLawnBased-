@@ -191,3 +191,8 @@ CAST = {
     'gordo': {'body': {'gender': 1, 'muscle': 0.2, 'weight': 1.0, 'height': 0.35}, 'skin': PINK, 'beard': [0.35, 0.2, 0.1], 'outfit': 'hawaii', 'shoes': True, 'acc': [{'k': 'shades'}], 'out': 'public/assets/chars/npc/gordo.glb'},
     'dj': {'body': {'gender': 1, 'muscle': 0.4, 'weight': 0.35, 'height': 0.6}, 'skin': OLIVE, 'outfit': 'dj', 'shoes': True, 'hairColor': [0.02, 0.02, 0.02], 'acc': [{'k': 'headphones'}], 'out': 'public/assets/chars/npc/dj.glb'},
 }
+
+# los del castillo y el resto del mapa (villagers_cast.py)
+from villagers_cast import V_OUTFITS, V_CAST  # noqa: E402
+OUTFITS.update(V_OUTFITS)
+CAST.update(V_CAST)

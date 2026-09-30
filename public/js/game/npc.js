@@ -9,6 +9,7 @@ import { voiceFor, voiceRate, vocalName } from '../audio/vocals.js';
 import { Ragdoll, PART } from './ragdoll.js';
 import { GR } from '../core/physics.js';
 import { goreFor, branchOf } from './gore.js';
+import { EquipmentView } from './equipment.js';
 
 const V1 = new THREE.Vector3();
 const V2 = new THREE.Vector3();
@@ -53,6 +54,10 @@ export class Npc {
     this.respawnSecs = 25;
     this.lost = 0; // miembros que perdió (bits de parte)
     this.onRespawn = null;
+    this.item = 0; // en la mano (modelo de equipment.js: 1 birra, 2 faso, 8 poción, 9 choripán...)
+    this.equip = null;
+    this.crouch = false;
+    this.prop = null; // algo que no es de equipment (la pala del sepulturero): Object3D pegado a la mano derecha
   }
 
   // quejido / grito / muerte con la voz de su modelo (cada NPC la suya: el número sale del nombre)
@@ -210,10 +215,18 @@ export class Npc {
     if (!this._build()) return;
     this.visible = show;
     this.char.root.visible = show;
-    if (!show) { if (this.bubble) this.bubble.style.display = 'none'; return; }
+    if (!show) {
+      if (this.bubble) this.bubble.style.display = 'none';
+      if (this.equip?.group) this.equip.group.visible = false;
+      if (this.prop) this.prop.visible = false;
+      return;
+    }
+    if (this.equip?.group) this.equip.group.visible = true;
     if (this.dead) {
       // muerto: tirado; al rato se va y vuelve entero
       this.deadT += dt;
+      if (this.equip) this.equip.dispose();
+      if (this.prop) this.prop.visible = false;
       if (this.rag?.alive) this.char.applyWorldTransforms(this.rag.read());
       this.char.update(dt);
       if (this.deadT > this.respawnSecs) this.respawn();
@@ -247,7 +260,7 @@ export class Npc {
     } else {
       ch.root.position.copy(this.pos);
       ch.root.rotation.set(0, this.yaw, 0);
-      ch.animate({ speed: this.speed, grounded: true, sit: this.sit, table: this.table, aimPitch: this.aimPitch, headYaw: this.headYaw, emote: this.emote, emoteT: this.emoteT, action: this.action, actionT: this.actionT }, dt);
+      ch.animate({ speed: this.speed, grounded: true, sit: this.sit, table: this.table, crouch: this.crouch, aimPitch: this.aimPitch, headYaw: this.headYaw, emote: this.emote, emoteT: this.emoteT, action: this.action, actionT: this.actionT, held: this.item || this.prop ? 'item' : null }, dt);
       // resortes de los golpes (subamortiguados: la cabeza se va y vuelve)
       const S = this.snap, w = 22, z = 0.35;
       for (const [a, v] of [[S.head, S.headV], [S.torso, S.torsoV]]) {
@@ -264,6 +277,18 @@ export class Npc {
       }
     }
     ch.update(dt);
+    // lo que tiene en la mano
+    const hand = this.item && !this.dead && !(this.lost & ((1 << PART.UARM_R) | (1 << PART.FARM_R))) ? this.item : 0;
+    if (hand || this.equip) {
+      if (!this.equip) this.equip = new EquipmentView(this.scene);
+      this.equip.update(ch, hand, this.yaw, this.action === 'drink' ? 'drink' : this.action, this.actionT, !this.visible || this.down > 0);
+    }
+    if (this.prop) {
+      ch.root.updateWorldMatrix(true, true);
+      ch.handR.getWorldPosition(this.prop.position);
+      this.prop.rotation.set(this.action === 'swing' ? -0.8 + Math.sin(this.actionT * 5) * 0.6 : 0.3, this.yaw, 0, 'YXZ');
+      this.prop.visible = this.visible && !this.down;
+    }
     // globo
     if (this.bubble) {
       this.bubbleT -= dt;
@@ -280,6 +305,8 @@ export class Npc {
   }
 
   dispose() {
+    this.equip?.dispose();
+    this.prop?.removeFromParent();
     this.rag?.destroy();
     this.char?.root.removeFromParent();
     this.char?.dispose?.();

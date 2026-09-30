@@ -444,3 +444,16 @@ button.big:hover { filter: brightness(1.06); }
 .pk-label { border-radius:3px; background:rgba(14,11,8,.65); border-bottom:1px solid rgba(210,174,108,.3); }
 .pk-label.turn { background:rgba(52,39,18,.8); box-shadow:inset 0 -2px #d2ae6c; }
 @media (max-width:800px) { #pk-stage {top:14px;left:15px;} #pk-stage small {font-size:8px;} #pk-stage b {font-size:24px;} #pk-line {left:15px;bottom:18px;transform:none;max-width:42vw;font-size:12px;gap:5px;flex-direction:column;align-items:flex-start;} #pk-keys {right:12px;bottom:18px;} #pk-keys .k {font-size:11px;} }
+/* puestos de la feria, la taberna, la barra: menú del que atiende */
+#shop { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(8, 4, 2, 0.45); z-index: 40; }
+#shop.hidden { display: none; }
+.shop-card { width: min(420px, 92vw); padding: 18px 18px 12px; border-radius: 14px; background: linear-gradient(180deg, #2b1a0e, #120a05); border: 1px solid #8a5a2a; box-shadow: 0 0 40px rgba(255, 150, 60, 0.25); color: #f2e2c8; }
+.shop-card h2 { margin: 0; font-family: var(--title); font-size: 28px; color: #ffb45a; text-shadow: 0 0 14px rgba(255, 140, 40, 0.5); }
+.shop-card .who { margin: 2px 0 12px; font-style: italic; color: #c9a979; font-size: 14px; }
+.shop-card .items { display: flex; flex-direction: column; gap: 8px; }
+.shop-card .items button { display: grid; grid-template-columns: 44px 1fr; grid-template-rows: auto auto; align-items: center; text-align: left; padding: 8px 10px; border-radius: 10px; border: 1px solid #6a4020; background: #1e120a; color: inherit; cursor: pointer; }
+.shop-card .items button:hover { background: #3a2210; border-color: #ffb45a; }
+.shop-card .ic { grid-row: span 2; font-size: 28px; text-align: center; }
+.shop-card .t { font-weight: bold; font-size: 16px; }
+.shop-card .d { font-size: 12.5px; color: #c9b08a; }
+.shop-card .hint { margin-top: 10px; font-size: 12px; color: #9a8060; text-align: center; }
