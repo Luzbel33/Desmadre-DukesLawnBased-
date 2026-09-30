@@ -34,6 +34,14 @@ bajar la calidad. Orden: primero bugs y lo importante, lo "random" al final.
 ### 2. Club / personajes
 - [x] Campana del ring al lado de la puerta de la jaula (que ahora sí tiene puerta): corta la pelea (cada uno a su
       rincón) y la vuelve a largar; la oyen y la ven todos.
+- [~] EN CURSO (31/09 corte por límite): máscaras hechas en Blender con cabezas esculpidas CC0 de Poly Haven
+      (`assets/blender/artpass/masks.py` → `public/assets/props/art/mask_{bull,horse,lion,cat,rabbit}.glb`: toro de
+      bronce, caballo de porcelana, león de oro con capucha, gato de laca negra, conejo de porcelana). FALTA
+      integrarlas: en `human.js` (damageMaterial) un atributo por vértice con el peso de los huesos de la cabeza y
+      `discard` cuando la NPC lleva máscara (oculta pelo de GPT, cara, cuernos y orejas SIN tocar el cuerpo ni los
+      GLB), y `HumanCharacter.wearMask()` que la cuelga de `headAnchor` (escala = radio de cabeza / 0.105).
+      Asignar: Lilith toro, Coneja conejo, Venus león, Raven caballo, La Emo gato (y "Una emo"/"Una morocha" con
+      variantes de color).
 - [ ] Mujeres: **el cuerpo NO se toca** (ni se mira: es la base del futuro parque anatómico). Solo la cara:
       lindas, sin bigote, con pelo largo de verdad (el de GPT está pésimo) o, si no sale bien, una máscara de
       animal distinta para cada una (fiesta de élite). Accesorios bien puestos; nada de ropa pintada.
