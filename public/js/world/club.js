@@ -334,9 +334,9 @@ export class Club {
     for (const [x, z, sx, sz] of [[0, H.z1 + 0.08, H.x1 - H.x0, 0.05], [H.x0 + 0.08, (H.z0 + H.z1) / 2, 0.05, H.z1 - H.z0], [H.x1 - 0.08, (H.z0 + H.z1) / 2, 0.05, H.z1 - H.z0]]) this.deco('neonPurple', x, 0.12, z, sx, 0.05, sz);
     // luces de ambiente: bañadores rojos en los muros y violeta en el techo (laten con la música)
     const wash = [[-22, 3, -450, 0xff1030], [-22, 3, -466, 0x8020ff], [22, 3, -458, 0xff1030], [22, 3, -472, 0x8020ff], [0, 6.2, -448, 0xff2060], [-10, 6.2, -476, 0x3040ff], [10, 6.2, -476, 0xff1030]];
-    for (const [x, y, z, c] of wash) this.party.push(this.light(x, y, z, c, 4, 14, { priority: 1.6 }));
+    for (const [x, y, z, c] of wash) this.party.push(this.light(x, y, z, c, 14, 18, { priority: 1.6 }));
     // la pista: tres luces que cambian de color con el compás
-    for (const x of [-5, 0, 5]) this.party.push(Object.assign(this.light(x, 4.5, -462, 0xffffff, 6, 12, { priority: 2.2 }), { dance: true }));
+    for (const x of [-5, 0, 5]) this.party.push(Object.assign(this.light(x, 4.5, -462, 0xffffff, 16, 14, { priority: 2.2 }), { dance: true }));
     this.anchors.hallCenter = new THREE.Vector3(0, 0, -461);
   }
 
@@ -353,7 +353,7 @@ export class Club {
       this.cyl('chrome', x, (sh + H.h) / 2, z0 + 3.4, 0.045, 0.045, H.h - sh, 12);
       this.phys.cylinder(x, (sh + H.h) / 2, z0 + 3.4, (H.h - sh) / 2, 0.05, { mat: 'metal' });
       this.poles.push(new THREE.Vector3(x, sh + 0.24, z0 + 3.4));
-      this.light(x, sh + 3.2, z0 + 4.4, i === 1 ? 0xff3080 : 0xa040ff, 3.5, 7, { priority: 1.8 });
+      this.light(x, sh + 3.2, z0 + 4.4, i === 1 ? 0xff3080 : 0xa040ff, 10, 9, { priority: 1.8 });
     }
     // cabina del DJ (arriba del escenario, a la izquierda, contra el borde)
     const dx = -7.2, dz = -472.2;
@@ -394,7 +394,7 @@ export class Club {
       this.cyl('leatherRed', x + 1.05, 0.8, z, 0.22, 0.2, 0.1, 16);
       this.seat(x + 1.1, 0.86, z, -Math.PI / 2, { stool: true });
     }
-    this.light(x + 0.6, 2.6, (za + zb) / 2, 0xff3050, 4, 10, { priority: 1.7 });
+    this.light(x + 0.6, 2.6, (za + zb) / 2, 0xff3050, 12, 14, { priority: 1.7 });
     this.use('club_bar', [x + 1.0, 1.1, (za + zb) / 2], 7, 'Pedir un trago', { e: 'bar' });
     this.anchors.bartender = new THREE.Vector3(x - 0.75, 0, (za + zb) / 2);
   }
@@ -417,7 +417,7 @@ export class Club {
       p.material.side = THREE.DoubleSide;
       this.phys.box((x0 + x1) / 2, h / 2, (z0 + z1) / 2, 0.04, h / 2, len / 2, yaw, { paint: false, mat: 'metal' });
     }
-    this.light(cx, 5.8, cz, 0xfff0d0, 7, 10, { priority: 2 });
+    this.light(cx, 5.8, cz, 0xfff0d0, 18, 12, { priority: 2 });
     this.deco('lamp', cx, 5.9, cz, 1.2, 0.06, 1.2);
     this.anchors.cage = new THREE.Vector3(cx, 0.16, cz);
     this.anchors.cageR = R;
@@ -682,7 +682,7 @@ export class Club {
       } else l.intensity = l.base * (0.55 + 0.45 * Math.sin(B.beat * Math.PI * 0.5 + i));
     }
     if (this.ledU) {
-      this.ledU.uBeat.value = B.beat; this.ledU.uBar.value = B.bar; this.ledU.uT.value = t; this.ledU.uLevel.value = 0.25 + 0.75 * level;
+      this.ledU.uBeat.value = B.beat % 1024; this.ledU.uBar.value = B.bar % 256; // la GPU no se banca números del tamaño de la hora this.ledU.uT.value = t; this.ledU.uLevel.value = 0.25 + 0.75 * level;
       for (let i = 0; i < 8; i++) { const f = feet[i]; if (f) this.ledU.uFeet.value[i].set(f.x, 0, f.z); else this.ledU.uFeet.value[i].set(1e4, 0, 1e4); }
     }
     if (this.heads) {
@@ -702,7 +702,7 @@ export class Club {
         const k = L.i / (this.lasers.length - 1) - 0.5;
         const yaw = k * 1.5 + Math.sin(B.beat * 0.5) * 0.45, pitch = 0.012 + Math.sin(B.beat * 0.25 + k * 3) * 0.05;
         L.m.rotation.set(-pitch, yaw, 0, 'YXZ');
-        L.m.scale.set(1, 1, 30);
+        L.m.scale.set(1, 1, 26); // terminan antes del muro sur
         L.m.material.opacity = 0.4 + 0.5 * kick;
       }
     }

@@ -586,8 +586,8 @@ export class Storm {
     if (U) {
       // bajo tierra: solo las luces del club (el cielo, el sol y la luna no llegan) y una bruma de boliche
       w.sun.intensity = 0;
-      if (w.hemi) { w.hemi.intensity = 0.06; w.hemi.color.setRGB(0.5, 0.3, 0.6); w.hemi.groundColor.setRGB(0.15, 0.05, 0.1); }
-      this.scene.environmentIntensity = 0.04;
+      if (w.hemi) { w.hemi.intensity = 0.32; w.hemi.color.setRGB(0.5, 0.3, 0.6); w.hemi.groundColor.setRGB(0.15, 0.05, 0.1); }
+      this.scene.environmentIntensity = 0.12;
       fog.color.setRGB(0.05, 0.02, 0.06);
       fog.density = 0.012;
     }

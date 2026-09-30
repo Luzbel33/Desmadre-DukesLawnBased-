@@ -169,7 +169,7 @@ function readLook() {
 function setupModelPicker() {
   try {
     const saved = JSON.parse(localStorage.getItem('dukes.look') || 'null');
-    if (saved && MODELS[saved.model]) selectedLook.model = saved.model;
+    if (saved && MODELS[saved.model] && !MODELS[saved.model].npc) selectedLook.model = saved.model;
   } catch {}
   document.querySelectorAll('#m-models button[data-model]').forEach((b) => {
     b.classList.toggle('sel', b.dataset.model === selectedLook.model);

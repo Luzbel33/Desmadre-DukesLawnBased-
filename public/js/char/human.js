@@ -17,6 +17,11 @@ export const MODELS = {
   // exclusivo del dueño (el servidor solo se lo deja a SmokePyro con su clave): "Demon" de VidovicArts (Sketchfab,
   // CC-BY 4.0), rig reparado en Blender (assets/blender/repair_demon.py + retarget_human.py)
   diablo: { file: 'assets/chars/diablo.glb', label: 'El Diablo', gender: 'm', devil: true, owner: true },
+  // la gente del Búnker (MakeHuman CC0 + ropa procedural: assets/blender/mh/build_npc.py). Se bajan recién cerca del club
+  portero: { file: 'assets/chars/npc/portero.glb', label: 'El Portero', gender: 'm', npc: true },
+  lilith: { file: 'assets/chars/npc/lilith.glb', label: 'Lilith', gender: 'f', npc: true },
+  coneja: { file: 'assets/chars/npc/coneja.glb', label: 'La Coneja', gender: 'f', npc: true },
+  dj: { file: 'assets/chars/npc/dj.glb', label: 'DJ Calavera', gender: 'm', npc: true },
 };
 export const DEFAULT_MODEL = 'eric';
 const CACHE = new Map(); // modelo -> { scene, meta }
@@ -91,7 +96,7 @@ const FINGERS = ['thumb', 'index', 'middle', 'ring', 'pinky'];
 export async function preloadHumans(onProgress) {
   const loader = new GLTFLoader();
   // Los alias, si los hay, comparten la descarga y los metadatos de su modelo base.
-  const keys = Object.keys(MODELS).filter((k) => !MODELS[k].base);
+  const keys = Object.keys(MODELS).filter((k) => !MODELS[k].base && !MODELS[k].npc);
   let done = 0;
   await Promise.all(keys.map(async (key) => {
     if (CACHE.has(key)) return;
@@ -102,7 +107,20 @@ export async function preloadHumans(onProgress) {
   }));
   for (const [k, m] of Object.entries(MODELS)) if (m.base && CACHE.has(m.base)) CACHE.set(k, CACHE.get(m.base));
 }
-export function humansReady() { return CACHE.size > 0; }
+export function humansReady(key = null) { return key ? CACHE.has(key) : CACHE.size > 0; }
+// modelos que se bajan cuando hacen falta (los del Búnker): devuelve una promesa; mientras tanto humansReady(key) = false
+const LOADING = new Map();
+export function loadHuman(key) {
+  if (CACHE.has(key)) return Promise.resolve(true);
+  if (!MODELS[key]) return Promise.resolve(false);
+  if (!LOADING.has(key)) {
+    LOADING.set(key, new GLTFLoader().loadAsync(MODELS[key].file).then((gltf) => {
+      CACHE.set(key, { scene: gltf.scene, meta: buildMeta(gltf.scene) });
+      return true;
+    }).catch((e) => { console.warn('modelo', key, e); return false; }));
+  }
+  return LOADING.get(key);
+}
 
 function findSkinned(root) {
   let sk = null;

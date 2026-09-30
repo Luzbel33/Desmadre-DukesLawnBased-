@@ -1,0 +1,12 @@
+Personajes del Búnker (NPCs) a partir de MakeHuman (CC0, github.com/makehumancommunity/makehuman).
+
+Necesita: Python 3.11 con bpy (pip install bpy==4.2.0), numpy y pillow, y una copia de makehuman/data
+(variable MH_DATA; por defecto /home/user/makehumancommunity/makehuman/makehuman/data).
+
+  python assets/blender/mh/build_npc.py                 # todos
+  python assets/blender/mh/build_npc.py --preview lilith  # uno, con foto en output/
+
+- mh_lib.py: cuerpo base, deformaciones (sexo, músculo, peso, altura, busto), articulaciones, pesos, ropa .mhclo.
+- build_npc.py: esqueleto de 68 huesos del juego, pesos, ojos, textura única (atlas) y GLB en public/assets/chars/npc/.
+- outfits.py: piel, cara y capas de ropa pintadas (y despegadas del cuerpo), accesorios (cuernos, orejas, trompa...).
+- cast.py: quién es quién.

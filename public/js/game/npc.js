@@ -4,7 +4,7 @@
 // función por cuadro); acá solo el cuerpo, el globo y el mirar.
 import * as THREE from 'three';
 import { G, clamp } from '../core/G.js';
-import { HumanCharacter, humansReady } from '../char/human.js';
+import { HumanCharacter, humansReady, loadHuman } from '../char/human.js';
 
 const V1 = new THREE.Vector3();
 const HAS_DOM = typeof document !== 'undefined';
@@ -35,7 +35,9 @@ export class Npc {
   }
 
   _build() {
-    if (this.char || !humansReady()) return !!this.char;
+    if (this.char) return true;
+    const key = this.look.model;
+    if (!humansReady(key)) { loadHuman(key); return false; } // se baja una vez (lo comparten todos los que lo usan)
     try {
       this.char = new HumanCharacter(this.look);
       this.char.root.name = 'npc:' + this.name;

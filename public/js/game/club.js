@@ -257,7 +257,7 @@ export class ClubGame {
     const scene = this.club.group;
     const Dm = CLUB.doorman;
     this.doorman = new Npc(scene, {
-      name: 'El Portero', look: { model: 'galleta', hat: 'none', glasses: 'sun' }, pos: new THREE.Vector3(Dm.x, 0, Dm.z), yaw: Dm.yaw, height: 1.35,
+      name: 'El Portero', look: { model: 'portero', hat: 'none', glasses: 'none' }, pos: new THREE.Vector3(Dm.x, 0, Dm.z), yaw: Dm.yaw, height: 1.08,
       role: (n, dt) => {
         const L = this.getLocal();
         const near = L && Math.hypot(L.pos.x - n.pos.x, L.pos.z - n.pos.z) < 6 && L.pos.z > CLUB.door.z;
