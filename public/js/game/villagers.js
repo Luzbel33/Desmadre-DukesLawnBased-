@@ -325,6 +325,7 @@ export class Villagers {
       if (d > FAR) {
         // lejos: ni se baja el modelo; si ya estaba, se esconde
         if (n.char && n.visible) n.update(0, camera, false);
+        if (n.burnT > 0 && n.char) n._burnStep(dt); // el fuego sigue quemando aunque no lo mires
         if (n.bubble) n.bubble.style.display = 'none'; // si habló de lejos, el globo no queda pegado en la pantalla
         n._acc = 0;
         continue;

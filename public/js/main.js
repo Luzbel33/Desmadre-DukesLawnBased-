@@ -1918,6 +1918,8 @@ async function boot() {
         onItems: () => updateHotbar(),
       });
     } catch (e) { console.warn('búnker', e); }
+    // todos los NPC (Búnker + mapa): los usan los golpes, el fuego, la granada y los choques
+    G.allNpcs = () => [...(G.club?.npcs || []), ...(G.villagers?.list || [])].filter((n) => n.char);
     // la gente del mapa (vendedores, parroquianos, guardias...): ver game/villagers.js
     try {
       G.villagers = new Villagers({

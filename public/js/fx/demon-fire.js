@@ -27,7 +27,8 @@ export class FireBalls {
     if(this.balls.some(b=>b.id===id)||this.balls.length>=F.maxBalls)return false;
     const mesh=new THREE.Group();
     const core=new THREE.Mesh(this.geometry,this.core),halo=new THREE.Mesh(this.geometry,this.halo);
-    core.scale.setScalar(.12);halo.scale.setScalar(.27);mesh.add(core,halo);mesh.position.copy(origin);this.scene.add(mesh);
+    // sin "pelota": el núcleo casi no se ve (un brillo chico); lo que se ve es el fuego de la estela
+    core.scale.setScalar(.03);halo.scale.setScalar(.12);halo.visible=false;mesh.add(core,halo);mesh.position.copy(origin);this.scene.add(mesh);
     this.balls.push({id,caster,p:origin.clone(),d:direction.clone().normalize(),travel:0,mesh,authoritative});return true;
   }
   update(dt,time,players) {
@@ -45,8 +46,8 @@ export class FireBalls {
         }
       }
       b.p.addScaledVector(b.d,Math.min(distance,dist));b.travel+=Math.min(distance,dist);
-      b.mesh.position.copy(b.p);b.mesh.children[1].scale.setScalar(.25+.04*Math.sin(time*30));
-      this.breath.burst(b.p,v.copy(b.d).negate(),time,Math.max(1,Math.ceil(distance*6)));
+      b.mesh.position.copy(b.p);
+      this.breath.burst(b.p,v.copy(b.d).negate(),time,Math.max(3,Math.ceil(distance*16)));
       if(hit&&dist<=distance) {
         this.breath.burst(b.p,v.copy(b.d).negate(),time,24);
         this.onImpact?.({...b,player,normal:new THREE.Vector3(hit.nx,hit.ny,hit.nz)});

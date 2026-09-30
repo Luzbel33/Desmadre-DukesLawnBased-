@@ -31,7 +31,9 @@ class Ctx:
         self.kneeY = h('lowerleg01.L')[1]
         self.ankleY = h('foot.L')[1]
         self.eyeL, self.eyeR = h('eye.L'), h('eye.R')
-        self.mouth = (h('oris03.L') + h('oris03.R')) / 2
+        # la boca: entre el labio de arriba (oris03) y las comisuras de abajo (oris07); con solo oris03 quedaba 1,8 cm
+        # arriba y los labios pintados parecían bigote
+        self.mouth = (h('oris03.L') + h('oris03.R') + h('oris07.L') + h('oris07.R')) / 4
         self.shL, self.shR = h('upperarm01.L'), h('upperarm01.R')
         self.elL, self.elR = h('lowerarm01.L'), h('lowerarm01.R')
         self.wrL, self.wrR = h('wrist.L'), h('wrist.R')
@@ -89,20 +91,28 @@ def skin_color(C, ctx, pos, n, d):
     rough = np.full(len(pos), 0.55)
     face = inset(d, HEAD) * (n[:, 2] > 0.1)
     # labios
-    lips = smooth(0.026, 0.012, np.hypot((pos[:, 0] - ctx.mouth[0]) * 0.75, (pos[:, 1] - ctx.mouth[1]) * 1.6)) * face * (pos[:, 2] > ctx.mouth[2] - 0.01)
-    lc = np.array(C.get('lips', [0.55, 0.18, 0.2]))
-    col = col * (1 - lips[:, None]) + lc * lips[:, None]
+    # labios: una elipse chica (2,2 cm de medio ancho, 1 cm de alto) con el de arriba en arco; color suave, cerca
+    # de la piel (los oscuros quedaban como bigote/barba)
+    dx, dy = pos[:, 0] - ctx.mouth[0], pos[:, 1] - ctx.mouth[1]
+    arch = 0.0025 * np.cos(np.clip(dx / 0.022, -1, 1) * np.pi)
+    lips = smooth(1.0, 0.72, np.hypot(dx / 0.022, (dy - arch * (dy > 0)) / 0.0095)) * face * (pos[:, 2] > ctx.mouth[2] - 0.012)
+    lc = np.array(C.get('lips', [0.62, 0.3, 0.3]))
+    lc = lc * 0.55 + np.array(C.get('skin', [0.78, 0.6, 0.5])) * np.array([0.72, 0.5, 0.5]) * 0.45
+    col = col * (1 - lips[:, None] * 0.85) + lc * lips[:, None] * 0.85
     rough = rough * (1 - lips) + 0.25 * lips
     # cejas
     for e in (ctx.eyeL, ctx.eyeR):
-        dx = (pos[:, 0] - e[0]); dy = pos[:, 1] - (e[1] + 0.021 + dx * np.sign(e[0]) * 0.1)
-        brow = smooth(0.006, 0.002, np.abs(dy)) * smooth(0.028, 0.02, np.abs(dx + np.sign(e[0]) * 0.003)) * face
+        # ceja: arco fino que se afina hacia afuera
+        dx = (pos[:, 0] - e[0]); t = np.clip((dx * np.sign(e[0]) + 0.018) / 0.04, 0, 1)
+        dy = pos[:, 1] - (e[1] + 0.02 + 0.006 * np.sin(t * np.pi) - 0.004 * t)
+        th = 0.0032 * (1.2 - 0.6 * t)
+        brow = smooth(th, th * 0.35, np.abs(dy)) * smooth(0.024, 0.018, np.abs(dx + np.sign(e[0]) * 0.002)) * face * 0.9
         bc = np.array(C.get('brows', C.get('hairColor', [0.08, 0.06, 0.05])))
         col = col * (1 - brow[:, None]) + bc * brow[:, None]
         # sombra de ojos / delineado gótico
         if C.get('eyeshadow'):
-            es = smooth(0.022, 0.008, np.hypot(pos[:, 0] - e[0], (pos[:, 1] - e[1] - 0.004) * 1.3)) * face
-            col = col * (1 - es[:, None] * 0.85) + np.array(C['eyeshadow']) * es[:, None] * 0.85
+            es = smooth(0.017, 0.009, np.hypot(pos[:, 0] - e[0], (pos[:, 1] - e[1] - 0.006) * 1.6)) * face * (pos[:, 1] > e[1] - 0.002)
+            col = col * (1 - es[:, None] * 0.45) + np.array(C['eyeshadow']) * es[:, None] * 0.45
     # barba
     if C.get('beard'):
         bz = inset(d, {'jaw', 'head'}) * smooth(ctx.mouth[1] + 0.01, ctx.mouth[1] - 0.01, pos[:, 1]) * (pos[:, 1] > ctx.chin[1] - 0.03) * (n[:, 2] > -0.3)
@@ -147,7 +157,10 @@ def w_head(ctx, face=True):
                         np.where(n[:, 2] < -0.15, smooth(ctx.mouth[1] - 0.03, ctx.mouth[1] - 0.01, p[:, 1]),
                                  smooth(ey - 0.02, ey - 0.005, p[:, 1])))
         ears = (np.abs(p[:, 0]) > 0.068) & (p[:, 1] < ey + 0.025) & (p[:, 1] > ey - 0.06) & (n[:, 2] > -0.5)
-        return np.clip(hd * hair * ~ears * (1 - inset(d, {'jaw'})), 0, 1)
+        # la cara (cuencas de los ojos, párpados, nariz) nunca es pelo: sus normales miran de costado y se colaban
+        face_box = (np.abs(p[:, 0]) < 0.062) & (p[:, 1] < ey + 0.045) & (p[:, 1] > ey - 0.09) & (p[:, 2] > ctx.eyeL[2] - 0.04)
+        return np.clip(hd * hair * ~ears * ~face_box * (1 - inset(d, {'jaw'})), 0, 1)
+    f.is_hair = True
     return f
 
 

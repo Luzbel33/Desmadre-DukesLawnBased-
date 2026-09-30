@@ -192,7 +192,9 @@ def build(name, preview=False):
     layers = paint_layers(C, ctx)
     for L in layers:
         m = L.mask(verts, nrm, dom)
-        push = np.maximum(push, m * L.push)
+        # con pelo de verdad (geometría), el pintado es solo cuero cabelludo: casi pegado (si no, casco)
+        k = min(L.push, 0.003) if (C.get('hair') and getattr(L._where, 'is_hair', False)) else L.push
+        push = np.maximum(push, m * k)
     # el borde de cada prenda (y del pelo) baja de a poco: sin escalones dentados
     nb = [[] for _ in range(len(verts))]
     for f in faces:
@@ -236,6 +238,14 @@ def build(name, preview=False):
         all_uv.append([[np.array([u0 + 0.01, BODY_V + 0.02])] * len(f) for f in a['f']])
         all_w.append({i + off: {a['bone']: 1.0} for i in range(len(a['v']))})
         off += len(a['v']); slot += 1
+    # --- pelo de verdad (geometría): la guía de pelo de MakeHuman ('helper-hair'), recortada según el peinado
+    if C.get('hair'):
+        hv, hfaces, huv = hair_mesh(Vm_m, F, ctx, C['hair'], J)
+        if len(hv):
+            hair_texture(color, rough, C.get('hairColor', [0.1, 0.07, 0.05]))
+            all_v.append(hv); all_f.append([[i + off for i in f] for f in hfaces]); all_uv.append(huv)
+            all_w.append({i + off: {'head': 1.0} for i in range(len(hv))})
+            off += len(hv)
     V = np.concatenate(all_v); Fs = sum(all_f, []); UVs = sum(all_uv, []); W = {}
     for w in all_w:
         W.update(w)
@@ -268,6 +278,70 @@ def place_patch(color, rough, img, x, _unused):
     # la imagen va con v hacia arriba: fila 0 de la textura = v 0
     color[y0:y0 + h, x:x + w] = img[::-1]
     rough[y0:y0 + h, x:x + w] = 0.15
+
+
+HAIR_X0, HAIR_W, HAIR_H = 1680, 360, 230  # parche del pelo en la franja de arriba del atlas
+
+
+def hair_texture(color, rough, col):
+    """mechones: vetas verticales de brillo distinto, raíz más oscura y un reflejo"""
+    y0 = int((BODY_V + 0.005) * TEX)
+    rng = np.random.default_rng(5)
+    cols = rng.random(HAIR_W)
+    cols = np.convolve(cols, np.ones(3) / 3, 'same')
+    k = 0.55 + 0.6 * cols[None, :] * np.ones((HAIR_H, 1))
+    vv = np.linspace(0, 1, HAIR_H)[:, None]            # 0 puntas .. 1 raíz
+    k *= 0.8 + 0.25 * np.exp(-((vv - 0.72) / 0.08) ** 2)  # reflejo
+    k *= 1 - 0.3 * np.clip((vv - 0.9) * 10, 0, 1)        # raíz
+    img = np.array(col, np.float32)[None, None, :] * k[..., None]
+    color[y0:y0 + HAIR_H, HAIR_X0:HAIR_X0 + HAIR_W] = np.clip(img, 0, 1)
+    rough[y0:y0 + HAIR_H, HAIR_X0:HAIR_X0 + HAIR_W] = 0.42
+
+
+def hair_mesh(Vm, F, ctx, style, J):
+    """la guía de pelo (mechones largos) recortada: largo según el estilo y sin nada delante de la cara; con las dos
+    caras (el material del juego descarta la de atrás) y un poco despegada del cuero cabelludo"""
+    eye = ctx.eyeL
+    cut = {'short': eye[1] - 0.075, 'bob': eye[1] - 0.14, 'shoulder': eye[1] - 0.25, 'long': eye[1] - 0.42}.get(style, eye[1] - 0.14)
+    hc = np.array(J['head____head']) + np.array([0, 0.07, 0])
+    keep = []
+    for vs, ts, g in F:
+        if g != 'helper-hair':
+            continue
+        P = Vm[list(vs)]
+        c = P.mean(0)
+        if P[:, 1].min() < cut:
+            continue
+        # la cara despejada: nada adelante por debajo de las cejas
+        if c[2] > eye[2] - 0.045 and c[1] < eye[1] + 0.03 and abs(c[0]) < 0.085:
+            continue
+        # sin flequillo: la frente despejada hasta el nacimiento del pelo
+        if c[2] > eye[2] - 0.03 and c[1] < eye[1] + 0.075 and abs(c[0]) < 0.07:
+            continue
+        keep.append(list(vs))
+    if not keep:
+        return np.zeros((0, 3)), [], []
+    vi = np.unique(np.concatenate([np.array(f) for f in keep]))
+    rm = {int(v): i for i, v in enumerate(vi)}
+    P = Vm[vi].copy()
+    d = P - hc; d /= np.linalg.norm(d, axis=1, keepdims=True) + 1e-9
+    P += d * 0.004
+    ymin, ymax = P[:, 1].min(), P[:, 1].max()
+    ang = np.arctan2(P[:, 0] - hc[0], P[:, 2] - hc[2])
+    u = (HAIR_X0 + 4 + (ang + np.pi) / (2 * np.pi) * (HAIR_W - 8)) / TEX
+    v = BODY_V + 0.005 + (4 + (P[:, 1] - ymin) / max(1e-6, ymax - ymin) * (HAIR_H - 8)) / TEX
+    uvv = np.stack([u, v], 1)
+    # la cara de atrás con sus propios vértices (si no, la normal compartida la deja negra)
+    n = len(P)
+    P = np.concatenate([P, P - d * 0.0015])
+    uvv = np.concatenate([uvv, uvv])
+    faces, uvs = [], []
+    for f in keep:
+        idx = [rm[int(x)] for x in f]
+        faces.append(idx); uvs.append([uvv[i] for i in idx])
+        back = [i + n for i in idx[::-1]]
+        faces.append(back); uvs.append([uvv[i] for i in back])
+    return P, faces, uvs
 
 
 def swatch(color, rough, slot, col, r):

@@ -69,7 +69,7 @@ export class OwnerPowers {
       if(this.balls.launch(`${G.myId}:${shot}`,G.myId,o,d,true)) {
         this.ballT=G.time+F.ballCooldown;
         net?.send({t:'pow',a:'ball',shot,o:o.toArray(),d:d.toArray()});
-        G.sfx?.trigger('fire-flare',o,.7);
+        G.sfx?.trigger('fireball',null,.9); G.sfx?.trigger('fire-flare',null,.8); this._growl?.();
       }
     }
     if (inp.hit('KeyI')) this.setInvisible(!L.invisible);
@@ -122,7 +122,7 @@ export class OwnerPowers {
     if (!rp) return;
     if (m.a === 'inv') { rp.inv = !!m.v; rp.char.root.visible = !rp.inv; }
     else if (m.a === 'fire') { if (m.v && !this.breath.isOn(m.id)) this._growl(rp.pos, m.id); this.breath.set(m.id, !!m.v); this.breath.attachLight(m.id, G.world?.pool); if(fireVector(m.d))this.aims.set(m.id,new THREE.Vector3(...m.d).normalize()); }
-    else if(m.a==='ball' && fireVector(m.o) && fireVector(m.d))this.balls.launch(`${m.id}:${m.shot}`,m.id,new THREE.Vector3(...m.o),new THREE.Vector3(...m.d));
+    else if(m.a==='ball' && fireVector(m.o) && fireVector(m.d)){ if(this.balls.launch(`${m.id}:${m.shot}`,m.id,new THREE.Vector3(...m.o),new THREE.Vector3(...m.d))) { G.sfx?.trigger('fireball',new THREE.Vector3(...m.o),.95,{full:6,max:70}); } }
     else if (m.a === 'laugh') {
       this.laughEnd.set(m.id, G.time + LAUGH_S[(m.v | 0) % 3]);
       G.sfx?.trigger('devil-laugh', rp.pos, 1, { variant: (m.v | 0) % 3, full: 8, max: 70, rate: 1 });
@@ -219,6 +219,21 @@ export class OwnerPowers {
     this.getNet()?.send({t:'pow',a:'patch',p:point.toArray(),n:normal.toArray()});
   }
   _impact(b) {
+    // la explosión: fogonazo, ruido, y los NPC cerca salen volando prendidos fuego (lo simula cada uno)
+    G.sfx?.trigger('boom', b.p, .55, { full: 6, max: 90 });
+    G.fx?.sparks?.(b.p.clone(), b.normal.clone(), 30);
+    for (let i = 0; i < 8; i++) G.fx?.fire?.(b.p.clone().add(new THREE.Vector3((Math.random() - .5) * 1.2, Math.random() * .8, (Math.random() - .5) * 1.2)));
+    for (const n of G.allNpcs?.() || []) {
+      if (n.dead) continue;
+      const d = n.pos.distanceTo(b.p);
+      if (d > F.blastRadius + 1.4) continue;
+      const k = 1 - d / (F.blastRadius + 1.4);
+      const away = new THREE.Vector3(n.pos.x - b.p.x, 0, n.pos.z - b.p.z).normalize();
+      n.ignite(7, b.caster);
+      n.hp -= 25 + 30 * k; n.hpShowT = 4;
+      if (n.hp <= 0) n.die(away.multiplyScalar(5 + 6 * k).setY(3 + 3 * k));
+      else n.knockout(away.multiplyScalar(4 + 6 * k).setY(2.5 + 3 * k), 3 + 2 * k);
+    }
     if(!b.authoritative)return;
     if(!b.player)this._patch(b.p,b.normal);
     const point=b.p.clone().addScaledVector(b.normal,.04);
@@ -249,7 +264,7 @@ export class OwnerPowers {
     // de dónde sale el fuego: mi boca (en primera persona, un poco abajo de la cámara) o la de otro
     this.breath.update(dt, G.time, (id,o,d)=>this._pose(id,o,d));
     this._mouths(dt);
-    this.balls.update(dt,G.time,[...G.players.values(),...(L?[{id:G.myId,char:L.char,dead:L.dead}]:[])]);
+    this.balls.update(dt,G.time,[...G.players.values(),...(L?[{id:G.myId,char:L.char,dead:L.dead}]:[]),...(G.allNpcs?.()||[]).filter((n)=>!n.dead&&n.visible).map((n)=>({id:'npc',char:n.char,dead:false}))]);
     this.patches.update(dt);
     this.patchT-=dt; this.fireSync-=dt; this.contactT-=dt;
     for(const [id,end]of this.seenShots)if(end<G.time)this.seenShots.delete(id);
@@ -275,6 +290,17 @@ export class OwnerPowers {
             if(!clearFirePath(G.phys,e.origin,target))continue;
             this.getNet()?.send({ t: 'ev', k: 'burn', to: rp.id, o:e.origin.toArray(),d:e.dir.toArray(),s: +(1 - d / (REACH + 1)).toFixed(2) });
             this.ignite(rp.id, 2.5);
+          }
+          // los NPC en el cono: se prenden fuego
+          for (const n of G.allNpcs?.() || []) {
+            if (n.dead) continue;
+            const target = V3.copy(n.pos).setY(n.pos.y + 1.2);
+            const to = V2.subVectors(target, e.origin);
+            const d = to.length();
+            if (d > reach || d < 0.05 || to.dot(e.dir) / d < 0.88) continue;
+            if (!clearFirePath(G.phys, e.origin, target)) continue;
+            n.ignite(6, G.myId);
+            n.punch(3 + 6 * (1 - d / (REACH + 1)), target.clone(), e.dir.clone(), 1, true, 'blunt');
           }
         }
       }

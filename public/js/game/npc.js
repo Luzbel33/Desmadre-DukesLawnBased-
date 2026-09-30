@@ -7,7 +7,7 @@ import { G, clamp } from '../core/G.js';
 import { HumanCharacter, humansReady, loadHuman, MODELS } from '../char/human.js';
 import { voiceFor, voiceRate, vocalName } from '../audio/vocals.js';
 import { Ragdoll, PART } from './ragdoll.js';
-import { GR } from '../core/physics.js';
+import { GR, RAPIER, groups } from '../core/physics.js';
 import { goreFor, branchOf } from './gore.js';
 import { EquipmentView } from './equipment.js';
 import { stepSound } from '../audio/surface.js';
@@ -18,6 +18,8 @@ const Q1 = new THREE.Quaternion();
 const E1 = new THREE.Euler();
 const HAS_DOM = typeof document !== 'undefined';
 
+const CUT = new Set(['sword', 'machete', 'knife', 'axe', 'broken_bottle', 'hatchet', 'katana', 'saber', 'estoc']);
+const PART_K = [0.9, 1, 1.7, 0.6, 0.5, 0.6, 0.5, 0.7, 0.55, 0.7, 0.55];
 function angleDiff(a, b) { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; }
 
 export class Npc {
@@ -119,7 +121,7 @@ export class Npc {
     this.char?.dispose?.();
     this.char = null;
     this.pos.copy(this.home.pos); this.yaw = this.baseYaw = this.home.yaw;
-    this.hp = 100; this.lost = 0; this.dead = false; this.deadT = 0; this.down = 0;
+    this.hp = 100; this.lost = 0; this.dead = false; this.deadT = 0; this.down = 0; this.burnT = 0; this.hpShowT = 0;
     this.action = null; this.emote = null; this.speed = 0; this.data = {};
     for (const k of Object.values(this.snap)) k.set(0, 0);
     this.onRespawn?.(this);
@@ -135,39 +137,103 @@ export class Npc {
     this.rag.build(this.char.readWorldTransforms());
   }
 
-  // un golpe (de un jugador: la mano o el pie tocó uno de sus cuerpos; o de otro NPC): speed m/s, dir hacia donde empuja
-  punch(speed, point, dir, mass = 1, byPlayer = true, kind = 'blunt') {
+  // Un golpe (mano, pie, cabeza, arma en la mano, algo revoleado, un tiro, otro NPC).
+  // speed m/s del impacto, dir hacia donde empuja, mass de lo que pega (1 mano, 6 pierna, el arma...),
+  // kind: 'blunt' | 'cut' | 'bullet'; weapon: tipo de objeto (si era un arma: las de filo cortan)
+  punch(speed, point, dir, mass = 1, byPlayer = true, kind = 'blunt', weapon = null) {
     if (!this.char || this.dead) return;
-    const s = Math.min(1.6, (speed / 8) * Math.sqrt(mass));
+    if (weapon && CUT.has(weapon)) kind = 'cut';
+    const now = performance.now();
+    if (now - (this._hitCd || 0) < 90) return; // el mismo golpe no cuenta dos veces
+    this._hitCd = now;
+    const s = Math.min(2.2, (speed / 7) * Math.sqrt(Math.max(0.5, mass)));
     // la parte más cercana al punto
     let part = PART.TORSO, best = 1e9;
-    if (this.rag?.alive) for (let i = 0; i < 11; i++) { const t = this.rag.bodies[i].translation(); const d = V1.set(t.x, t.y, t.z).distanceToSquared(point); if (d < best) { best = d; part = i; } }
+    if (this.rag?.alive) for (let i = 0; i < 11; i++) { if (this.lost & (1 << i)) continue; const t = this.rag.bodies[i].translation(); const d = V1.set(t.x, t.y, t.z).distanceToSquared(point); if (d < best) { best = d; part = i; } }
     else if (point.y > this.pos.y + 1.45 * this.heightK) part = PART.HEAD;
-    // la cabeza (o el torso) acusa el golpe: resortes en el marco del cuerpo
+    // la cabeza (o el torso) acusa el golpe: resortes en el marco del cuerpo, y un paso para atrás
     const c = Math.cos(this.yaw), sn = Math.sin(this.yaw);
     const fwd = dir.x * sn + dir.z * c, side = dir.x * c - dir.z * sn;
     const k = part === PART.HEAD ? this.snap.headV : this.snap.torsoV;
-    k.x += -fwd * 9 * s; k.y += side * 7 * s;
-    this.snap.torsoV.x += -fwd * 3 * s;
-    try { this.char.wound(part, this.char.worldToPart(part, point, V2), kind === 'bullet' ? 'cut' : 'blunt', Math.min(1, s * 0.8), null, (Math.random() * 1e6) | 0); } catch { /* */ }
-    this.hp -= s * (part === PART.HEAD ? 28 : 16) * (kind === 'bullet' ? 2.2 : 1);
+    k.x += -fwd * 11 * s; k.y += side * 9 * s;
+    this.snap.torsoV.x += -fwd * 4 * s;
+    if (!this.sit && !this.down) { this.pos.x += dir.x * 0.12 * s; this.pos.z += dir.z * 0.12 * s; }
+    try { this.char.wound(part, this.char.worldToPart(part, point, V2), kind === 'blunt' ? 'blunt' : 'cut', Math.min(1.6, 0.3 + s * 0.7), null, (Math.random() * 1e6) | 0); } catch { /* */ }
+    // el daño: como a los jugadores (cabeza x1.7, brazos y piernas menos), según qué pega
+    const base = kind === 'bullet' ? 42 : kind === 'cut' ? 30 : mass >= 3 ? 22 : 14;
+    const dmg = Math.round(s * base * PART_K[part]);
+    this.hp -= dmg;
+    this.hpShowT = 4;
+    this._floatDmg(dmg, point, part === PART.HEAD);
+    G.fx?.blood(point.clone(), V1.copy(dir).negate().add(V2.set(0, 0.6, 0)).normalize(), Math.min(1.4, 0.3 + s * 0.6));
     this.onHurt?.(this, s, point, byPlayer);
-    if (s > 0.25) this.vocal(s > 1 || kind === 'bullet' ? 'scream' : 'hurt');
-    // gore: un tiro puede reventar la cabeza o arrancar un brazo/una pierna (no siempre: si no, es una picadora)
-    if (kind !== 'blunt' && Math.random() < 0.55) {
-      const g = goreFor(part, (speed / 8) * Math.sqrt(mass), kind, 'remote');
-      const vel = V1.copy(dir).multiplyScalar(2 + s * 2).setY(1.2);
-      if (g.headPop) { this._popHead(vel); return; }
-      if (g.sever >= 0) this.loseLimb(g.sever, vel);
+    if (s > 0.2) this.vocal(s > 1 || kind !== 'blunt' ? 'scream' : 'hurt');
+    const vel = V1.copy(dir).multiplyScalar(2 + s * 2.5).setY(1 + s * 0.6);
+    // gore: filo o bala cortan; un mazazo brutal a la cabeza la revienta
+    if (kind !== 'blunt' || (s > 1.6 && part === PART.HEAD && mass >= 3)) {
+      const g = goreFor(part, s * 1.35, kind === 'blunt' ? 'blunt' : kind, byPlayer ? 'remote' : 'npc');
+      if (g.headPop) { this._popHead(vel.clone()); return; }
+      if (g.sever >= 0) this.loseLimb(g.sever, vel.clone());
     }
-    if (this.hp < -60) { this.die(V1.copy(dir).multiplyScalar(3).setY(1)); return; }
-    if ((this.hp <= 0 || s > 1.25) && !this.down) this.knockout(V1.copy(dir).multiplyScalar(2 + s * 3).setY(1 + s));
+    if (this.hp <= 0) { this.die(vel.clone()); return; }
+    // tumba: un golpe muy fuerte, una patada voladora, o si ya está hecho pelota
+    if (!this.down && (s > 1.15 || (this.hp < 30 && s > 0.6))) this.knockout(vel.clone(), 2.5 + s);
+  }
+  // números de daño que suben (y la barra de vida arriba de la cabeza unos segundos)
+  _floatDmg(n, point, crit) {
+    if (!HAS_DOM || !G.camera) return;
+    const el = document.createElement('div');
+    el.className = 'dmgnum' + (crit ? ' crit' : '');
+    el.textContent = '-' + n;
+    document.getElementById('overlay')?.appendChild(el);
+    const p = point.clone(), t0 = performance.now();
+    const tick = () => {
+      const t = (performance.now() - t0) / 900;
+      if (t >= 1 || !G.camera) { el.remove(); return; }
+      V2.copy(p).setY(p.y + 0.3 + t * 0.7).project(G.camera);
+      if (V2.z > 1) el.style.display = 'none';
+      else { el.style.display = ''; el.style.transform = `translate(${(V2.x * 0.5 + 0.5) * innerWidth}px, ${(-V2.y * 0.5 + 0.5) * innerHeight}px) translate(-50%, -50%) scale(${crit ? 1.4 : 1})`; el.style.opacity = String(1 - t * t); }
+      requestAnimationFrame(tick);
+    };
+    tick();
+  }
+  // prendido fuego: corre en pánico gritando, pierde vida y se carboniza
+  ignite(secs = 5, by = 0) {
+    if (this.dead || !this.char) return;
+    this.burnT = Math.max(this.burnT || 0, secs);
+    this.burnBy = by;
+    this.vocal('scream');
+    if (!this.down && !this.sit) this.say(['¡ME QUEMO!', '¡AGUA! ¡AGUAAA!', '¡AAAAAAH!'][Math.floor(Math.random() * 3)], 2);
+  }
+  _burnStep(dt) {
+    if (!(this.burnT > 0)) return;
+    this.burnT -= dt;
+    if (!this.dead) { this.hp -= 11 * dt; this.hpShowT = 2; }
+    this.char.burnt = Math.min(1, (this.char.burnt || 0) + dt * 0.12);
+    this.char.material?.color?.setScalar(1 - this.char.burnt * 0.75);
+    this._fireAcc = (this._fireAcc || 0) + dt;
+    if (this._fireAcc > 0.07 && this.visible) {
+      this._fireAcc = 0;
+      const hip = this.char.bones?.hip?.getWorldPosition(V2) || V2.copy(this.pos).setY(this.pos.y + 1);
+      G.fx?.fire?.(V1.set(hip.x + (Math.random() - 0.5) * 0.4, hip.y - 0.3 + Math.random() * 1.1, hip.z + (Math.random() - 0.5) * 0.4));
+    }
+    if (!this.dead && this.hp <= 0) { this.die(V1.set(0, 0.5, 0)); return; }
+    // pánico: corre para cualquier lado (si está parado)
+    if (!this.dead && !this.down && !this.sit) {
+      this.data.panic = (this.data.panic ?? 0) - dt;
+      if (this.data.panic <= 0) { this.data.panic = 0.8 + Math.random(); this.data.panicYaw = Math.random() * Math.PI * 2; }
+      this.baseYaw = this.data.panicYaw; this.yaw = this.baseYaw;
+      this.pos.x += Math.sin(this.baseYaw) * 3.2 * dt; this.pos.z += Math.cos(this.baseYaw) * 3.2 * dt;
+      this.speed = 3.2; this.emote = null;
+    }
   }
 
   knockout(vel, secs = 5) {
+    this.physical = true;
     this._ensureRag();
     if (!this.rag) return;
     this.down = secs;
+    this.sit = false;
     this.action = null; this.emote = null;
     this.rag.setKinematic(false, vel);
     this.char.mode = 'rag';
@@ -175,11 +241,12 @@ export class Npc {
 
   _getUp() {
     const pt = this.rag.pelvis().translation();
-    this.pos.set(pt.x, this.pos.y, pt.z);
+    this.pos.set(pt.x, this.home.pos.y, pt.z);
     this.rag.setKinematic(true);
     this.char.mode = 'anim';
-    this.hp = 100;
+    this.hp = Math.max(this.hp, 25); // se levanta golpeado (no con la vida llena)
     this.action = 'getup'; this.actionT = 0; this.actionEnd = 0.9;
+    this.data.upT = G.time;
   }
 
   _build() {
@@ -203,20 +270,28 @@ export class Npc {
     if (!this.bubble) {
       const el = document.createElement('div');
       el.className = 'tag3d npc';
-      el.innerHTML = '<div class="bubble"></div><span class="name"></span>';
+      el.innerHTML = '<div class="bubble"></div><span class="name"></span><div class="hp" style="display:none"><i></i></div>';
       el.querySelector('.name').textContent = this.name;
       document.getElementById('overlay')?.appendChild(el);
       this.bubble = el;
     }
     const b = this.bubble.querySelector('.bubble');
     b.textContent = text;
-    b.style.display = '';
-    this.bubbleT = secs;
+    b.style.display = text ? '' : 'none';
+    if (text) this.bubbleT = secs;
     this.talk = Math.min(secs, 0.25 + text.length * 0.06);
   }
 
   update(dt, camera, show = true) {
     if (!this._build()) return;
+    // cerca: cuerpo físico (se le puede pegar, lo tumban, lo revolean) y cápsula para chocarlo; lejos, nada
+    const cd = camera ? camera.position.distanceTo(this.pos) : 0;
+    const near = show && cd < 30;
+    if (!near && this.rag && !this.down && !this.dead) { this.rag.destroy(); this.rag = null; }
+    this.physical = near || this.down > 0 || this.dead;
+    this._pawnStep(dt, near && !this.dead && !this.down && !this.sit);
+    if (show) this._burnStep(dt);
+    this.hpShowT = Math.max(0, (this.hpShowT || 0) - dt);
     this.visible = show;
     this.char.root.visible = show;
     if (!show) {
@@ -305,11 +380,16 @@ export class Npc {
       this.prop.rotation.set(Math.PI - (this.action === 'swing' ? 0.9 - Math.sin(this.actionT * 5) * 0.6 : 0.35), this.yaw, 0, 'YXZ');
       this.prop.visible = this.visible && !this.down;
     }
-    // globo
+    // globo (lo que dice) y la barra de vida cuando lo lastimaron
+    if (this.hpShowT > 0 && !this.bubble) this.say('', 0);
     if (this.bubble) {
       this.bubbleT -= dt;
       const el = this.bubble;
-      if (this.bubbleT <= 0 || !camera) { el.style.display = 'none'; return; }
+      const bar = el.querySelector('.hp');
+      bar.style.display = this.hpShowT > 0 ? '' : 'none';
+      if (this.hpShowT > 0) bar.firstChild.style.width = Math.max(0, Math.min(100, this.hp)) + '%';
+      el.querySelector('.bubble').style.display = this.bubbleT > 0 ? '' : 'none';
+      if ((this.bubbleT <= 0 && this.hpShowT <= 0) || !camera) { el.style.display = 'none'; return; }
       V1.copy(this.pos); V1.y += 2.05 * this.heightK * ((ch.meta?.height || 1.8) / 1.8);
       const dist = camera.position.distanceTo(V1);
       V1.project(camera);
@@ -320,8 +400,27 @@ export class Npc {
     }
   }
 
+  // cápsula de movimiento (como la de otro jugador): mi controlador choca contra ella; lleva su velocidad
+  _pawnStep(dt, on) {
+    if (!G.phys) return;
+    const hk = this.heightK * ((this.char?.meta?.height || 1.8) / 1.8);
+    if (!this.pawn && on) {
+      this.pawnBody = G.phys.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(this.pos.x, this.pos.y + 0.91 * hk, this.pos.z));
+      this.pawn = G.phys.world.createCollider(RAPIER.ColliderDesc.capsule(0.6 * hk, 0.26).setCollisionGroups(groups(GR.PAWN, GR.ME | GR.VEHICLE)), this.pawnBody);
+      G.phys.tag(this.pawn, { kind: 'npc', ref: this });
+      this.vel = new THREE.Vector3();
+      this._pp = this.pos.clone();
+    }
+    if (!this.pawn) return;
+    if (this.pawn.isEnabled() !== on) this.pawn.setEnabled(on);
+    this.standing = on;
+    if (dt > 0) { this.vel.set((this.pos.x - this._pp.x) / dt, 0, (this.pos.z - this._pp.z) / dt); this._pp.copy(this.pos); }
+    if (on) this.pawnBody.setNextKinematicTranslation({ x: this.pos.x, y: this.pos.y + 0.91 * hk, z: this.pos.z });
+  }
+
   dispose() {
     this.equip?.dispose();
+    if (this.pawn) { try { G.phys.untag(this.pawn); G.phys.world.removeRigidBody(this.pawnBody); } catch { /* */ } this.pawn = null; }
     this.prop?.removeFromParent();
     this.rag?.destroy();
     this.char?.root.removeFromParent();

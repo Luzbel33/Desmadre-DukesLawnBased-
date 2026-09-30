@@ -162,40 +162,81 @@ export class BunkerItems {
     const p = new THREE.Vector3(t.x, t.y, t.z);
     G.phys.world.removeRigidBody(n.body);
     n.mesh.removeFromParent();
-    // fuego, humo, chispas y un fogonazo de luz
-    for (let i = 0; i < 12; i++) G.fx?.fire(p.clone().add(V1.set((Math.random() - 0.5) * 1.4, Math.random() * 1.2, (Math.random() - 0.5) * 1.4)));
-    for (let i = 0; i < 8; i++) G.fx?.puff(p.clone().add(V1.set((Math.random() - 0.5) * 2, Math.random() * 1.5, (Math.random() - 0.5) * 2)), V1.set((Math.random() - 0.5), 1, (Math.random() - 0.5)).normalize(), 2.5, 0x3a3634);
-    G.fx?.sparks(p.clone(), UP, 40);
-    G.sfx?.trigger('boom', p, 1, { full: 12, max: 160 });
-    const flash = { position: p.clone().setY(p.y + 1), color: new THREE.Color(0xffb060), intensity: 90, distance: 22, decay: 1.6, visible: true, priority: 9, base: 90 };
-    G.world?.pool?.add(flash);
-    setTimeout(() => G.world?.pool?.remove(flash), 220);
-    // la onda: a mí (si estoy cerca), a los NPCs del Búnker
+    this._blastFx(p);
+    // la onda: a mí (si estoy cerca), a los NPC, a las cosas sueltas
     const L = this.getLocal();
     if (L && !L.dead) {
       const d = L.pos.distanceTo(p);
-      this.shake?.(clamp(1.3 - d / 18, 0, 1));
+      this.shake?.(clamp(1.6 - d / 16, 0, 1.3));
       if (d < BLAST) {
         const k = 1 - d / BLAST;
         const away = V2.subVectors(L.pos, p).setY(0).normalize();
         const pvp = G.settings?.desmadre || isPvpAt(L.pos.x, L.pos.z);
-        if (pvp) L.damage?.(k * 95, n.by !== G.myId ? n.by : 0);
-        if (pvp && !L.dead) L.blastGore?.(k, V3.copy(away).multiplyScalar(3 + k * 5).setY(2 + k * 3), n.by !== G.myId ? n.by : 0);
-        if (!L.dead && k > 0.25) L.knockout?.(1.5 + k * 2.5, n.by !== G.myId ? n.by : 0, away.multiplyScalar(4 + k * 9).setY(2 + k * 5));
+        const by = n.by !== G.myId ? n.by : 0;
+        if (pvp) L.damage?.(k * 85, by);
+        if (pvp && !L.dead) L.blastGore?.(k, V3.copy(away).multiplyScalar(3 + k * 5).setY(2 + k * 3), by);
+        // salís volando: más cuanto más cerca (hasta ~5 m de alto), girando
+        if (!L.dead && k > 0.15) L.knockout?.(1.8 + k * 3, by, away.multiplyScalar(5 + k * 11).setY(4 + k * 8));
+        else if (L.dead && L.rag) for (const b of L.rag.bodies) b.applyImpulse({ x: away.x * k * 12, y: k * 14, z: away.z * k * 12 }, true);
       }
     }
-    for (const npc of G.club?.npcs || []) {
+    for (const npc of G.allNpcs?.() || []) {
       const d = npc.pos.distanceTo(p);
-      if (d < BLAST && npc.char) {
-        const k = 1 - d / BLAST;
-        if (npc.physical) {
-          const v = V2.subVectors(npc.pos, p).setY(0).normalize().multiplyScalar(4 + k * 9).setY(2 + k * 5);
-          npc.knockout(v, 4 + k * 3);
-          npc.blastGore?.(k, v);
-        }
-        else { npc.emote = 'facepalm'; npc.emoteT = 0; npc.say?.(['¡¿QUÉ HACÉS?!', '¡La concha de...!', '¡Una granada, boludo!'][Math.floor(Math.random() * 3)], 2.2); }
-      }
+      if (d >= BLAST || npc.dead) continue;
+      const k = 1 - d / BLAST;
+      const v = V2.subVectors(npc.pos, p).setY(0).normalize().multiplyScalar(5 + k * 11).setY(4 + k * 8);
+      npc.hp -= 40 + k * 90; npc.hpShowT = 4;
+      npc.blastGore?.(k, v.clone());
+      if (k > 0.55) npc.ignite?.(4);
+      if (!npc.dead) { if (npc.hp <= 0) npc.die(v.clone()); else npc.knockout(v.clone(), 4 + k * 3); }
     }
+    // cosas sueltas (sillas, botellas, cajas): salen despedidas
+    for (const q of G.props?.items?.values?.() || []) {
+      if (!q.dynamic || !q.body) continue;
+      const qt = q.body.translation();
+      const d = Math.hypot(qt.x - p.x, qt.y - p.y, qt.z - p.z);
+      if (d > BLAST) continue;
+      const k = (1 - d / BLAST) * Math.min(6, q.mass || 1) * 7;
+      q.body.applyImpulse({ x: (qt.x - p.x) / (d || 1) * k, y: k * 0.9, z: (qt.z - p.z) / (d || 1) * k }, true);
+    }
+  }
+  // lo que se ve y se oye: bola de fuego que crece, onda en el piso, tierra y esquirlas, humo que sube, mancha negra
+  _blastFx(p) {
+    G.sfx?.trigger('boom', p, 1, { full: 14, max: 200 });
+    G.sfx?.trigger('fire-flare', p, 0.8, { full: 6, max: 60 });
+    const flash = { position: p.clone().setY(p.y + 1), color: new THREE.Color(0xffb060), intensity: 160, distance: 30, decay: 1.4, visible: true, priority: 9, base: 160 };
+    G.world?.pool?.add(flash);
+    const t0 = performance.now();
+    const grp = new THREE.Group(); grp.position.copy(p);
+    const mk = (col, op) => new THREE.Mesh(this._sphere || (this._sphere = new THREE.SphereGeometry(1, 20, 14)), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+    const core = mk(0xfff0b0, 1), fire = mk(0xff6010, 0.85), outer = mk(0x802000, 0.5);
+    core.material.color.multiplyScalar(3); fire.material.color.multiplyScalar(2);
+    grp.add(core, fire, outer);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffd8a0, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false }));
+    ring.position.set(p.x, Math.max(0.05, p.y - 0.3), p.z);
+    G.scene.add(grp, ring);
+    const tick = () => {
+      const u = (performance.now() - t0) / 1000;
+      const a = Math.min(1, u / 0.35);
+      core.scale.setScalar(0.4 + a * 1.6); fire.scale.setScalar(0.6 + a * 2.8); outer.scale.setScalar(0.8 + a * 3.6);
+      core.material.opacity = Math.max(0, 1 - u / 0.25); fire.material.opacity = Math.max(0, 0.85 - u / 0.5); outer.material.opacity = Math.max(0, 0.5 - u / 0.7);
+      ring.scale.setScalar(1 + u * 22); ring.material.opacity = Math.max(0, 0.8 - u * 2.4);
+      flash.intensity = 160 * Math.max(0, 1 - u / 0.35);
+      if (u < 0.8) requestAnimationFrame(tick);
+      else { grp.removeFromParent(); ring.removeFromParent(); for (const m of [core, fire, outer, ring]) m.material.dispose(); ring.geometry.dispose(); G.world?.pool?.remove(flash); }
+    };
+    tick();
+    for (let i = 0; i < 16; i++) G.fx?.fire(p.clone().add(V1.set((Math.random() - 0.5) * 2.2, Math.random() * 1.6, (Math.random() - 0.5) * 2.2)));
+    for (let i = 0; i < 14; i++) G.fx?.puff(p.clone().add(V1.set((Math.random() - 0.5) * 2.5, 0.5 + Math.random() * 2.5, (Math.random() - 0.5) * 2.5)), V1.set((Math.random() - 0.5) * 0.6, 1, (Math.random() - 0.5) * 0.6).normalize(), 3.5, i % 2 ? 0x2a2624 : 0x4a4440);
+    G.fx?.sparks(p.clone(), UP, 60);
+    G.fx?.dust?.(p.clone(), UP, 3);
+    // tierra y esquirlas que vuelan y rebotan
+    for (let i = 0; i < 40; i++) {
+      const a = Math.random() * Math.PI * 2, sp = 4 + Math.random() * 9;
+      G.fx?.bits?.spawn({ x: p.x, y: p.y + 0.2, z: p.z, vx: Math.cos(a) * sp, vy: 3 + Math.random() * 8, vz: Math.sin(a) * sp, life: 3 + Math.random() * 3, s: 0.015 + Math.random() * 0.04, col: Math.random() < 0.6 ? 0x2a2018 : 0x5a4a38, grav: -9.8, bounce: 0.3, drag: 0.4 });
+    }
+    // la mancha negra en el piso (se borra sola con el tiempo)
+    if (p.y < 1.5) G.blood?.add(p.x, p.z, 3.4, 0x0c0906, 0.035, 150);
   }
 
   // ---------------------------------------------------------------- cada cuadro

@@ -845,7 +845,7 @@ export class LocalPlayer {
 
   // gravedad de un golpe según qué pega y a qué velocidad
   _severity(hit, speed) {
-    if (hit.src === 'remote') {
+    if (hit.src === 'remote' || hit.src === 'npc') {
       const b = BODY_HITS[hit.body] || BODY_HITS.p; // piña / patada / cabezazo
       return clamp((speed - hit.thr) / b.span, 0, b.cap);
     }
@@ -873,8 +873,12 @@ export class LocalPlayer {
     sep.set(0, 0);
     const ns = this._sepN || (this._sepN = []);
     ns.length = 0;
+    const mySp = Math.hypot(this.velocity.x, this.velocity.y);
     for (const rp of G.players.values()) {
       if (!rp.standing) continue;
+      // corriendo te lo llevás puesto: tropezón (y el otro se queja)
+      const bpp = rp.bodyPos || rp.pos;
+      if (mySp > 5.2 && this.state === 'active' && Math.hypot(this.pos.x - bpp.x, this.pos.z - bpp.z) < 0.72 && (this._tripT || 0) < G.time) this._trip(bpp, null);
       // donde está SU CUERPO dibujado (ahí está su cápsula), no la última posición que llegó por la red
       const bp = rp.bodyPos || rp.pos;
       let dx = this.pos.x - bp.x, dz = this.pos.z - bp.z;
@@ -894,6 +898,36 @@ export class LocalPlayer {
         ns.push(nx, nz);
       }
     }
+    this._crowdNpcs(dt, sep, ns);
+  }
+
+  // NPCs parados: no se atraviesan, empujan si te llevan puesto, y si vas corriendo tropezás (y los tumbás)
+  _crowdNpcs(dt, sep, ns) {
+    const mySp = Math.hypot(this.velocity.x, this.velocity.y);
+    for (const n of G.allNpcs?.() || []) {
+      if (!n.standing || !n.vel) continue;
+      let dx = this.pos.x - n.pos.x, dz = this.pos.z - n.pos.z;
+      let d = Math.hypot(dx, dz);
+      const R = this.capsuleRadius + 0.3;
+      if (d > R + 0.1 || Math.abs(this.pos.y - n.pos.y) > 1.2) continue;
+      if (d < 1e-3) { dx = -Math.sin(this.yaw); dz = -Math.cos(this.yaw); d = 1; }
+      const nx = dx / d, nz = dz / d;
+      if (mySp > 5.2 && this.state === 'active' && (this._tripT || 0) < G.time) { this._trip(n.pos, n); continue; }
+      const vIn = Math.min(4, -(n.vel.x * nx + n.vel.z * nz));
+      if (vIn > 0.3) { this.push.x += nx * vIn * 4 * dt; this.push.y += nz * vIn * 4 * dt; }
+      if (d < R) { const v = Math.min(3.5, (R - d) * 12); sep.x += nx * v; sep.y += nz * v; ns.push(nx, nz); }
+    }
+  }
+  // me lo llevé puesto corriendo: tropiezo (al piso un ratito, rodando para adelante); un NPC se cae también
+  _trip(at, npc) {
+    this._tripT = G.time + 1.5;
+    const sp = Math.hypot(this.velocity.x, this.velocity.y);
+    const fx = this.velocity.x / (sp || 1), fz = this.velocity.y / (sp || 1);
+    if (npc) { npc.knockout(V1.set(fx * sp * 0.8, 1.2, fz * sp * 0.8), 2.5); npc.say?.(['¡Mirá por dónde vas!', '¡Pelotudo!', '¡Uh!'][Math.floor(Math.random() * 3)], 2); npc.vocal?.('hurt'); }
+    this._vocal('hurt');
+    this.onEvent?.('move', { k: 'bonk' });
+    if (sp > 6.8) this.tumble(V2.set(fx, 0, fz), sp * 0.7, 1.6);
+    else this.stun(0.7, V2.set(-fx * 1.5, 0, -fz * 1.5));
   }
 
   // Aviso al otro jugador de que mi mano/pie/arma le pegó (él valida y decide el daño)
@@ -950,7 +984,8 @@ export class LocalPlayer {
   // Un NPC del Búnker me pegó (los peleadores de la jaula): mismas reglas que un golpe de otro jugador
   npcHit(from, part = PART.HEAD, speed = 7, a = 'p') {
     if (this.dead || this.state === 'driving' || this.state === 'seated') return;
-    const hit = { src: 'remote', by: 0, kind: 'blunt', thr: BODY_HITS[a]?.thr ?? 2, massK: 1, body: BODY_HITS[a] ? a : 'p' };
+    // src 'npc': como una piña de jugador, pero lastima en cualquier lado (no solo en zona PvP)
+    const hit = { src: 'npc', by: 0, kind: 'blunt', thr: BODY_HITS[a]?.thr ?? 2, massK: 1, body: BODY_HITS[a] ? a : 'p' };
     if (speed < hit.thr) return;
     const point = this._partCenter(part, new THREE.Vector3());
     const n = V4.set(this.pos.x - from.x, 0, this.pos.z - from.z);
@@ -998,7 +1033,7 @@ export class LocalPlayer {
       if (-(normal.x * fx + normal.z * fz) > 0.2) { blocked = true; s *= part >= PART.UARM_L ? 0.15 : 0.35; }
     }
     const kind = hit.kind || 'blunt';
-    const prof = hit.src === 'remote' ? BODY_HITS[hit.body] || BODY_HITS.p : null;
+    const prof = hit.src === 'remote' || hit.src === 'npc' ? BODY_HITS[hit.body] || BODY_HITS.p : null;
     // contra el piso/las paredes (tropezón, porrazo del dive, rodar): duele poco y nunca tanto como una piña
     const world = hit.src === 'world';
     const base = prof ? prof.base : hit.src === 'vehicle' ? 36 : world ? 8 : 22;
@@ -1783,7 +1818,7 @@ export class LocalPlayer {
         return;
       }
       if (kind === 'bag') {
-        if (now - (this._swBag || 0) > 0.2) { this._swBag = now; hit.info.ref?.punch(Math.min(14, speed * 0.85), pt, d, p.mass); }
+        if (now - (this._swBag || 0) > 0.2) { this._swBag = now; hit.info.ref?.punch(Math.min(14, speed * 0.85), pt, d, p.mass, true, 'blunt', p.type); }
         a.v.multiplyScalar(0.55);
         return;
       }
@@ -1842,7 +1877,7 @@ export class LocalPlayer {
     if (info?.kind === 'remote') this._claimHit(info.id, info.part ?? 1, speed, point, this._weaponOf(i), kind);
     else if (info?.kind === 'prop' && info.ref) {
       this._whack(info.ref, n.clone().negate(), Math.min(speed, 14), point, { mass: leg ? 6 : head ? 4 : 1 });
-    } else if (info?.kind === 'bag') info.ref?.punch(speed, point, n.clone().negate(), leg ? 6 : 1);
+    } else if (info?.kind === 'bag') info.ref?.punch(speed, point, n.clone().negate(), leg ? 6 : head ? 4 : 1, true, 'blunt', this._weaponOf(i));
     else this.onEvent?.('handwall', { x: point.x, y: point.y, z: point.z, s: speed });
     this.hitStop = Math.max(this.hitStop, .035);
   }
@@ -1940,7 +1975,7 @@ export class LocalPlayer {
       this._claimHit(hit.info.id, part, speed, to, w);
     } else if (bag && speed > 1.5 && G.time - a.hitT > 0.2) {
       a.hitT = G.time;
-      hit.info.ref?.punch(speed, to, d, this._heldMass(side));
+      hit.info.ref?.punch(speed, to, d, Math.max(1, this._heldMass(side)), true, 'blunt', this.hands[side].prop ? G.props?.get(this.hands[side].prop)?.type : null);
     } else if (!body && !bag && vIn > 3 && G.time - a.hitT > 0.2) {
       a.hitT = G.time;
       this.onEvent?.('handwall', { x: to.x, y: to.y, z: to.z, s: vIn });
