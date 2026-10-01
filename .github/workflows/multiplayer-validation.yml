@@ -18,25 +18,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Focused diagnostics
-        run: |
-          grep -nE 'frustumCulled|applyWorldTransforms|\.visible|cull' public/js/char/human.js | tail -40
-          grep -nE 'duration|dur|cur =|case .ev.|bodybump' server/room.js public/js/media/playback.js | head -50
-          grep -nE 'castRay|ray\(' public/js/core/physics.js
-          sed -n '405,422p' public/js/game/gore.js
       - name: Reproduce targeted regressions
         continue-on-error: true
-        run: node --no-warnings --loader ./tests/loader.mjs --test tests/*regressions.test.mjs > /tmp/red.log 2>&1 || { tail -70 /tmp/red.log; exit 1; }
+        run: node --no-warnings --loader ./tests/loader.mjs --test tests/*regressions.test.mjs > /tmp/red.log 2>&1 || { grep -A25 '^not ok' /tmp/red.log; exit 1; }
       - name: Apply exact-match scoped corrections
         if: hashFiles('tools/apply-social-fixes.mjs') != ''
         run: node tools/apply-social-fixes.mjs
       - name: Validate modules and all tests
         run: |
           npm run check
-          npm test > /tmp/unit.log 2>&1 || { tail -120 /tmp/unit.log; exit 1; }
-          tail -10 /tmp/unit.log
-          node --no-warnings --loader ./tests/loader.mjs --test tests/*regressions.test.mjs > /tmp/social.log 2>&1 || { cat /tmp/social.log; exit 1; }
+          node --no-warnings --loader ./tests/loader.mjs --test tests/*regressions.test.mjs > /tmp/social.log 2>&1 || { grep -A35 '^not ok' /tmp/social.log; exit 1; }
           tail -9 /tmp/social.log
+          npm test > /tmp/unit.log 2>&1 || { grep -B1 -A40 '^not ok' /tmp/unit.log; tail -10 /tmp/unit.log; exit 1; }
+          tail -10 /tmp/unit.log
           npm run test:network > /tmp/network.log 2>&1 || { tail -35 /tmp/network.log; exit 1; }
           tail -8 /tmp/network.log
           npm run test:fire
