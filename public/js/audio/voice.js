@@ -24,6 +24,10 @@ export class VoiceChat {
     this.level = 0; // nivel propio (0..1)
     this.error = '';
     this.bus = null;
+    this.recipients = null; // null = public; an empty Set is a silent private channel.
+    this.disposed = false;
+    this.micEpoch = 0;
+    this.micRequest = null;
   }
 
   get transmitting() {
@@ -43,67 +47,95 @@ export class VoiceChat {
 
   // ---------------------------------------------------------------- micrófono
   async enableMic() {
-    if (this.enabled) return true;
-    if (!navigator.mediaDevices?.getUserMedia) {
-      this.error = window.isSecureContext ? 'Tu navegador no permite micrófono' : 'El micrófono necesita https (usá el link de ngrok o localhost)';
-      this.onState();
-      return false;
+    if (this.disposed) return false;
+    if (this.enabled && this.track?.readyState === 'live') return true;
+    if (this.micRequest) return this.micRequest;
+    const media = globalThis.navigator?.mediaDevices;
+    if (!media?.getUserMedia) {
+      this.error = globalThis.isSecureContext ? 'Tu navegador no permite micrófono' : 'El micrófono necesita HTTPS o localhost';
+      this.onState(); return false;
     }
-    try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
-        video: false,
-      });
-    } catch (e) {
-      this.error = e?.name === 'NotAllowedError' ? 'Permiso de micrófono denegado' : 'No se encontró micrófono';
-      this.onState();
-      return false;
-    }
-    this.track = this.stream.getAudioTracks()[0];
-    this.enabled = true;
-    this.error = '';
-    this._applyTrackEnabled();
-    // medidor propio
+    const epoch = ++this.micEpoch;
+    this.error = ''; this.onState();
+    this.micRequest = (async () => {
+      let stream;
+      try {
+        stream = await media.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }, video: false });
+        if (this.disposed || epoch !== this.micEpoch) { stream.getTracks().forEach(t => t.stop()); return false; }
+        const track = stream.getAudioTracks()[0];
+        if (!track || track.readyState === 'ended') throw new Error('missing audio track');
+        this.stream?.getTracks().forEach(t => t.stop());
+        this.mySource?.disconnect(); this.myAnalyser?.disconnect();
+        this.mySource = null; this.myAnalyser = null;
+        this.stream = stream; this.track = track; this.enabled = true; this.error = '';
+        track.addEventListener?.('ended', () => {
+          if (this.track !== track || this.disposed) return;
+          this.disableMic(); this.error = 'Se desconectó el micrófono. Volvé a activarlo para reintentar.'; this.onState();
+        }, { once: true });
+        this._applyTrackEnabled(); this._ensureLocalMeter();
+        await Promise.all([...this.peers.values()].map(peer => this._attachTrack(peer)));
+        return true;
+      } catch (e) {
+        stream?.getTracks().forEach(t => t.stop());
+        if (epoch === this.micEpoch && !this.disposed) {
+          this.error = e?.name === 'NotAllowedError' ? 'Permiso de micrófono denegado: habilitalo en el navegador y reintentá.' : e?.name === 'NotReadableError' ? 'El micrófono está ocupado por otra aplicación.' : 'No se encontró un micrófono disponible.';
+          this.enabled = false; this._applyTrackEnabled();
+        }
+        return false;
+      } finally { this.micRequest = null; if (!this.disposed) this.onState(); }
+    })();
+    return this.micRequest;
+  }
+
+  _ensureLocalMeter() {
     const ctx = this._ensureBus();
-    if (ctx) {
-      const src = ctx.createMediaStreamSource(this.stream);
-      this.myAnalyser = ctx.createAnalyser();
-      this.myAnalyser.fftSize = 512;
-      src.connect(this.myAnalyser);
-      this._buf = new Uint8Array(this.myAnalyser.fftSize);
-    }
-    for (const peer of this.peers.values()) this._attachTrack(peer);
-    this.onState();
-    return true;
+    if (!ctx || !this.stream || this.mySource?.context === ctx) return;
+    this.mySource?.disconnect(); this.myAnalyser?.disconnect();
+    this.mySource = ctx.createMediaStreamSource(this.stream);
+    this.myAnalyser = ctx.createAnalyser(); this.myAnalyser.fftSize = 512;
+    this.mySource.connect(this.myAnalyser);
+    this._buf = new Uint8Array(this.myAnalyser.fftSize);
   }
 
   disableMic() {
-    this.enabled = false;
-    if (this.track) this.track.enabled = false;
-    this.onState();
+    ++this.micEpoch;
+    this.enabled = false; this.level = 0;
+    this._applyTrackEnabled(); this.onState();
   }
 
   toggleMic() {
-    if (this.enabled) this.disableMic();
-    else if (this.track) { this.enabled = true; this._applyTrackEnabled(); this.onState(); }
-    else this.enableMic();
+    if (this.enabled || this.micRequest) this.disableMic();
+    else if (this.track?.readyState === 'live') { this.enabled = true; this.error = ''; this._applyTrackEnabled(); this.onState(); }
+    else void this.enableMic();
   }
 
   setPTT(down) {
     if (this.ptt === down) return;
     this.ptt = down;
-    if (down && !this.track) this.enableMic();
-    this._applyTrackEnabled();
-    this.onState();
+    if (down && (!this.track || this.track.readyState === 'ended')) void this.enableMic();
+    this._applyTrackEnabled(); this.onState();
+  }
+
+  setRecipients(ids) {
+    this.recipients = ids === null ? null : new Set(Array.isArray(ids) ? ids.filter(id => Number.isSafeInteger(id) && id > 0) : []);
+    // Gate actual outgoing tracks, not just the receivers' speaker volumes.
+    this._applyTrackEnabled(); this.onState();
   }
 
   _applyTrackEnabled() {
     if (this.track) this.track.enabled = this.transmitting;
+    for (const peer of this.peers.values()) if (peer.outboundTrack) peer.outboundTrack.enabled = this.transmitting && (this.recipients === null || this.recipients.has(peer.id));
   }
 
-  _attachTrack(peer) {
-    if (!this.track || !peer.sender) return;
-    try { peer.sender.replaceTrack(this.track); } catch { /* */ }
+  async _attachTrack(peer) {
+    if (!this.track || !peer.sender || this.disposed) return;
+    if (peer.sourceTrack === this.track && peer.outboundTrack?.readyState !== 'ended') { this._applyTrackEnabled(); return; }
+    peer.outboundTrack?.stop();
+    const track = this.track.clone();
+    track.enabled = this.transmitting && (this.recipients === null || this.recipients.has(peer.id));
+    peer.outboundTrack = track; peer.sourceTrack = this.track;
+    try { await peer.sender.replaceTrack(track); }
+    catch (e) { track.enabled = false; track.stop(); this.error = 'No se pudo enviar el micrófono a un jugador. Reintentá activar el micrófono.'; this.onState(); }
   }
 
   // ---------------------------------------------------------------- pares
@@ -145,7 +177,7 @@ export class VoiceChat {
   }
 
   async onSignal(from, d) {
-    if (!d) return;
+    if (!d || this.disposed) return;
     let peer = this.peers.get(from);
     if (d.sdp) {
       if (!peer) peer = this._peer(from, false);
@@ -160,8 +192,9 @@ export class VoiceChat {
           this.net.send({ t: 'rtc', to: from, d: { sdp: peer.pc.localDescription.toJSON() } });
         }
       } catch (e) { console.warn('voz: sdp', e); }
-    } else if (d.c && peer) {
-      if (!peer.remoteSet) peer.pending.push(d.c);
+    } else if (d.c) {
+      if (!peer) peer = this._peer(from, false);
+      if (!peer.remoteSet) { if (peer.pending.length < 128) peer.pending.push(d.c); }
       else { try { await peer.pc.addIceCandidate(d.c); } catch { /* */ } }
     }
   }
@@ -204,9 +237,12 @@ export class VoiceChat {
     const peer = this.peers.get(id);
     if (!peer) return;
     try { peer.pc.close(); } catch { /* */ }
-    if (peer.nodes) { try { peer.nodes.src.disconnect(); peer.nodes.panner.disconnect(); } catch { /* */ } }
+    peer.outboundTrack?.stop();
+    if (peer.nodes) for (const node of [peer.nodes.src, peer.nodes.analyser, peer.nodes.gain, peer.nodes.panner]) { try { node.disconnect(); } catch { /* */ } }
     if (peer.audio) peer.audio.srcObject = null;
     this.peers.delete(id);
+    this.recipients?.delete(id); // Keep a private channel private when its last recipient leaves.
+    this._applyTrackEnabled();
   }
 
   setMuted(id, muted) {
@@ -226,6 +262,7 @@ export class VoiceChat {
     const ctx = this.getCtx();
     if (!ctx) return;
     this._ensureBus();
+    this._ensureLocalMeter();
     this.bus.gain.value = this.opts.muted ? 0 : (this.opts.volVoice ?? 1) * 1.4;
     // oyente = cámara
     const L = ctx.listener;
@@ -284,6 +321,9 @@ export class VoiceChat {
   }
 
   dispose() {
+    this.disposed = true; ++this.micEpoch;
+    this.enabled = false; this._applyTrackEnabled();
+    this.mySource?.disconnect(); this.myAnalyser?.disconnect(); this.bus?.disconnect();
     for (const id of [...this.peers.keys()]) this.remove(id);
     if (this.stream) for (const t of this.stream.getTracks()) t.stop();
   }

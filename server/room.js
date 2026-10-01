@@ -31,6 +31,9 @@ export class Room {
     this.dir = path.join(dataRoot, name);
     this.players = new Map();
     this.nextId = 1;
+    this.chatHistory = [];
+    this.chatSequence = 0;
+    this.chatEpoch = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     this.firePatches = []; // temporary; never persisted with the world
     this.settings = { desmadre: false };
     this.props = new Map();
@@ -238,6 +241,7 @@ export class Room {
     this.send(p, {
       t: 'welcome', id: p.id, color: p.color, now: Date.now(), room: this.name, owner: p.owner ? 1 : 0,
       players, props, vehicles, media, settings: this.settings, gtick: this.grass.tick,
+      chatHistory: this.chatHistory,
       fires: this.firePatches.filter(f=>f.end>Date.now()).map(f=>({id:f.id,p:f.p,n:f.n,life:(f.end-Date.now())/1000})),
       poker: this.poker.publicState(),
       fb: this.football.state(),
@@ -425,6 +429,17 @@ export class Room {
     p.lastChat = now;
     const m = clampStr(msg.m, 240);
     if (!m) return;
+    // A private audience is explicit: invalid/empty lists never fall back to public.
+    if (Object.prototype.hasOwnProperty.call(msg, 'to')) {
+      const to = Array.isArray(msg.to) ? [...new Set(msg.to.filter(id => Number.isSafeInteger(id) && id !== p.id && this.players.get(id)?.ready))].slice(0, MAX_PLAYERS) : [];
+      if (!to.length) { this.send(p, { t: 'sys', m: 'No se envió el susurro: elegí al menos un jugador conectado.' }); return; }
+      const packet = this._chatPacket(p, m, now);
+      packet.to = to;
+      packet.recipients = to.map(id => ({ id, name: this.players.get(id).name }));
+      this.send(p, packet);
+      for (const id of to) this.send(this.players.get(id), packet);
+      return;
+    }
     if (m.startsWith('/dados')) {
       const n = 1 + Math.floor(Math.random() * 6);
       const n2 = 1 + Math.floor(Math.random() * 6);
@@ -435,7 +450,15 @@ export class Room {
       this.sys('🪙 ' + p.name + ' tiró una moneda: ' + (Math.random() < 0.5 ? 'CARA' : 'CECA'));
       return;
     }
-    this.broadcast({ t: 'chat', id: p.id, m }, p);
+    const packet = this._chatPacket(p, m, now);
+    this.chatHistory.push(packet);
+    if (this.chatHistory.length > 200) this.chatHistory.splice(0, this.chatHistory.length - 200);
+    this.broadcast(packet); // Sender acknowledgement avoids optimistic duplicates.
+  }
+
+  _chatPacket(p, m, ts) {
+    this.chatSequence = (this.chatSequence || 0) + 1;
+    return { t: 'chat', id: p.id, name: p.name, c: p.color, m, ts, mid: (this.chatEpoch || 'session') + ':' + this.chatSequence };
   }
 
   onBinary(p, data) {
@@ -834,6 +857,7 @@ function sanitizeLook(l, owner = false) {
     beard: !!l.beard,
     glasses: ['none', 'sun', 'nerd'].includes(l.glasses) ? l.glasses : 'none',
     body: ['normal', 'gordo', 'flaco'].includes(l.body) ? l.body : 'normal',
+    mask: l.model !== 'diablo' && ['bull', 'horse', 'lion', 'cat', 'rabbit'].includes(l.mask) ? l.mask : 'none',
     model: ['eric', 'carla', 'claudia', 'galleta', ...(owner ? ['diablo'] : [])].includes(l.model) ? l.model : 'eric',
   };
 }

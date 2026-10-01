@@ -2658,6 +2658,14 @@ export class RemotePlayer {
 
   applyState(st, immediate = false, ts = 0) {
     if (!st) return;
+    // Reject malformed poses before changing ANY visible, collision or gore state.
+    if (st.p !== undefined && (!Array.isArray(st.p) || st.p.length !== 3 || !st.p.every(Number.isFinite))) return;
+    if (st.rb !== undefined) {
+      if (!Array.isArray(st.rb) || st.rb.length !== 77 || !st.rb.every(Number.isFinite)) return;
+      for (let i = 0; i < 77; i += 7) if (Math.hypot(...st.rb.slice(i + 3, i + 7)) < 0.001) return;
+      const receivedAt = ts || G.net?.now?.() || performance.now();
+      if (this.buf.length && receivedAt <= this.buf[this.buf.length - 1].t) return;
+    }
     this.stateData = st;
     if (Array.isArray(st.p)) this.target.set(+st.p[0] || 0, +st.p[1] || 0, +st.p[2] || 0);
     this.targetYaw = Number.isFinite(+st.y) ? +st.y : this.targetYaw;

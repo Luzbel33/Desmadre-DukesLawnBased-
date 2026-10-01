@@ -1,5 +1,6 @@
 // DESMADRE — cliente jugable integrado.
 import * as THREE from 'three';
+import { SocialPanel, setupMaskPicker, enhanceMedia } from './ui/social.js';
 import { G, clamp } from './core/G.js';
 import { Physics, GR, groups } from './core/physics.js';
 import { Input } from './core/input.js';
@@ -163,6 +164,7 @@ function populateSwatches() {
 function readLook() {
   return {
     ...selectedLook,
+    mask: selectedLook.model === 'diablo' ? 'none' : (selectedLook.mask || 'none'),
     hat: 'none',
     glasses: 'none',
     body: 'normal',
@@ -175,20 +177,24 @@ function setupModelPicker() {
   try {
     const saved = JSON.parse(localStorage.getItem('dukes.look') || 'null');
     if (saved && MODELS[saved.model] && !MODELS[saved.model].npc) selectedLook.model = saved.model;
+    if (saved && ['none', 'bull', 'horse', 'lion', 'cat', 'rabbit'].includes(saved.mask)) selectedLook.mask = saved.mask;
   } catch {}
   document.querySelectorAll('#m-models button[data-model]').forEach((b) => {
     b.classList.toggle('sel', b.dataset.model === selectedLook.model);
     b.addEventListener('click', () => {
       selectedLook.model = b.dataset.model;
+      setupMaskPicker(selectedLook);
       document.querySelectorAll('#m-models button').forEach((x) => x.classList.toggle('sel', x === b));
     });
   });
+  setupMaskPicker(selectedLook);
 }
 
 // ---------------------------------------------------------------- el dueño (SmokePyro): clave y el Diablo
 const isOwnerName = (n) => String(n || '').trim().toLowerCase() === 'smokepyro';
 function selectModel(model) {
   selectedLook.model = model;
+  setupMaskPicker(selectedLook);
   document.querySelectorAll('#m-models button[data-model]').forEach((x) => x.classList.toggle('sel', x.dataset.model === model));
 }
 // el botón del Diablo aparece solo con el nombre del dueño y la clave ya verificada
@@ -292,15 +298,12 @@ function updateHotbar() {
   }
 }
 
+let socialUI = null;
+function getSocialUI() {
+  return socialUI || (socialUI = new SocialPanel({ getPlayers: () => G.players, getMyId: () => G.myId, getVoice: () => G.voice, onClose: () => closeChat(true) }));
+}
 function addChat(text, opts = {}) {
-  const d = document.createElement('div');
-  d.className = 'msg' + (opts.sys ? ' sys' : '');
-  if (opts.html) d.innerHTML = opts.html; else d.textContent = text;
-  if (opts.color) d.style.color = opts.color;
-  $('chat-log').appendChild(d);
-  $('chat-log').scrollTop = $('chat-log').scrollHeight;
-  setTimeout(() => d.classList.add('old'), 10000);
-  setTimeout(() => { if (!d.matches(':hover')) d.remove(); }, 22000);
+  getSocialUI().system(text, opts);
 }
 
 function killfeed(text) {
@@ -332,6 +335,7 @@ function nameOf(id) {
 }
 
 function renderPlayerList() {
+  socialUI?.renderRoster();
   const el = $('players-list'); el.innerHTML = '';
   const arr = [{ id: G.myId, name: state.local?.name || 'Vos', color: '#ffcc33' }, ...[...G.players.values()]];
   for (const p of arr) {
@@ -452,8 +456,10 @@ function openChat() {
   state.mode = 'chat';
   G.input.enabled = false;
   G.input.unlock();
+  getSocialUI().renderRoster();
+  G.voice?.setPTT(false);
   $('chat').classList.add('open');
-  $('chat-input').value = '';
+  getSocialUI().bottom();
   $('chat-input').focus();
 }
 
@@ -467,20 +473,17 @@ function closeChat(lock = true) {
 }
 
 function sendChat() {
-  const input = $('chat-input'); const text = input.value.trim();
-  // la contraseña del Búnker se le dice al portero, no a toda la sala
-  if (text && state.local && G.club?.nearDoorman(state.local.pos) && text.length < 30 && !text.startsWith('/')) {
-    ownBubble(text);
-    G.club.tryPassword(text);
-    closeChat(true);
-    return;
+  const input = $('chat-input'), text = input.value.trim(), to = getSocialUI().recipients();
+  if (text && to !== null && !to.length) {
+    addChat('Elegí al menos un jugador conectado para susurrar.', { sys: true }); return;
+  }
+  // Private messages must not trigger public bubbles or the doorman password shortcut.
+  if (text && to === null && state.local && G.club?.nearDoorman(state.local.pos) && text.length < 30 && !text.startsWith('/')) {
+    ownBubble(text); G.club.tryPassword(text); input.value = ''; closeChat(true); return;
   }
   if (text) {
-    state.net.send({ t: 'chat', m: text });
-    if (!text.startsWith('/')) {
-      addChat('', { html: `<b style="color:#ffcc33">${escapeHtml(state.local.name)}</b>${escapeHtml(text)}` });
-      ownBubble(text);
-    }
+    state.net.send({ t: 'chat', m: text, ...(to === null ? {} : { to }) });
+    input.value = '';
   }
   closeChat(true);
 }
@@ -787,11 +790,13 @@ function renderMedia() {
   (m.queue || []).forEach((it, i) => {
     const li = document.createElement('li'); li.textContent = `${it.title || it.v} · ${it.by || '?'}`;
     const b = document.createElement('button'); b.textContent = '×';
+    b.title = 'Quitar de la cola'; b.setAttribute('aria-label', 'Quitar ' + (it.title || it.v) + ' de la cola');
     b.onclick = () => state.net.send({ t: 'media', s: state.mediaScreen, a: 'remove', i });
     li.appendChild(b); ol.appendChild(li);
   });
 }
 function openMedia(screen) {
+  enhanceMedia({ getState: () => mediaState(state.mediaScreen), getNow: () => state.net.now(), send: m => state.net.send(m), getScreen: () => state.mediaScreen });
   state.mediaScreen = SCREEN_BY_ID[screen] ? screen : 'autocine';
   setMode('media'); renderMedia(); G.input.unlock();
 }
@@ -802,6 +807,7 @@ function renderMediaStatus() {
   $('media-status').classList.toggle('err', info.error);
   $('media-unlock').textContent = info.blocked ? 'Activar YouTube · requiere clic' : 'Activar YouTube';
   $('media-retry').classList.toggle('hidden', !info.error);
+  $('media-unlock').classList.toggle('hidden', !!info.ready && !info.blocked && !info.error);
 }
 function updateAudioUI() {
   const muted = !!G.opts.muted;
@@ -1201,6 +1207,8 @@ function setupNetHandlers(net) {
       rp.owner = !!p.owner;
       if (p.inv) { rp.inv = true; rp.char.root.visible = false; }
     }
+    if (G.voice) for (const id of [...G.voice.peers.keys()]) G.voice.remove(id);
+    getSocialUI().begin(m.room, $('m-name').value.trim(), m.chatHistory || []);
     G.voice?.connectAll((m.players || []).map((p) => p.id));
     if (m.poker) G.poker?.applyState(m.poker);
     if (m.fb) G.football?.applyState(m.fb);
@@ -1239,7 +1247,10 @@ function setupNetHandlers(net) {
     if (m.B) G.football?.applyPacket(m.B, m.ts);
     state.vehicles.handleSnap(m.V || []);
   });
-  net.on('chat', (m) => { addChat('', { html: `<b style="color:${G.players.get(m.id)?.color || '#fff'}">${escapeHtml(nameOf(m.id))}</b>${escapeHtml(m.m)}` }); chatBubble(m.id, m.m); });
+  net.on('chat', (m) => {
+    if (!getSocialUI().receive(m) || m.to) return;
+    if (m.id === G.myId) ownBubble(m.m); else chatBubble(m.id, m.m);
+  });
   net.on('sys', (m) => addChat(m.m, { sys: true, color: m.c }));
   net.on('ev', handleEvent);
   net.on('cut', (m) => G.grass.cut(m.s || [], true));
@@ -1258,6 +1269,7 @@ function setupNetHandlers(net) {
   net.on('close', () => {
     if (!G.inGame) return;
     G.inGame = false; G.input.enabled = false; G.sfx?.stop(); G.media?.stop();
+    G.voice?.disableMic();
     bigMessage('DESCONECTADO', 'Recargá la página para volver a entrar', 6000);
   });
 
@@ -1267,6 +1279,7 @@ function setupNetHandlers(net) {
 }
 
 function updateMicUI() {
+  socialUI?.renderVoice();
   const el = $('mic-state');
   if (!el) return;
   const st = G.voice ? G.voice.status() : { cls: 'mic-off', text: '🎙 Voz: entrá a una sala' };

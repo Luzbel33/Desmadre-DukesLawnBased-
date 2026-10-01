@@ -686,7 +686,7 @@ export class HumanCharacter {
       this.glasses.position.copy(hi.worldEyes).sub(hi.worldCenter).add(new THREE.Vector3(0, -0.004, 0.03));
       this.headAnchor.add(this.glasses);
     }
-    this.wearMask(MODELS[this.modelKey].mask);
+    this.wearMask(MODELS[this.modelKey].devil ? null : (MODELS[this.modelKey].mask || this.look.mask));
     this.root.traverse((o) => { o.frustumCulled = false; });
     this._jaw = 0;
     this._lid = 0;
@@ -741,8 +741,18 @@ export class HumanCharacter {
   }
 
   wearMask(type) {
-    if (!type || !MASK_CACHE.has(type) || !this.headAnchor) return false;
-    this.mask?.removeFromParent();
+    if (!this.headAnchor) return false;
+    const request = this._maskRequest = (this._maskRequest || 0) + 1;
+    const anchor = this.headAnchor;
+    this.mask?.removeFromParent(); this.mask = null;
+    this.material.userData.u.uMask.value = 0;
+    if (!type || type === 'none' || MODELS[this.modelKey]?.devil || !Object.prototype.hasOwnProperty.call(MASK_FILES, type)) return false;
+    if (!MASK_CACHE.has(type)) {
+      loadMask(type).then(() => {
+        if (this._maskRequest === request && this.headAnchor === anchor) this.wearMask(type);
+      }).catch(error => console.warn('No se pudo cargar la máscara', type, error));
+      return false;
+    }
     const source = MASK_CACHE.get(type);
     this.mask = source.clone(true);
     this.mask.name = `animal-mask:${type}`;
