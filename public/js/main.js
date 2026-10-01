@@ -2005,8 +2005,11 @@ async function boot() {
     window.__dukesCctv = openCctv; // depuración: abrir la sala de monitores sin ir al escritorio
     function step(now) {
       try {
-      const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000)); last = now; G.time += dt; G.dt = dt; G.frame++;
-      dynRes(dt);
+      const frameSeconds = Math.max(0.001, (now - last) / 1000);
+      const dt = Math.min(0.05, frameSeconds); last = now; G.time += dt; G.dt = dt; G.frame++;
+      // Resolution uses the real frame interval; simulation still clamps large hitches
+      // so a pause doesn't make movement and physics jump forward in one step.
+      dynRes(frameSeconds);
       if (G.inGame && state.local) {
         updateInput(dt);
         G.phys.step(dt, (fd) => { state.local.physicsStep(fd, state.viewYaw); state.props.physicsStep(fd); }, () => state.local.afterPhysics());
@@ -2025,7 +2028,7 @@ async function boot() {
         updateNameTags(); updatePrompt(); updateHud(dt); updatePost();
         G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.club?.update(dt); G.villagers?.update(dt, G.camera); G.cctv?.update(dt, G.camera); G.items?.update(dt); G.owner?.update(dt);
         { const hide = (G.world.storm?.indoor || 0) > 0.95; for (const m of G.grass.meshes) m.visible = !hide; }
-        G.fx.update(dt); G.blood.update(dt); G.football?.update(dt); G.gore?.update(dt); state.graffiti?.flush();
+        G.fx.update(dt, G.camera); G.blood.update(dt); G.football?.update(dt); G.gore?.update(dt); state.graffiti?.flush();
         G.bag?.update(dt);
         G.hud?.flushHints(dt);
         G.markers?.update(G.camera, state.mode === 'game', (ox, oy, oz, dx, dy, dz, dist) => G.phys.raycast(ox, oy, oz, dx, dy, dz, dist));
@@ -2034,7 +2037,7 @@ async function boot() {
         show($('players'), G.input.key('Tab') && state.mode === 'game');
       } else {
         // mantener el mundo vivo detrás del menú
-        G.world.update(dt, { x: 0, z: -60 }); G.grass.update(dt, G.camera, []); G.haunt?.update(dt); G.fx.update(dt); G.blood.update(dt);
+        G.world.update(dt, { x: 0, z: -60 }); G.grass.update(dt, G.camera, []); G.haunt?.update(dt); G.fx.update(dt, G.camera); G.blood.update(dt);
         const t = now * 0.00008; G.camera.position.set(Math.sin(t) * 7, 3.4, -60 + Math.cos(t) * 7); G.camera.lookAt(0, 1.2, -60);
       }
       G.sfx?.update(dt, { active: G.inGame, local: state.local, remotes: G.players.values(), vehicles: state.vehicles?.items.values() || [], camera: G.camera, spraying: state.mode === 'game' && state.selected === 3 && G.input.locked && G.input.btn(0) });

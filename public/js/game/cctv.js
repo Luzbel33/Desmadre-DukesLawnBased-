@@ -205,10 +205,15 @@ export class Cctv {
     }
     // pared de monitores: solo si estás cerca
     if (!this.screens.length || !camera || camera.position.distanceTo(this.wallPos) > 16) return;
+    camera.getWorldDirection(V1);
+    V2.copy(this.wallPos).sub(camera.position).normalize();
+    if (V1.dot(V2) < 0.1) return; // no actualizar feeds si ni estás mirando la pared
     this._rotT = (this._rotT || 0) + dt;
     if (this._rotT > 12) { this._rotT = 0; this.rot++; this._assign(); }
     for (const s of this.screens) { s.m.material.uniforms.uT.value = t; }
-    if (this.frame % 2) return;
+    // A 256x144 feed is useful as a security monitor at ~20 refreshes/second total;
+    // a full scene render every other game frame was competing with the main view.
+    if (this.frame % 3) return;
     const s = this.screens[this.slot++ % this.screens.length];
     this.renderFeed(s.cam, s.rt);
     s.m.material.uniforms.uOn.value = 1;

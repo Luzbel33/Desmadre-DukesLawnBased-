@@ -19,16 +19,16 @@ export const MODELS = {
   diablo: { file: 'assets/chars/diablo.glb', label: 'El Diablo', gender: 'm', devil: true, owner: true, voice: 'demon' },
   // la gente del Búnker (MakeHuman CC0 + ropa procedural: assets/blender/mh/build_npc.py). Se bajan recién cerca del club
   portero: { file: 'assets/chars/npc/portero.glb', label: 'El Portero', gender: 'm', npc: true },
-  lilith: { file: 'assets/chars/npc/lilith.glb', label: 'Lilith', gender: 'f', npc: true },
-  coneja: { file: 'assets/chars/npc/coneja.glb', label: 'La Coneja', gender: 'f', npc: true },
+  lilith: { file: 'assets/chars/npc/lilith.glb', label: 'Lilith', gender: 'f', npc: true, mask: 'bull' },
+  coneja: { file: 'assets/chars/npc/coneja.glb', label: 'La Coneja', gender: 'f', npc: true, mask: 'rabbit' },
   dj: { file: 'assets/chars/npc/dj.glb', label: 'DJ Calavera', gender: 'm', npc: true },
-  venus: { file: 'assets/chars/npc/venus.glb', label: 'Venus', gender: 'f', npc: true },
-  raven: { file: 'assets/chars/npc/raven.glb', label: 'Raven', gender: 'f', npc: true },
+  venus: { file: 'assets/chars/npc/venus.glb', label: 'Venus', gender: 'f', npc: true, mask: 'lion' },
+  raven: { file: 'assets/chars/npc/raven.glb', label: 'Raven', gender: 'f', npc: true, mask: 'horse' },
   bartender: { file: 'assets/chars/npc/bartender.glb', label: 'El Bartender', gender: 'm', npc: true },
   toro: { file: 'assets/chars/npc/toro.glb', label: 'El Toro', gender: 'm', npc: true },
   chacal: { file: 'assets/chars/npc/chacal.glb', label: 'El Chacal', gender: 'm', npc: true },
   metalero: { file: 'assets/chars/npc/metalero.glb', label: 'El Metalero', gender: 'm', npc: true },
-  emo: { file: 'assets/chars/npc/emo.glb', label: 'La Emo', gender: 'f', npc: true },
+  emo: { file: 'assets/chars/npc/emo.glb', label: 'La Emo', gender: 'f', npc: true, mask: 'cat' },
   raver: { file: 'assets/chars/npc/raver.glb', label: 'El Raver', gender: 'm', npc: true },
   gordo: { file: 'assets/chars/npc/gordo.glb', label: 'El Gordo', gender: 'm', npc: true },
   // la gente del castillo y del resto del mapa (assets/blender/mh/villagers_cast.py)
@@ -47,6 +47,16 @@ export const MODELS = {
 };
 export const DEFAULT_MODEL = 'eric';
 const CACHE = new Map(); // modelo -> { scene, meta }
+const MASK_FILES = {
+  bull: 'assets/props/art/mask_bull.glb',
+  horse: 'assets/props/art/mask_horse.glb',
+  lion: 'assets/props/art/mask_lion.glb',
+  cat: 'assets/props/art/mask_cat.glb',
+  rabbit: 'assets/props/art/mask_rabbit.glb',
+};
+const MASK_CACHE = new Map();
+const MASK_LOADING = new Map();
+const MASK_HEAD_RADIUS = 0.105;
 const DMG_SIZE = 512;
 
 const V1 = new THREE.Vector3();
@@ -165,6 +175,21 @@ export function loadHuman(key) {
   }
   return LOADING.get(key);
 }
+export function masksReady(key) { return !key || MASK_CACHE.has(key); }
+export function loadMask(key) {
+  if (MASK_CACHE.has(key)) return Promise.resolve(true);
+  const file = MASK_FILES[key];
+  if (!file) return Promise.resolve(false);
+  if (!MASK_LOADING.has(key)) {
+    MASK_LOADING.set(key, new GLTFLoader().loadAsync(file).then((gltf) => {
+      // Las máscaras se ven de cerca; 512 px alcanza para su textura y reduce memoria de GPU.
+      shrinkTextures(gltf.scene, 512);
+      MASK_CACHE.set(key, gltf.scene);
+      return true;
+    }).catch((e) => { console.warn('máscara', key, e); return false; }));
+  }
+  return MASK_LOADING.get(key);
+}
 
 function findSkinned(root) {
   let sk = null;
@@ -175,6 +200,28 @@ function bonesByName(root) {
   const b = {};
   root.traverse((o) => { if (o.isBone) b[o.name] = o; });
   return b;
+}
+function ensureHeadInfluence(skinned) {
+  const geometry = skinned.geometry;
+  if (geometry.getAttribute('headInfluence')) return;
+  const ids = geometry.getAttribute('skinIndex');
+  const weights = geometry.getAttribute('skinWeight');
+  const position = geometry.getAttribute('position');
+  const bones = skinned.skeleton?.bones || [];
+  if (!ids || !weights || !position) return;
+  const head = new Uint8Array(bones.length);
+  for (let i = 0; i < bones.length; i++) head[i] = /^(head|head_end)$/i.test(bones[i]?.name || '') ? 1 : 0;
+  const values = new Float32Array(position.count);
+  for (let i = 0; i < values.length; i++) {
+    let influence = 0;
+    for (let j = 0; j < 4; j++) {
+      const bone = ids.getComponent(i, j);
+      if (head[bone]) influence += weights.getComponent(i, j);
+    }
+    values[i] = influence;
+  }
+  // Geometry is shared by SkeletonUtils clones; computing once keeps every character's bind mesh intact.
+  geometry.setAttribute('headInfluence', new THREE.BufferAttribute(values, 1));
 }
 function worldPos(o, out = new THREE.Vector3()) { return o.getWorldPosition(out); }
 function worldQuat(o, out = new THREE.Quaternion()) { return o.getWorldQuaternion(out); }
@@ -408,14 +455,20 @@ function damageMaterial(base, dmgTex) {
     uDmg: { value: dmgTex },
     uFlush: { value: 0 },
     uPale: { value: 0 },
+    uMask: { value: 0 },
   };
   mat.userData.u = u;
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
+    sh.vertexShader = `attribute float headInfluence;\nvarying float vHeadInfluence;\n` + sh.vertexShader.replace(
+      '#include <begin_vertex>',
+      '#include <begin_vertex>\nvHeadInfluence = headInfluence;',
+    );
     sh.fragmentShader = 'uniform sampler2D uDmg;\nuniform float uFlush;\nuniform float uPale;\n' + sh.fragmentShader.replace(
       '#include <map_fragment>',
       /* glsl */ `#include <map_fragment>
       {
+        if (uMask > 0.5 && vHeadInfluence > 0.45) discard;
         vec4 dm = texture2D(uDmg, vMapUv);
         float bruise = clamp(dm.b, 0.0, 1.0);
         diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.55, 0.28, 0.42), bruise * 0.85);
@@ -434,8 +487,9 @@ function damageMaterial(base, dmgTex) {
         roughnessFactor = mix(roughnessFactor, 0.18, clamp(dm2.g + dm2.r, 0.0, 1.0));
       }`,
     );
+    sh.fragmentShader = 'uniform float uMask;\nvarying float vHeadInfluence;\n' + sh.fragmentShader;
   };
-  mat.customProgramCacheKey = () => 'human-dmg-v1';
+  mat.customProgramCacheKey = () => 'human-dmg-mask-v2';
   return mat;
 }
 
@@ -580,6 +634,7 @@ export class HumanCharacter {
     this.model = SkeletonUtils.clone(src.scene);
     this.root.add(this.model);
     this.skinned = findSkinned(this.model);
+    ensureHeadInfluence(this.skinned);
     this.skinned.frustumCulled = false;
     this.skinned.castShadow = true;
     this.skinned.receiveShadow = true;
@@ -631,6 +686,7 @@ export class HumanCharacter {
       this.glasses.position.copy(hi.worldEyes).sub(hi.worldCenter).add(new THREE.Vector3(0, -0.004, 0.03));
       this.headAnchor.add(this.glasses);
     }
+    this.wearMask(MODELS[this.modelKey].mask);
     this.root.traverse((o) => { o.frustumCulled = false; });
     this._jaw = 0;
     this._lid = 0;
@@ -681,6 +737,25 @@ export class HumanCharacter {
     if (h) h.scale.setScalar(v && !this.detached[2] ? 1 : 0.0001);
     if (this.hat) this.hat.visible = v;
     if (this.glasses) this.glasses.visible = v;
+    if (this.mask) this.mask.visible = v && !this.detached[2];
+  }
+
+  wearMask(type) {
+    if (!type || !MASK_CACHE.has(type) || !this.headAnchor) return false;
+    this.mask?.removeFromParent();
+    const source = MASK_CACHE.get(type);
+    this.mask = source.clone(true);
+    this.mask.name = `animal-mask:${type}`;
+    this.mask.scale.setScalar(this.meta.headInfo.radius / MASK_HEAD_RADIUS);
+    this.mask.traverse((o) => {
+      if (!o.isMesh) return;
+      o.castShadow = false;
+      o.receiveShadow = false;
+    });
+    this.headAnchor.add(this.mask);
+    this.material.userData.u.uMask.value = 1;
+    this.setVisibleHead(this.headVisible);
+    return true;
   }
 
   // Forma contra la que se cierran los dedos de esa mano, o null
@@ -1041,6 +1116,8 @@ export class HumanCharacter {
     this.material?.dispose();
     this.hat?.traverse?.((o) => { o.geometry?.dispose(); o.material?.dispose(); });
     this.glasses?.traverse?.((o) => { o.geometry?.dispose(); o.material?.dispose(); });
+    this.mask?.removeFromParent();
+    this.mask = null;
     this.model.removeFromParent();
     this.model = null;
   }

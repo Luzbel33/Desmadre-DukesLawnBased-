@@ -3,6 +3,13 @@ import * as THREE from 'three';
 import { smokeTexture } from '../world/textures.js';
 
 const UPV = new THREE.Vector3(0, 1, 0);
+const FX_RENDER_DISTANCE_SQ = 120 * 120;
+
+function withinFxRange(camera, x, y, z) {
+  if (!camera) return true;
+  const dx = x - camera.position.x, dy = y - camera.position.y, dz = z - camera.position.z;
+  return dx * dx + dy * dy + dz * dz <= FX_RENDER_DISTANCE_SQ;
+}
 
 class SpritePool {
   constructor(scene, max, tex, additive = false) {
@@ -68,9 +75,10 @@ class SpritePool {
       rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * (o.spin ?? 1), drag: o.drag ?? 1.2, grav: o.grav ?? 0.4,
     });
   }
-  update(dt) {
+  update(dt, camera) {
     const P = this.p;
-    let w = 0;
+    let w = 0, draw = 0;
+    const pa = this.aPos.array, ca = this.aCol.array, sa = this.aSR.array;
     for (let i = 0; i < P.length; i++) {
       const q = P[i];
       q.age += dt;
@@ -80,20 +88,22 @@ class SpritePool {
       q.x += q.vx * dt; q.y += q.vy * dt; q.z += q.vz * dt;
       q.rot += q.vr * dt;
       P[w++] = q;
+      if (!withinFxRange(camera, q.x, q.y, q.z)) continue;
+      const t = q.age / q.life;
+      pa[draw * 3] = q.x; pa[draw * 3 + 1] = q.y; pa[draw * 3 + 2] = q.z;
+      ca[draw * 4] = q.r; ca[draw * 4 + 1] = q.g; ca[draw * 4 + 2] = q.b;
+      ca[draw * 4 + 3] = (q.a0 + (q.a1 - q.a0) * t) * Math.min(1, q.age * 8);
+      sa[draw * 2] = q.s0 + (q.s1 - q.s0) * Math.sqrt(t);
+      sa[draw * 2 + 1] = q.rot;
+      draw++;
     }
     P.length = w;
-    const pa = this.aPos.array, ca = this.aCol.array, sa = this.aSR.array;
-    for (let i = 0; i < w; i++) {
-      const q = P[i];
-      const t = q.age / q.life;
-      pa[i * 3] = q.x; pa[i * 3 + 1] = q.y; pa[i * 3 + 2] = q.z;
-      ca[i * 4] = q.r; ca[i * 4 + 1] = q.g; ca[i * 4 + 2] = q.b;
-      ca[i * 4 + 3] = (q.a0 + (q.a1 - q.a0) * t) * Math.min(1, q.age * 8);
-      sa[i * 2] = q.s0 + (q.s1 - q.s0) * Math.sqrt(t);
-      sa[i * 2 + 1] = q.rot;
+    this.geo.instanceCount = draw;
+    if (draw) {
+      for (const [attribute, count] of [[this.aPos, draw * 3], [this.aCol, draw * 4], [this.aSR, draw * 2]]) {
+        attribute.clearUpdateRanges(); attribute.addUpdateRange(0, count); attribute.needsUpdate = true;
+      }
     }
-    this.geo.instanceCount = w;
-    this.aPos.needsUpdate = this.aCol.needsUpdate = this.aSR.needsUpdate = true;
   }
 }
 
@@ -125,9 +135,9 @@ class MeshPool {
       stretch: o.stretch || 0, // > 0: se estira en la dirección en que vuela (gotas de líquido)
     });
   }
-  update(dt, groundY = () => 0) {
+  update(dt, groundY = () => 0, camera) {
     const P = this.p;
-    let w = 0;
+    let w = 0, draw = 0;
     for (let i = 0; i < P.length; i++) {
       const q = P[i];
       q.age += dt;
@@ -151,10 +161,7 @@ class MeshPool {
         }
       }
       P[w++] = q;
-    }
-    P.length = w;
-    for (let i = 0; i < w; i++) {
-      const q = P[i];
+      if (!withinFxRange(camera, q.x, q.y, q.z)) continue;
       const fade = q.age > q.life - 0.5 ? (q.life - q.age) / 0.5 : 1;
       if (q.stretch) {
         if (!q.landed) {
@@ -175,12 +182,18 @@ class MeshPool {
         this.s.set(q.s * fade, q.s * q.sy * fade, q.s * fade);
       }
       this.m.compose(this.v.set(q.x, q.y, q.z), this.q, this.s);
-      this.im.setMatrixAt(i, this.m);
-      this.im.setColorAt(i, this.c.setHex(q.col));
+      this.im.setMatrixAt(draw, this.m);
+      this.im.setColorAt(draw, this.c.setHex(q.col));
+      draw++;
     }
-    this.im.count = w;
-    this.im.instanceMatrix.needsUpdate = true;
-    if (this.im.instanceColor) this.im.instanceColor.needsUpdate = true;
+    P.length = w;
+    this.im.count = draw;
+    if (draw) {
+      this.im.instanceMatrix.clearUpdateRanges(); this.im.instanceMatrix.addUpdateRange(0, draw * 16);
+      this.im.instanceMatrix.needsUpdate = true;
+      this.im.instanceColor.clearUpdateRanges(); this.im.instanceColor.addUpdateRange(0, draw * 3);
+      this.im.instanceColor.needsUpdate = true;
+    }
   }
 }
 
@@ -193,11 +206,11 @@ export class FX {
     this.drops = new MeshPool(scene, 2200, new THREE.SphereGeometry(1, 5, 4), new THREE.MeshStandardMaterial({ roughness: 0.15, color: 0xffffff }));
     this.onBloodLand = null;
   }
-  update(dt) {
-    this.smoke.update(dt);
-    this.glow.update(dt);
-    this.bits.update(dt);
-    this.drops.update(dt);
+  update(dt, camera) {
+    this.smoke.update(dt, camera);
+    this.glow.update(dt, camera);
+    this.bits.update(dt, undefined, camera);
+    this.drops.update(dt, undefined, camera);
   }
 
   // bocanada de humo (sale de la boca)

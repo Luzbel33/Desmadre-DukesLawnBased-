@@ -4,7 +4,7 @@
 // función por cuadro); acá solo el cuerpo, el globo y el mirar.
 import * as THREE from 'three';
 import { G, clamp } from '../core/G.js';
-import { HumanCharacter, humansReady, loadHuman, MODELS } from '../char/human.js';
+import { HumanCharacter, humansReady, loadHuman, loadMask, masksReady, MODELS } from '../char/human.js';
 import { voiceFor, voiceRate, vocalName } from '../audio/vocals.js';
 import { Ragdoll, PART } from './ragdoll.js';
 import { GR, RAPIER, groups } from '../core/physics.js';
@@ -23,6 +23,42 @@ const notNpc = (c) => G.phys.info(c)?.kind !== 'npc';
 const Q1 = new THREE.Quaternion();
 const E1 = new THREE.Euler();
 const HAS_DOM = typeof document !== 'undefined';
+const NPC_VIEW = {
+  camera: null,
+  position: new THREE.Vector3(),
+  right: new THREE.Vector3(),
+  up: new THREE.Vector3(),
+  forward: new THREE.Vector3(),
+  tanX: 1,
+  tanY: 1,
+};
+const NPC_LOAD_DISTANCE = 58;
+const NPC_DRAW_DISTANCE = 52;
+
+export function prepareNpcCulling(camera) {
+  if (!camera) { NPC_VIEW.camera = null; return; }
+  camera.updateWorldMatrix(true, false);
+  NPC_VIEW.camera = camera;
+  NPC_VIEW.position.setFromMatrixPosition(camera.matrixWorld);
+  NPC_VIEW.right.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+  NPC_VIEW.up.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+  NPC_VIEW.forward.setFromMatrixColumn(camera.matrixWorld, 2).negate().normalize();
+  NPC_VIEW.tanY = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
+  NPC_VIEW.tanX = NPC_VIEW.tanY * camera.aspect;
+}
+
+function npcInView(pos, heightK) {
+  if (!NPC_VIEW.camera) return true;
+  const x = pos.x - NPC_VIEW.position.x;
+  const y = pos.y + 0.9 * heightK - NPC_VIEW.position.y;
+  const z = pos.z - NPC_VIEW.position.z;
+  const depth = x * NPC_VIEW.forward.x + y * NPC_VIEW.forward.y + z * NPC_VIEW.forward.z;
+  const side = x * NPC_VIEW.right.x + y * NPC_VIEW.right.y + z * NPC_VIEW.right.z;
+  const vertical = x * NPC_VIEW.up.x + y * NPC_VIEW.up.y + z * NPC_VIEW.up.z;
+  const radius = 1.35 * heightK;
+  return depth + radius > 0 && Math.abs(side) <= depth * NPC_VIEW.tanX + radius &&
+    Math.abs(vertical) <= depth * NPC_VIEW.tanY + radius;
+}
 
 const CUT = new Set(['sword', 'machete', 'knife', 'axe', 'broken_bottle', 'hatchet', 'katana', 'saber', 'estoc']);
 const PART_K = [0.9, 1, 1.7, 0.6, 0.5, 0.6, 0.5, 0.7, 0.55, 0.7, 0.55];
@@ -262,7 +298,9 @@ export class Npc {
   _build() {
     if (this.char) return true;
     const key = this.look.model;
+    const mask = MODELS[key]?.mask;
     if (!humansReady(key)) { loadHuman(key); return false; } // se baja una vez (lo comparten todos los que lo usan)
+    if (mask && !masksReady(mask)) { loadMask(mask); return false; }
     try {
       this.char = new HumanCharacter(this.look);
       this.char.root.name = 'npc:' + this.name;
@@ -293,40 +331,50 @@ export class Npc {
   }
 
   update(dt, camera, show = true) {
-    if (!this._build()) return;
-    // cerca: cuerpo físico (se le puede pegar, lo tumban, lo revolean) y cápsula para chocarlo; lejos, nada
-    const cd = camera ? camera.position.distanceTo(this.pos) : 0;
-    const near = show && cd < 30;
-    if (!near && this.rag && !this.down && !this.dead) { this.rag.destroy(); this.rag = null; }
-    this.physical = near || this.down > 0 || this.dead;
-    this._pawnStep(dt, near && !this.dead && !this.down && !this.sit);
-    if (show) this._burnStep(dt);
-    this.hpShowT = Math.max(0, (this.hpShowT || 0) - dt);
-    this.visible = show;
-    this.char.root.visible = show;
     if (!show) {
+      this.visible = false;
+      if (this.rag && !this.down && !this.dead) { this.rag.destroy(); this.rag = null; }
+      this.physical = this.down > 0 || this.dead;
+      this._pawnStep(0, false);
+      if (this.char) this.char.root.visible = false;
       if (this.bubble) this.bubble.style.display = 'none';
       if (this.equip?.group) this.equip.group.visible = false;
       if (this.prop) this.prop.visible = false;
       this._lampStep(false);
       return;
     }
-    if (this.equip?.group) this.equip.group.visible = true;
+    const distanceSq = camera ? camera.position.distanceToSquared(this.pos) : Infinity;
+    if (!this.char && distanceSq > NPC_LOAD_DISTANCE * NPC_LOAD_DISTANCE) return;
+    if (!this._build()) return;
+    // cerca: cuerpo físico (se le puede pegar, lo tumban, lo revolean) y cápsula para chocarlo; lejos, nada
+    const cd = Math.sqrt(distanceSq);
+    const near = cd < 30;
+    if (!near && this.rag && !this.down && !this.dead) { this.rag.destroy(); this.rag = null; }
+    this.physical = near || this.down > 0 || this.dead;
+    const renderVisible = distanceSq < NPC_DRAW_DISTANCE * NPC_DRAW_DISTANCE && npcInView(this.pos, this.heightK);
+    this.visible = renderVisible;
+    const simulate = renderVisible || near;
+    const updatePose = renderVisible || near || this.down > 0 || this.dead;
+    this._pawnStep(dt, near && !this.dead && !this.down && !this.sit);
+    if (simulate) this._burnStep(dt);
+    this.hpShowT = Math.max(0, (this.hpShowT || 0) - dt);
+    this.char.root.visible = renderVisible;
+    if (this.equip?.group) this.equip.group.visible = renderVisible;
     if (this.dead) {
       // muerto: tirado; al rato se va y vuelve entero
       this.deadT += dt;
       if (this.equip) this.equip.dispose();
       if (this.prop) this.prop.visible = false;
       this._lampStep(false);
-      if (this.rag?.alive) this.char.applyWorldTransforms(this.rag.read());
-      this.char.update(dt);
+      if (updatePose && this.rag?.alive) this.char.applyWorldTransforms(this.rag.read());
+      if (updatePose) this.char.update(dt);
       if (this.deadT > this.respawnSecs) this.respawn();
       return;
     }
     // prendido fuego no hace caso a su rol: corre en pánico (ver _burnStep). Tirado, tampoco: antes el rol seguía
     // andando con el cuerpo en el piso y la posición "lógica" perseguía y pegaba sola (el guardia invisible)
-    if (!(this.burnT > 0) && !(this.down > 0)) this.role?.(this, dt);
-    this._resolveMove();
+    if (simulate && !(this.burnT > 0) && !(this.down > 0)) this.role?.(this, dt);
+    if (simulate) this._resolveMove();
     // mirar a alguien: la cabeza primero, el cuerpo si hace falta
     let want = this.baseYaw, hy = 0;
     if (this.lookAt) {
@@ -352,11 +400,13 @@ export class Npc {
       }
     }
     const ch = this.char;
+    ch.root.position.copy(this.pos);
+    ch.root.rotation.set(0, this.yaw, 0);
     ch.talk = this.talk > 0 ? 0.5 + 0.5 * Math.sin(G.time * 18) : 0;
     if (this.down > 0) {
       // tirado: el cuerpo es el ragdoll
       this.down -= dt;
-      ch.applyWorldTransforms(this.rag.read());
+      if (updatePose) ch.applyWorldTransforms(this.rag.read());
       if (this.down <= 0) {
         this.down = 0;
         // sin una pierna no se levanta: se queda y se desangra
@@ -364,9 +414,7 @@ export class Npc {
         else this._getUp();
       }
     } else {
-      ch.root.position.copy(this.pos);
-      ch.root.rotation.set(0, this.yaw, 0);
-      ch.animate({ speed: this.speed, grounded: true, sit: this.sit, table: this.table, crouch: this.crouch, aimPitch: this.aimPitch, headYaw: this.headYaw, emote: this.emote, emoteT: this.emoteT, action: this.action, actionT: this.actionT, held: this.item || (this.prop && !this.propHang) ? 'item' : null }, dt);
+      if (updatePose) ch.animate({ speed: this.speed, grounded: true, sit: this.sit, table: this.table, crouch: this.crouch, aimPitch: this.aimPitch, headYaw: this.headYaw, emote: this.emote, emoteT: this.emoteT, action: this.action, actionT: this.actionT, held: this.item || (this.prop && !this.propHang) ? 'item' : null }, dt);
       if (this.propHang) ch.grip.r = 1; // el farol cuelga del puño cerrado, con el brazo suelto
       // resortes de los golpes (subamortiguados: la cabeza se va y vuelve)
       const S = this.snap, w = 22, z = 0.35;
@@ -374,7 +422,7 @@ export class Npc {
         v.x += (-w * w * a.x - 2 * z * w * v.x) * dt; v.y += (-w * w * a.y - 2 * z * w * v.y) * dt;
         a.x += v.x * dt; a.y += v.y * dt;
       }
-      if (Math.abs(S.head.x) + Math.abs(S.head.y) + Math.abs(S.torso.x) > 1e-4) {
+      if (updatePose && Math.abs(S.head.x) + Math.abs(S.head.y) + Math.abs(S.torso.x) > 1e-4) {
         ch.joints[2].quaternion.multiply(Q1.setFromEuler(E1.set(S.head.x, 0, S.head.y)));
         ch.joints[1].quaternion.multiply(Q1.setFromEuler(E1.set(S.torso.x, 0, S.torso.y * 0.5)));
       }
@@ -382,6 +430,13 @@ export class Npc {
         this._ensureRag();
         if (this.rag?.alive) { ch.root.updateMatrixWorld(true); this.rag.follow(ch.readWorldTransforms(), dt); }
       }
+    }
+    if (!updatePose) {
+      if (this.equip?.group) this.equip.group.visible = false;
+      if (this.prop) this.prop.visible = false;
+      if (this.bubble) this.bubble.style.display = 'none';
+      this._lampStep(false);
+      return;
     }
     ch.update(dt);
     // lo que tiene en la mano
@@ -402,7 +457,7 @@ export class Npc {
         // la pala cuelga de la mano con la hoja para abajo (el modelo viene parado, con el mango arriba)
         this.prop.rotation.set(Math.PI - (this.action === 'swing' ? 0.9 - Math.sin(this.actionT * 5) * 0.6 : 0.35), this.yaw, 0, 'YXZ');
       }
-      this.prop.visible = this.visible && !this.down;
+      this.prop.visible = renderVisible && !this.down;
     }
     this._lampStep(!!this.prop?.visible);
     // globo (lo que dice) y la barra de vida cuando lo lastimaron

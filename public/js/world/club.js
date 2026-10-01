@@ -86,7 +86,9 @@ export class Club {
     this.fireIds = [];
     this.poles = [];
     this.rand = rng(666);
-    this.visible = true;
+    // El Búnker no participa del primer render; se activa al acercarse a su zona.
+    this.visible = false;
+    this.group.visible = false;
   }
 
   // ---------------------------------------------------------------- primitivas
@@ -742,7 +744,7 @@ export class Club {
   // near: la cámara está en el complejo (o muy cerca): recién ahí se anima y se dibuja
   update(dt, t, nowMs, { level = 1, feet = [] } = {}) {
     const cam = G.camera?.position;
-    const near = !!cam && cam.x > C.x0 - 40 && cam.x < C.x1 + 40 && cam.z > C.z0 - 40 && cam.z < C.z1 + 40;
+    const near = !!cam && cam.x > C.x0 - 24 && cam.x < C.x1 + 24 && cam.z > C.z0 - 24 && cam.z < C.z1 + 24;
     if (near !== this.visible) {
       this.visible = near;
       this.group.visible = near;

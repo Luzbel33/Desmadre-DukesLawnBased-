@@ -11,7 +11,7 @@
 import * as THREE from 'three';
 import { G, clamp } from '../core/G.js';
 import { CLUB, CASTLE, INTERACT } from '../shared/mapdata.js';
-import { Npc } from './npc.js';
+import { Npc, prepareNpcCulling } from './npc.js';
 import { clubBeat } from '../world/club.js';
 import { getMat } from '../world/builder.js';
 import { ClubMix } from '../audio/clubmix.js';
@@ -765,7 +765,13 @@ export class ClubGame {
     this.screenU.uLive.value += ((who ? 1 : 0) - this.screenU.uLive.value) * Math.min(1, dt * 3);
     // la cámara del trono: 15 cuadros por segundo, solo si alguien la puede ver
     this._camT = (this._camT || 0) - dt;
-    if (who && this.club.visible && this._camT <= 0 && G.renderer) {
+    let camNearScreen = false;
+    if (G.camera) this.screen.getWorldPosition(V1);
+    if (G.camera && G.camera.position.distanceToSquared(V1) < 28 * 28) {
+      G.camera.getWorldDirection(V2);
+      camNearScreen = V2.dot(V1.sub(G.camera.position).normalize()) > 0.1;
+    }
+    if (who && this.club.visible && camNearScreen && this._camT <= 0 && G.renderer) {
       this._camT = 1 / 15;
       const r = G.renderer, prev = r.getRenderTarget();
       const vis = this.screen.visible; this.screen.visible = false;
@@ -793,6 +799,7 @@ export class ClubGame {
     this._ritualStep(dt);
     this._throneStep(dt);
     const cam = G.camera;
+    prepareNpcCulling(cam);
     for (const n of this.npcs) n.update(dt, cam, this.club.visible);
     // la música: a pleno en el club; ahogada en la antesala y el ascensor; nada afuera. Se calla con un video puesto
     const p = cam?.position;
