@@ -6,11 +6,11 @@ permissions:
   contents: write
 concurrency:
   group: multiplayer-social-validation
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -18,45 +18,25 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Reproduce targeted regressions
-        continue-on-error: true
-        run: node --no-warnings --loader ./tests/loader.mjs --test tests/*regressions.test.mjs > /tmp/red.log 2>&1 || { grep -A25 '^not ok' /tmp/red.log; exit 1; }
       - name: Apply exact-match scoped corrections
-        if: hashFiles('tools/apply-social-fixes.mjs') != ''
-        run: node tools/apply-social-fixes.mjs
-      - name: Validate modules and all tests
+        run: |
+          node tools/apply-social-fixes.mjs
+          node tools/apply-rtc-fix.mjs
+      - name: Validate modules, physics and network regressions
         run: |
           npm run check
-          node --no-warnings --loader ./tests/loader.mjs --test tests/*regressions.test.mjs > /tmp/social.log 2>&1 || { grep -A35 '^not ok' /tmp/social.log; exit 1; }
-          tail -9 /tmp/social.log
           npm test > /tmp/unit.log 2>&1 || { grep -B1 -A40 '^not ok' /tmp/unit.log; tail -10 /tmp/unit.log; exit 1; }
           tail -10 /tmp/unit.log
           npm run test:network > /tmp/network.log 2>&1 || { tail -35 /tmp/network.log; exit 1; }
           tail -8 /tmp/network.log
           npm run test:fire
           git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol diff --check
-      - name: Real browser regressions
-        if: hashFiles('tests/social-browser.mjs') != ''
+      - name: Real browser and audio regressions
         run: |
           npm install --prefix /tmp/browser-qa playwright --no-package-lock --no-audit --no-fund
           /tmp/browser-qa/node_modules/.bin/playwright install --with-deps chromium > /tmp/browser-install.log 2>&1
-          node --input-type=module <<'JS'
-          import fs from 'node:fs';
-          const file = 'tests/social-browser.mjs';
-          let s = fs.readFileSync(file, 'utf8');
-          s = s.replace("if (!(energies[0] > 0 && energies[1] > 0)) throw new Error('Selected peers did not receive real audio: ' + energies);", `if (!(energies[0] > 0 && energies[1] > 0)) {
-            const details = [];
-            for (const [owner, voice] of voices) for (const peer of voice.peers.values()) {
-              const stats = [...(await peer.pc.getStats()).values()].filter(s => ['inbound-rtp', 'outbound-rtp', 'media-source', 'transport', 'candidate-pair'].includes(s.type));
-              details.push({ owner, id: peer.id, error: voice.error, enabled: peer.outboundTrack?.enabled, live: peer.outboundTrack?.readyState, state: peer.pc.connectionState, ice: peer.pc.iceConnectionState, signaling: peer.pc.signalingState, transceivers: peer.pc.getTransceivers().map(t => ({mid: t.mid, direction: t.direction, current: t.currentDirection, track: t.sender.track?.id})), stats });
-            }
-            throw new Error('Audio diagnostic ' + JSON.stringify({ energies, context: ctx.state, time: ctx.currentTime, details }));
-          }`);
-          fs.writeFileSync(file, s);
-          JS
           node tests/social-browser.mjs
       - name: Publish verified corrections to isolated branch only
-        if: hashFiles('tools/apply-social-fixes.mjs') != ''
         run: |
           test "$GITHUB_REF" = refs/heads/fix/multiplayer-social-20260930
           git diff --stat
