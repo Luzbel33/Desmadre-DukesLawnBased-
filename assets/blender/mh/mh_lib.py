@@ -137,20 +137,23 @@ def read_mhclo(path):
             if p[0] == 'verts':
                 in_verts = True
                 continue
+            if p[0] == 'delete_verts':
+                in_verts = False
+                continue
+            # (algunos mhclo ponen 'material' o 'vertexboneweights_file' entre 'verts' y la lista: no la cortan)
             if in_verts and len(p) >= 9 and p[0].lstrip('-').isdigit():
                 refs.append([int(p[0]), int(p[1]), int(p[2]), float(p[3]), float(p[4]), float(p[5]), float(p[6]), float(p[7]), float(p[8])])
                 continue
             if in_verts and len(p) == 1 and p[0].isdigit():  # un solo vértice de referencia
                 refs.append([int(p[0]), int(p[0]), int(p[0]), 1, 0, 0, 0, 0, 0])
                 continue
-            in_verts = False
             if p[0] in ('x_scale', 'y_scale', 'z_scale'):
                 scales[p[0][0]] = (int(p[1]), int(p[2]), float(p[3]))
             elif p[0] == 'obj_file':
                 obj = p[1]
             elif p[0] == 'material':
                 material = p[1]
-    return np.array(refs), scales, obj, material
+    return np.array(refs, dtype=np.float64), scales, obj, material
 
 
 def fit_mhclo(V, refs, scales):

@@ -444,6 +444,9 @@ function buildMeta(scene) {
 function damageMaterial(base, dmgTex) {
   const mat = base.clone();
   mat.roughness = 1;
+  // NPC con pelo, cejas y pestañas de mechones (assets/blender/mh/build_npc2.py): el alfa va recortado, no mezclado
+  // (mezclado se ordena mal contra el propio cuerpo y no escribe profundidad)
+  if (mat.transparent) { mat.transparent = false; mat.alphaTest = 0.5; mat.depthWrite = true; }
   // Clean base-skin GLBs use vertex colors instead of a painted texture. Keep UVs
   // active for the per-character damage overlay without tinting those colors.
   if (!mat.map) {

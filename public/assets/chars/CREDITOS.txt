@@ -18,3 +18,8 @@ Modelo aportado para el juego por Gian/Luz (base hero.fbx de Gian, cara y capuch
 Cambios para este juego: piezas unidas en una malla, atlas horneado (color, rugosidad, normal),
 huesos renombrados al esqueleto del juego y huesos sin peso agregados (columna, dedos, ojos, boca)
 con assets/blender/gian/build_gian.py y retarget_human.py. Licencia comercial del FBX base sin verificar.
+
+NPC (public/assets/chars/npc/, menos las bailarinas lilith/coneja/venus/raven/emo)
+Cuerpos de MakeHuman y piezas del paquete "MakeHuman system assets" (pieles, ropa, zapatos, sombreros, peinados,
+cejas, pestañas, ojos, dientes, lengua), CC0 (files.makehumancommunity.org/asset_packs/makehuman_system_assets).
+Armados con assets/blender/mh/build_npc2.py + export_npc2.py (cast2.py dice quién lleva qué).

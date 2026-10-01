@@ -40,11 +40,30 @@ Fuente única de trabajo pendiente.
 
 ## 3. Cámara e interacción
 
+- [ ] **Rueda de vista al mantener Y** (como la de gestos): primera persona, tercera al hombro izquierdo / derecho /
+      centrada, y de frente.
+- [ ] Mirándote de frente: poder mover los brazos, tomar, fumar, comer, etc. **Bug:** de frente, el fuego del Diablo
+      y los disparos salen para atrás (usan la dirección de la cámara en vez de la del personaje).
+
 - [ ] Probar comodidad real del selector de hombro izquierdo/centro/derecho con agarre, combate e interacción.
 - [ ] Verificar y ajustar la cámara al sentarse en el trono.
 - [ ] Revisar casos donde cámara, manos o interacción atraviesen paredes/props en tercera persona.
 
 ---
+
+## 3b. Búnker grande — PRIORITARIO (no postergar)
+
+- [ ] Ampliarlo: sector grande y atmosférico, mezcla de club gótico + infierno + búnker + psicodelia/ilusiones;
+      varias salas y lugares distintos, varios pisos o pistas de baile distintas, mejor iluminación.
+- [ ] Más gente; más bailarinas (duplicar algunas, sin tocar sus cuerpos) que bailen de verdad en el caño.
+- [ ] Armería en una zona que parezca búnker militar (no al lado del trono).
+- [ ] Plata: dólares de verdad; click izquierdo tira un fajo, derecho todos; **no deben hacer daño**.
+- [ ] Máquinas de humo de boliche que tiran humo cada tanto; sala psicodélica; laberinto de espejos que deforma.
+- [ ] Barra con tragos distintos.
+- [ ] Sala de cultivo (ganja) y sustancias distintas con efectos distintos; blunts, habanos, tabaco, pipas, bongs
+      bien hechos y agarrables.
+- [ ] Tienda tipo coffee shop de Amsterdam "con esteroides" que venda todo eso.
+- Todo optimizado (culling por sala, luces del pool, instancias) y con buenas prácticas.
 
 ## 4. Fogata / sector chill
 
@@ -77,6 +96,10 @@ Fuente única de trabajo pendiente.
 ---
 
 ## 6. Vehículos y movimiento
+
+- [ ] Dive: a veces te quedás trabado en cosas (colisiones del mapa que faltan, están mal o a medias: normalizarlas).
+- [ ] Rampas inutilizables con vehículos (el auto las toma como pared).
+- [ ] (Después) Motos y un circuito con trampas tipo Guts and Glory / Happy Wheels.
 
 - [ ] Física de vehículos más convincente: peso, choques jugador/NPC/vehículo y respuesta sin comportamientos explosivos.
 - [ ] Revisar cortadoras y otros vehículos/props móviles que todavía floten, atraviesen geometría o reaccionen raro.
