@@ -1,0 +1,36 @@
+name: Media and item regressions
+on:
+  push:
+    branches: [fix/media-items-fire-20261001]
+permissions:
+  contents: write
+concurrency:
+  group: media-items-validation
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 30
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Existing regression suite
+        run: |
+          npm run check
+          npm test > /tmp/unit.log 2>&1 || { tail -100 /tmp/unit.log; exit 1; }
+          tail -10 /tmp/unit.log
+      - name: Browser dependencies
+        run: |
+          npm install --prefix /tmp/browser-qa playwright --no-package-lock --no-audit --no-fund
+          /tmp/browser-qa/node_modules/.bin/playwright install --with-deps chromium > /tmp/browser-install.log 2>&1
+      - name: Focused video surface regression
+        run: node tests/media-focus-browser.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: media-regression-screenshots
+          path: /tmp/media-qa
