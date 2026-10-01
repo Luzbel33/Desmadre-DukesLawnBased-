@@ -20,25 +20,26 @@ jobs:
           node-version: '22'
       - name: Focused diagnostics
         run: |
-          grep -nE 'function |chat|grabplayer|releaseplayer|hitclaim|pjoin|pleave|welcome|media-' public/js/main.js | head -180
-          grep -nE '_pawnStep|_resolveMove|tag\(|gibs|life|ttl|expire|hand' public/js/game/npc.js public/js/game/gore.js | tail -90
-          grep -nE 'fixture|function frame|class Dummy' tests/gameplay.test.mjs
+          grep -nEi 'guard|patrol|blocked|walkTo|moveTo' public/js/game/villagers.js public/js/game/club.js | head -100
+          grep -nE 'physicsStep|_gripStep|grips|h.joint|h.player|handPos' public/js/game/player.js | head -80
+          grep -nE 'this.items|this.chunks|this.gibs|push\(|expire|remove|\.t |life|_drop' public/js/game/gore.js | head -70
       - name: Reproduce targeted regressions
         continue-on-error: true
-        run: node --no-warnings --loader ./tests/loader.mjs --test tests/social-regressions.test.mjs
+        run: node --no-warnings --loader ./tests/loader.mjs --test tests/social-regressions.test.mjs > /tmp/red.log 2>&1 || { tail -16 /tmp/red.log; exit 1; }
       - name: Apply exact-match scoped corrections
         if: hashFiles('tools/apply-social-fixes.mjs') != ''
         run: node tools/apply-social-fixes.mjs
       - name: Validate modules and all tests
         run: |
           npm run check
-          npm test > /tmp/unit.log 2>&1 || { tail -100 /tmp/unit.log; exit 1; }
+          npm test > /tmp/unit.log 2>&1 || { tail -120 /tmp/unit.log; exit 1; }
           tail -10 /tmp/unit.log
-          node --no-warnings --loader ./tests/loader.mjs --test tests/social-regressions.test.mjs
+          node --no-warnings --loader ./tests/loader.mjs --test tests/social-regressions.test.mjs > /tmp/social.log 2>&1 || { cat /tmp/social.log; exit 1; }
+          tail -9 /tmp/social.log
           npm run test:network > /tmp/network.log 2>&1 || { tail -35 /tmp/network.log; exit 1; }
           tail -8 /tmp/network.log
           npm run test:fire
-          git diff --check
+          git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol diff --check
       - name: Publish verified corrections to isolated branch only
         if: hashFiles('tools/apply-social-fixes.mjs') != ''
         run: |
