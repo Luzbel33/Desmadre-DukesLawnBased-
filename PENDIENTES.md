@@ -100,7 +100,7 @@ modelos cargados al acercarse.
 ## 6. Vehículos y movimiento
 
 - [ ] Dive: a veces te quedás trabado en cosas (colisiones del mapa que faltan, están mal o a medias: normalizarlas).
-- [ ] Rampas inutilizables con vehículos (el auto las toma como pared).
+- [ ] Probar el manejo en rampas y saltos (sube, cabecea, vuela y cae); ajustar si algún vehículo se traba.
 - [ ] (Después) Motos y un circuito con trampas tipo Guts and Glory / Happy Wheels.
 
 - [ ] Física de vehículos más convincente: peso, choques jugador/NPC/vehículo y respuesta sin comportamientos explosivos.

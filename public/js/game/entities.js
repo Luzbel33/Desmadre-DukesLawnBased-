@@ -53,6 +53,10 @@ function extentsOf(type) {
   return (EXTENTS[type] = { hx, z0, z1 });
 }
 const VEHICLE_GROUPS = groups(GR.VEHICLE, GR.WORLD | GR.VEHICLE | GR.PAWN | GR.REMOTE | GR.RAGDOLL | GR.PROP | GR.DEBRIS | GR.ME);
+// rampas: un choque cuya normal mira para arriba es una pendiente (se sube), no una pared
+const isSlope = (h) => Math.max(Math.abs(h.normal1?.y || 0), Math.abs(h.normal2?.y || 0)) > 0.4;
+const GROUND_GROUPS = groups(0xffff, GR.WORLD);
+const TMPE = new THREE.Euler();
 
 export class VehicleManager {
   constructor(net, local) {
@@ -208,7 +212,7 @@ export class VehicleManager {
         const candidate = G.phys.world.castShape(this._driveOrigin(localV,part.center), rotation, {x:dx,y:0,z:dz},
           part.shape,.008,1,false,RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,DRIVE_GROUPS,null,localV.body,
           driveFilter(localV));
-        if (candidate && (!hit || candidate.time_of_impact<hit.time_of_impact)) hit=candidate;
+        if (candidate && !isSlope(candidate) && (!hit || candidate.time_of_impact<hit.time_of_impact)) hit=candidate;
       }
       const fraction = hit ? Math.max(0, hit.time_of_impact - 0.002 / Math.abs(dist)) : 1;
       localV.pos.x = clamp(localV.pos.x + dx * fraction, MAP_BOUNDS.x0 + 1, MAP_BOUNDS.x1 - 1);
@@ -223,8 +227,8 @@ export class VehicleManager {
         localV.speed = 0; // contact stops motion; repeated throttle must not bounce the camera
       }
       this._runOver(localV);
-      localV.pos.y = VDEF.get(localV.id)?.p?.[1] ?? localV.pos.y;
-      localV.quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), localV.yaw);
+      this._ground(localV, dt);
+      localV.quat.setFromEuler(TMPE.set(localV._tilt || 0, localV.yaw, 0, 'YXZ'));
       localV.targetPos.copy(localV.pos); localV.targetQuat.copy(localV.quat);
       localV.group.position.copy(localV.pos); localV.group.quaternion.copy(localV.quat);
       this.local.setSeatPose(localV);
@@ -264,6 +268,35 @@ export class VehicleManager {
     for (const v of this.items.values()) this._animate(v, dt);
   }
 
+  // El piso debajo de las ruedas (adelante y atrás): sube por las rampas con el cabeceo de la pendiente; si el piso se
+  // va (la punta de una rampa) sigue con su envión y cae con gravedad: saltos. Solo cuenta el piso hasta 0,7 m arriba
+  // (un techo o una mesa encima no lo levantan).
+  _ground(v, dt) {
+    const E = extentsOf(v.type), half = Math.max(0.3, (E.z1 - E.z0) * 0.4), mid = (E.z1 + E.z0) / 2;
+    const s = Math.sin(v.yaw), c = Math.cos(v.yaw);
+    const own = (col) => { const inf = G.phys.info(col); return !(inf?.kind === 'vehicle' || (inf && NPC_KINDS.has(inf.kind))); };
+    const at = (off) => {
+      const h = G.phys.raycast(v.pos.x + s * (mid + off), v.pos.y + 0.7, v.pos.z + c * (mid + off), 0, -1, 0, 8, GROUND_GROUPS, v.body?.collider?.(0) || null, own);
+      return h ? h.y : null;
+    };
+    let gf = at(half), gr = at(-half);
+    if (gf === null && gr === null) gf = gr = v.pos.y; // sin piso abajo (no debería pasar): se queda donde está
+    else if (gf === null) gf = gr; else if (gr === null) gr = gf;
+    const target = (gf + gr) / 2;
+    v.vy = v.vy || 0;
+    if (target >= v.pos.y - 0.03) {
+      if (v.air && v.vy < -4) { G.sfx?.trigger('hit', null, Math.min(1, -v.vy / 12)); G.sfx?.trigger('thud', null, 0.6); }
+      v.vy = dt > 0 ? clamp((target - v.pos.y) / dt, -2, 9) : 0; // al subir la rampa: con esto sale volando de la punta
+      v.pos.y = target; v.air = false;
+      v._tilt = (v._tilt || 0) + (-Math.atan2(gf - gr, half * 2) - (v._tilt || 0)) * Math.min(1, dt * 14);
+    } else {
+      v.air = true;
+      v.vy -= 9.8 * dt;
+      v.pos.y = Math.max(target, v.pos.y + v.vy * dt);
+      v._tilt = (v._tilt || 0) + (-Math.atan2(v.vy, Math.max(2, Math.abs(v.speed))) * 0.7 - (v._tilt || 0)) * Math.min(1, dt * 3);
+    }
+  }
+
   _driveOrigin(v, center) {
     const s=Math.sin(v.yaw),c=Math.cos(v.yaw);
     return {x:v.pos.x+c*center.x+s*center.z,y:v.pos.y+center.y,z:v.pos.z-s*center.x+c*center.z};
@@ -277,7 +310,7 @@ export class VehicleManager {
     G.phys.world.intersectionsWithShape(origin, rotation, part.shape, collider => {
       // No bloquea un roce con el suelo; sí una penetración de la esquina.
       const contact = collider.contactShape(part.shape, origin, rotation, 0);
-      if (contact && contact.distance < -0.015) blocked = true;
+      if (contact && contact.distance < -0.015 && !isSlope(contact)) blocked = true;
       return !blocked;
     }, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, DRIVE_GROUPS, null, v.body,
     driveFilter(v));
