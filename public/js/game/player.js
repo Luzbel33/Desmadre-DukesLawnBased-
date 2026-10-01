@@ -1241,7 +1241,7 @@ export class LocalPlayer {
   grab(side) {
     if (!this.hasHand(side)) return false;
     const hp = this.handPos(side, new THREE.Vector3());
-    const cam = G.camera;
+    const cam = G.aimCam || G.camera;
     const dir = cam.getWorldDirection(new THREE.Vector3());
     // Reach is physical, not limited by the third-person camera's distance.
     const shoulder = this.rig.shoulderWorld(side, new THREE.Vector3());

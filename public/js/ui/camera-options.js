@@ -5,6 +5,14 @@ export function readCameraShoulder(storage) {
   try { const value = storage?.getItem(KEY); if (SIDES.includes(value)) return value; } catch {}
   return 'left';
 }
+// la rueda de vistas (Y sostenida) elige el hombro sin pasar por la pausa: queda igual que si lo elegías ahí
+export function setCameraShoulder(value, control, options, storage) {
+  if (!SIDES.includes(value)) return false;
+  options.cameraShoulder = value;
+  if (control) control.value = value;
+  try { storage?.setItem(KEY, value); } catch {}
+  return true;
+}
 export function setupCameraShoulder(control, options, storage) {
   if (!control) return;
   options.cameraShoulder = readCameraShoulder(storage);

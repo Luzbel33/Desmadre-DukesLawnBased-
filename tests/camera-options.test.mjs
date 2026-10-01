@@ -66,3 +66,33 @@ test('camera preference persists locally and malformed or unavailable storage pr
   setupCameraShoulder(input, opts, unavailable); input.value = 'right'; input.dispatchEvent(new Event('change'));
   assert.equal(opts.cameraShoulder, 'right');
 });
+
+test('front view aims where the body looks, not back at the player (shots, fire breath, throws)', () => {
+  const s = source.indexOf('function syncAim() {'), e = source.indexOf('\n}\n', s) + 3;
+  assert.ok(s > 0 && e > s, 'syncAim boundary changed');
+  for (const yaw of [0, Math.PI / 2, 2.4]) {
+    const char = { meta: { height: 1.8 }, headWorld: out => out.set(0, 1.6, 0), setVisibleHead() {} };
+    const state = { mode: 'game', local: { state: 'active', char, pos: new THREE.Vector3(), renderPos: new THREE.Vector3() }, viewPitch: 0.2, viewYaw: yaw, cameraMode: 3 };
+    const G = { camera: new THREE.PerspectiveCamera(72), aimCam: new THREE.PerspectiveCamera(72), opts: { cameraShoulder: 'left' }, phys: { raycast: () => null }, time: 0 };
+    const update = new Function('THREE', 'G', 'state', 'tmpV', 'tmpV2', 'groups', 'GR', 'stepCamKick', 'camKick', '$', source.slice(start, end) + source.slice(s, e) + '\nreturn [updateCamera, syncAim];')(THREE, G, state, new THREE.Vector3(), new THREE.Vector3(), () => 0, { WORLD: 1 }, () => {}, { a: new THREE.Vector3() }, () => null);
+    for (let i = 0; i < 40; i++) update[0](1 / 60);
+    update[1]();
+    const want = new THREE.Vector3(Math.sin(yaw) * Math.cos(0.2), Math.sin(0.2), Math.cos(yaw) * Math.cos(0.2));
+    const cam = G.camera.getWorldDirection(new THREE.Vector3()), aim = G.aimCam.getWorldDirection(new THREE.Vector3());
+    assert.ok(cam.dot(want) < -0.5, 'the front camera looks back at the player');
+    assert.ok(aim.dot(want) > 0.999, 'aim must follow the body view direction');
+    assert.ok(G.aimCam.position.distanceTo(new THREE.Vector3(0, 1.6, 0)) < 0.2, 'aim starts at the head');
+    state.cameraMode = 0; update[0](1 / 60); update[1]();
+    assert.ok(G.aimCam.position.distanceTo(G.camera.position) < 1e-9 && G.aimCam.quaternion.angleTo(G.camera.quaternion) < 1e-6, 'other views aim with the camera');
+  }
+});
+
+test('the view wheel stores the shoulder exactly like the pause option', async () => {
+  const { readCameraShoulder, setCameraShoulder } = await import('../public/js/ui/camera-options.js');
+  const values = new Map(); const storage = { getItem: k => values.get(k), setItem: (k, v) => values.set(k, v) };
+  const control = { value: 'left' }, options = { cameraShoulder: 'left' };
+  assert.equal(setCameraShoulder('right', control, options, storage), true);
+  assert.equal(control.value, 'right'); assert.equal(options.cameraShoulder, 'right'); assert.equal(readCameraShoulder(storage), 'right');
+  assert.equal(setCameraShoulder('__proto__', control, options, storage), false);
+  assert.equal(options.cameraShoulder, 'right');
+});

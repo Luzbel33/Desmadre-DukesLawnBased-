@@ -40,11 +40,8 @@ Fuente única de trabajo pendiente.
 
 ## 3. Cámara e interacción
 
-- [ ] **Rueda de vista al mantener Y** (como la de gestos): primera persona, tercera al hombro izquierdo / derecho /
-      centrada, y de frente.
-- [ ] Mirándote de frente: poder mover los brazos, tomar, fumar, comer, etc. **Bug:** de frente, el fuego del Diablo
-      y los disparos salen para atrás (usan la dirección de la cámara en vez de la del personaje).
-
+- [ ] Probar con mouse real la rueda de vistas (Y sostenida) y los brazos de frente (el mouse va espejado para que la
+      mano siga a la pantalla); probar el aliento del Diablo de frente.
 - [ ] Probar comodidad real del selector de hombro izquierdo/centro/derecho con agarre, combate e interacción.
 - [ ] Verificar y ajustar la cámara al sentarse en el trono.
 - [ ] Revisar casos donde cámara, manos o interacción atraviesen paredes/props en tercera persona.

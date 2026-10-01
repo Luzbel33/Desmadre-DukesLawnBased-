@@ -1,4 +1,4 @@
-// Menú circular (gestos): se abre con el click de la rueda o con Z, sin soltar el mouse del juego.
+// Menú circular (gestos con el click de la rueda o Z; vistas de cámara con Y), sin soltar el mouse del juego.
 // Sostenido: mové el mouse hacia un gesto y soltá. Un toque rápido lo deja abierto: elegís con el mouse y click.
 // Esc, click derecho o volver a tocar la rueda / Z lo cierran sin elegir.
 const R = 150; // radio de los botones (px)
@@ -11,7 +11,8 @@ export class RadialMenu {
     this.items = [];
     this.sel = -1;
     this.ax = 0; this.ay = 0;
-    this.by = null; // 'mid' | 'z'
+    this.by = null; // 'mid' | 'z' | 'y'
+    this.kind = null; // 'emote' | 'view'
     this.t0 = 0;
     this.sticky = false;
     this.label = el.querySelector('.radial-label');
@@ -28,7 +29,7 @@ export class RadialMenu {
     items.forEach((it, i) => {
       const a = (i / n) * Math.PI * 2 - Math.PI / 2; // el primero arriba, en sentido horario
       const b = document.createElement('div');
-      b.className = 'radial-item' + (it.special ? ' special' : '');
+      b.className = 'radial-item' + (it.special ? ' special' : '') + (it.cur ? ' cur' : '');
       b.style.transform = `translate(${Math.cos(a) * R}px, ${Math.sin(a) * R}px)`;
       b.innerHTML = `<span class="ic">${it.icon}</span><span class="tx">${it.label}</span>`;
       this.ring.appendChild(b);

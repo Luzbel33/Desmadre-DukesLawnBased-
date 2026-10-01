@@ -3,6 +3,7 @@ export const G = {
   renderer: null,
   scene: null,
   camera: null,
+  aimCam: null, // hacia dónde salen disparos, aliento y revoleos (de frente no es la cámara: ver syncAim en main.js)
   phys: null, // Physics
   net: null,
   ui: null,

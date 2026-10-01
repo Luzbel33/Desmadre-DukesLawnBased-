@@ -203,8 +203,9 @@ export class OwnerPowers {
     const L=this.getLocal();
     if(id==='me') {
       if(!L)return false;
-      G.camera.getWorldDirection(dir);
-      if(!L.char.headVisible)origin.copy(G.camera.position).addScaledVector(dir,.22).add(new THREE.Vector3(0,-.12,0));
+      const aim=G.aimCam||G.camera;
+      aim.getWorldDirection(dir);
+      if(!L.char.headVisible)origin.copy(aim.position).addScaledVector(dir,.22).add(new THREE.Vector3(0,-.12,0));
       else L.char.mouthWorld(origin);
       return true;
     }

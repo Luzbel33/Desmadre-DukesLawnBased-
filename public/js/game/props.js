@@ -641,7 +641,7 @@ export class PropManager {
       if (sp > 2.2) {
         // un empujón extra en la dirección del movimiento (revolear se siente bien)
         const f = 1.35;
-        const dir = G.camera.getWorldDirection(V1);
+        const dir = (G.aimCam || G.camera).getWorldDirection(V1);
         this.setVelocity(p, { x: v.x * f + dir.x * 2.2, y: v.y * f + dir.y * 2.2 + 0.8, z: v.z * f + dir.z * 2.2 });
       }
     }

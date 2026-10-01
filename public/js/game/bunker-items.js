@@ -49,7 +49,7 @@ export class BunkerItems {
   }
   throwCash(L) {
     const o = L.handPos('r', new THREE.Vector3());
-    const d = G.camera.getWorldDirection(new THREE.Vector3());
+    const d = (G.aimCam || G.camera).getWorldDirection(new THREE.Vector3());
     this.cash(o, d);
     this.getNet()?.send({ t: 'ev', k: 'cash', o: o.toArray().map((x) => +x.toFixed(2)), d: d.toArray().map((x) => +x.toFixed(2)) });
   }
@@ -87,7 +87,7 @@ export class BunkerItems {
   shoot(L) {
     if (!L || L.dead || L.combatBlocked || G.time < this.shotT) return false;
     this.shotT = G.time + 0.3;
-    const cam = G.camera;
+    const cam = G.aimCam || G.camera;
     const o = cam.position.clone(), d = cam.getWorldDirection(new THREE.Vector3());
     const hit = G.phys.raycast(o.x, o.y, o.z, d.x, d.y, d.z, 90, SHOT_GROUPS, null, (col) => {
       const info = G.phys.info(col);
@@ -144,7 +144,7 @@ export class BunkerItems {
       if(this.getLocal()!==L || L.dead || L.combatBlocked || hand.item!=='grenade' || (hand.itemGeneration||0)!==generation) return;
       hand.item=null; hand.itemGeneration=generation+1; L.onEvent?.('release',{side,equipped:true});
       const o = L.handPos(side, new THREE.Vector3());
-      const d = G.camera.getWorldDirection(new THREE.Vector3());
+      const d = (G.aimCam || G.camera).getWorldDirection(new THREE.Vector3());
       const v = d.multiplyScalar(12.5).add(V1.set(0, 3.2, 0));
       this.nade(o, v, G.myId);
       this.getNet()?.send({ t: 'ev', k: 'nade', o: o.toArray().map((x) => +x.toFixed(2)), v: v.toArray().map((x) => +x.toFixed(2)) });

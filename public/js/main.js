@@ -1,7 +1,7 @@
 // DESMADRE — cliente jugable integrado.
 import * as THREE from 'three';
 import { SocialPanel, setupMaskPicker, enhanceMedia } from './ui/social.js';
-import { setupCameraShoulder } from './ui/camera-options.js';
+import { setupCameraShoulder, setCameraShoulder } from './ui/camera-options.js';
 import { G, clamp } from './core/G.js';
 import { Physics, GR, groups } from './core/physics.js';
 import { Input } from './core/input.js';
@@ -608,8 +608,8 @@ function updatePrompt() {
 
 function grabbableFor(L) {
   const hp = L.handPos('r', tmpV);
-  const dir = G.camera.getWorldDirection(tmpV2);
-  return state.props.findGrabbable(hp, G.camera.position, dir, 'r');
+  const dir = G.aimCam.getWorldDirection(tmpV2);
+  return state.props.findGrabbable(hp, G.aimCam.position, dir, 'r');
 }
 
 // X: usar lo que hay en el mundo (nunca agarra ni suelta: eso es E/Q)
@@ -696,6 +696,7 @@ function openEmotes(by) {
   const items = EMOTES.slice();
   if (G.owner?.active()) items.splice(0, 0, { e: 'laugh', icon: '😈', label: 'Risa del Diablo', special: true });
   state.radial.show(items, by);
+  state.radial.kind = 'emote';
 }
 function chooseEmote(it) {
   state.radial.hide();
@@ -734,14 +735,50 @@ function stepRadial(inp) {
   const R = state.radial;
   R.move(inp.dx, inp.dy);
   inp.dx = inp.dy = 0;
-  const released = R.by === 'mid' ? inp.btnUp(1) : inp.up('KeyZ');
+  const released = R.by === 'mid' ? inp.btnUp(1) : inp.up(R.by === 'y' ? 'KeyY' : 'KeyZ');
+  const pick = R.kind === 'view' ? chooseView : chooseEmote;
   if (!R.sticky && released) {
     const it = R.release();
-    if (it !== null) chooseEmote(it || null);
+    if (it !== null) pick(it || null);
   } else if (R.sticky) {
-    if (inp.btnHit(0)) chooseEmote(R.items[R.sel] || null);
-    else if (inp.btnHit(2) || inp.btnHit(1) || inp.hit('KeyZ')) chooseEmote(null);
+    if (inp.btnHit(0)) pick(R.items[R.sel] || null);
+    else if (inp.btnHit(2) || inp.btnHit(1) || inp.hit('KeyZ') || inp.hit('KeyY')) pick(null);
   }
+}
+
+// Vistas de cámara. Y: un toque pasa a la siguiente; sostenida abre la rueda (izquierda y derecha quedan a los costados)
+const VIEW_NAMES = ['tercera persona', 'tercera persona cerca', 'primera persona', 'de frente'];
+const VIEWS = [
+  { icon: '⬆️', label: 'Atrás, centrada', mode: 0, side: 'center' },
+  { icon: '➡️', label: 'Hombro derecho', mode: 0, side: 'right' },
+  { icon: '🔍', label: 'Más cerca', mode: 1 },
+  { icon: '🪞', label: 'De frente', mode: 3 },
+  { icon: '👁️', label: 'Primera persona', mode: 2 },
+  { icon: '⬅️', label: 'Hombro izquierdo', mode: 0, side: 'left' },
+];
+const VIEW_HOLD_MS = 280;
+function viewKeys(inp) {
+  const H = state.viewHold;
+  if (!H) { if (inp.hit('KeyY')) state.viewHold = { t: performance.now() }; return; }
+  const held = performance.now() - H.t;
+  if (!inp.key('KeyY')) { state.viewHold = null; if (held < VIEW_HOLD_MS) setCameraMode((state.cameraMode + 1) % 4); }
+  else if (held >= VIEW_HOLD_MS) { state.viewHold = null; openViews(); }
+}
+function openViews() {
+  if (state.mode !== 'game' || state.radial.open) return;
+  const m = state.cameraMode, sh = G.opts.cameraShoulder;
+  state.radial.show(VIEWS.map((v) => ({ ...v, cur: v.mode === m && (!v.side || v.side === sh) })), 'y');
+  state.radial.kind = 'view';
+}
+function chooseView(it) {
+  state.radial.hide();
+  if (!it) return;
+  if (it.side) setCameraShoulder(it.side, $('o-camera-shoulder'), G.opts, localStorage);
+  setCameraMode(it.mode, it.side ? it.label : null);
+}
+function setCameraMode(m, detail = null) {
+  state.cameraMode = m;
+  G.hud?.notify(`Cámara: <b>${VIEW_NAMES[m]}</b>${detail ? ` · ${detail.toLowerCase()}` : ''}`, 1400);
 }
 // Cerrar un menú vuelve directo al juego (nunca pasa por la pausa). Si el navegador no deja recapturar el mouse
 // (pasa después de un Esc), queda el juego a la vista con un aviso: un click y seguís.
@@ -842,7 +879,7 @@ function doThrowRelease(side) {
   const L = state.local;
   if (!L || L.combatBlocked) return;
   const h = L.hands[side];
-  const dir = G.camera.getWorldDirection(new THREE.Vector3());
+  const dir = G.aimCam.getWorldDirection(new THREE.Vector3());
   const hv = L.handVelocity(side);
   if (h.item) {
     if (releaseEquipped(L, side, { throwing: true, direction: dir, velocity: hv })) G.sfx?.trigger('swing', null, 0.6);
@@ -867,7 +904,7 @@ function throwPopcorn(side) {
   const L = state.local;
   if (!L || !G.fx) return;
   const pos = L.handPos(side, new THREE.Vector3());
-  const dir = G.camera.getWorldDirection(new THREE.Vector3());
+  const dir = G.aimCam.getWorldDirection(new THREE.Vector3());
   for (let i = 0; i < 18; i++) {
     const s = 4 + Math.random() * 3.5;
     G.fx.bits.spawn({
@@ -1562,13 +1599,9 @@ function updateInput(dt) {
   if (state.mode !== 'game' || !G.input.locked || !state.local) return;
   const L = state.local;
   const inp = G.input;
-  if (inp.hit('KeyY')) {
-    state.cameraMode = (state.cameraMode + 1) % 4;
-    G.hud?.notify(['Cámara: tercera persona', 'Cámara: tercera persona cerca', 'Cámara: primera persona', 'Cámara: <b>de frente</b> · ataques desactivados'][state.cameraMode], 1600);
-  }
-  L.setCombatBlocked(state.cameraMode === 3);
   const sens = 0.0022 * G.opts.sens;
-  if (state.radial?.open) { stepRadial(inp); return; } // menú de gestos: el mouse elige, la cámara queda quieta
+  if (state.radial?.open) { stepRadial(inp); return; } // menú de gestos/vistas: el mouse elige, la cámara queda quieta
+  viewKeys(inp);
   // al subirte a un vehículo la mirada baja un poco: se ven el volante, el tablero y las manos
   if (!!L.vehicle !== !!state.driving) {
     state.driving = L.vehicle || null;
@@ -1585,7 +1618,8 @@ function updateInput(dt) {
   // brazo gira el cuerpo (el brazo arrastra). Pintando, la mira sigue a la cámara.
   const armOn = L.armActive() && !painting;
   let mx = inp.dx, my = inp.dy;
-  if (armOn) { const o = L.moveArms(inp.dx, inp.dy); mx = o[0] * 0.6; my = o[1] * 0.6; }
+  // de frente la cámara te mira: el mouse a la derecha lleva la mano a la derecha de la pantalla (tu izquierda)
+  if (armOn) { const o = L.moveArms(state.cameraMode === 3 ? -inp.dx : inp.dx, inp.dy); mx = o[0] * 0.6; my = o[1] * 0.6; }
   state.viewYaw -= mx * sens;
   state.viewPitch -= my * sens * (G.opts.invertY ? -1 : 1);
   state.viewPitch = clamp(state.viewPitch, -1.32, 1.32);
@@ -1651,7 +1685,7 @@ function updateInput(dt) {
     if (state.sprayT <= 0) {
       state.sprayT = 0.045;
       const origin = L.handPos('r', new THREE.Vector3());
-      const hit = state.graffiti.spray(G.camera, {
+      const hit = state.graffiti.spray(G.aimCam, {
         origin,
         maxReach: 3.2,
         isBlocked: (from, to) => {
@@ -1804,6 +1838,23 @@ function camHit(nx, nz, k) {
   camKick.v.z += l * 1.8 * k;
 }
 
+// La mira (G.aimCam): disparos, aliento, revoleos, aerosol y agarrar salen de acá. Normalmente es la cámara; de frente
+// la cámara te mira a vos, así que la mira sale de tus ojos hacia donde mira el cuerpo (antes todo salía para atrás).
+function syncAim() {
+  const A = G.aimCam, L = state.local;
+  const front = !!L && state.cameraMode === 3 && state.mode !== 'cctv' && L.state !== 'ko' && L.state !== 'dead';
+  // de frente la mira de la pantalla caería en tu pecho: no se dibuja
+  if (front !== state.aimFront) { state.aimFront = front; $('crosshair')?.classList.toggle('hidden', front); }
+  if (!front) { A.position.copy(G.camera.position); A.quaternion.copy(G.camera.quaternion); }
+  else {
+    const cp = Math.cos(state.viewPitch);
+    const fwd = tmpV.set(Math.sin(state.viewYaw) * cp, Math.sin(state.viewPitch), Math.cos(state.viewYaw) * cp);
+    L.char.headWorld(A.position).addScaledVector(fwd, 0.12);
+    A.lookAt(fwd.add(A.position));
+  }
+  A.updateMatrixWorld(true);
+}
+
 function updateHud(dt) {
   if (!state.local) return;
   const z = zoneAt(state.local.pos.x, state.local.pos.z);
@@ -1882,6 +1933,7 @@ async function boot() {
     installFarShadowChunk(); // sombra lejana horneada + la dinámica de cerca (antes de compilar materiales)
     setMaxAniso(renderer.capabilities.getMaxAnisotropy()); G.renderer = renderer;
     G.scene = new THREE.Scene(); G.camera = new THREE.PerspectiveCamera(G.opts.fov, innerWidth / innerHeight, 0.05, 3000);
+    G.aimCam = new THREE.PerspectiveCamera(G.opts.fov, innerWidth / innerHeight, 0.05, 3000);
 
     status('Cargando física...'); G.phys = new Physics(); await G.phys.init();
     status('Cargando personajes...');
@@ -2043,6 +2095,7 @@ async function boot() {
         else {
           if (Math.abs(G.camera.fov - G.opts.fov) > 0.01) { G.camera.fov = G.opts.fov; G.camera.updateProjectionMatrix(); }
           updateCamera(dt);
+          syncAim();
         }
         G.poker?.update(G.camera, dt);
         updateNameTags(); updatePrompt(); updateHud(dt); updatePost();

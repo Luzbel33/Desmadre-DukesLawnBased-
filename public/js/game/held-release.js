@@ -7,7 +7,7 @@ import { heldType, heldState } from '../shared/held-items.js';
 export function releaseEquipped(player, side, { throwing = false, direction = null, velocity = null } = {}) {
   const hand = player.hands?.[side], type = heldType(hand?.item);
   if (!type || !G.props?.spawnThrow) return false;
-  const dir = direction?.clone() || G.camera?.getWorldDirection(new THREE.Vector3()) || new THREE.Vector3(0, 0, 1);
+  const dir = direction?.clone() || (G.aimCam || G.camera)?.getWorldDirection(new THREE.Vector3()) || new THREE.Vector3(0, 0, 1);
   const pos = player.handPos(side, new THREE.Vector3()).addScaledVector(dir, .18);
   const handVel = (velocity?.clone() || player.handVelocity(side)).clampLength(0, 12);
   const vel = throwing ? dir.clone().multiplyScalar(14.5).addScaledVector(handVel, .3).add(new THREE.Vector3(0, 1.8, 0)) : handVel.multiplyScalar(.12).add(new THREE.Vector3(0, -.2, 0));
