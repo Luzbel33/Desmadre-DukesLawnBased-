@@ -8,6 +8,7 @@
 //    Diablo, X abre el ritual (el servidor lo valida) y te llevás al otro a los que elijas de los que están ahí,
 //    entre fuego, risas y humo.
 //  - El trono: el que se sienta sale en la pantalla de atrás, en vivo, con su nombre escrito en sangre y fuego.
+import { BAR_MENU, CAFE_MENU, SLOT_KIND } from '../shared/consumables.js';
 import * as THREE from 'three';
 import { G, clamp } from '../core/G.js';
 import { CLUB, CASTLE, INTERACT } from '../shared/mapdata.js';
@@ -31,8 +32,8 @@ const DOORMAN_OK = ['Pasá, rey. Portate mal.', 'Adelante. Lo que pasa en el Bú
 const DOORMAN_NO = ['¿Qué te pasa, gil? Tomatela.', 'Esa no es. Andá a la cripta a pensar.', 'Contraseña incorrecta. Te anoto en la lista negra.', 'Casi. No. Para nada. Rajá.'];
 
 export class ClubGame {
-  constructor({ world, getLocal, getNet, notify, big, teleport, fade, openUI, closeUI, shake, puff, isOwner, onItems }) {
-    this.onItems = onItems;
+  constructor({ world, getLocal, getNet, notify, big, teleport, fade, openUI, closeUI, shake, puff, isOwner, onItems, pick }) {
+    this.onItems = onItems; this.pick = pick;
     this.world = world;
     this.club = world.club;
     this.getLocal = getLocal; this.getNet = getNet;
@@ -86,7 +87,8 @@ export class ClubGame {
         else if (it.item === 'grenade') this.notify('💣 <b>Click</b>: revolearla. Explota a los 3 segundos.');
         break;
       case 'drug': this._drug(L, it.drug); break;
-      case 'bar': L.giveItem('beer'); G.sfx?.trigger('pickup'); this.onItems?.(); this.bartender?.say(['Tomá, invita la casa.', 'Esa te va a pegar.', 'Una birra del infierno.'][Math.floor(Math.random() * 3)], 2.4); break;
+      case 'bar': this._order(BAR_MENU, this.bartender, ['Tomá, invita la casa.', 'Esa te va a pegar.', 'Del infierno, como todo acá.']); break;
+      case 'cafe': this._order(CAFE_MENU, this.budtender, ['Disfrutalo, amor.', 'Despacito que pega.', 'Ese es de la huerta.']); break;
       case 'monitors': this.notify('📺 Las cámaras de seguridad todavía no están conectadas.'); break;
       case 'bell': { const m = { e: 'bell', on: this.truceUntil > G.time ? 0 : 1 }; this._bellApply(m); this._send(m); break; }
       case 'ritual': this._openRitual(); break;
@@ -94,6 +96,15 @@ export class ClubGame {
     }
   }
   _send(m) { this.getNet()?.send({ t: 'ev', k: 'club', ...m }); }
+  // pedir en la barra o en el coffeeshop: ruedita con el menú (sin ruedita, lo primero)
+  _order(menu, who, lines) {
+    const give = (m) => {
+      const L = this.getLocal(); if (!L) return;
+      L.giveItem(m.item); G.sfx?.trigger('pickup'); this.onItems?.();
+      who?.say(lines[Math.floor(Math.random() * lines.length)], 2.4);
+    };
+    if (!this.pick?.(menu, give)) give(menu[0]);
+  }
   _drug(L, kind) {
     const now = G.time;
     if (now < (this._drugT || 0)) { G.sfx?.trigger('ui-err', null, 0.4); this.notify('Pará un poco, campeón.'); return; }
@@ -459,7 +470,7 @@ export class ClubGame {
       n.data.t = (n.data.t ?? 2 + Math.random() * 6) - dt;
       if (n.data.t <= 0 && !n.action) {
         n.data.t = 6 + Math.random() * 8;
-        if (item === 2) {
+        if (item === 2 || SLOT_KIND[item] === 'smoke') {
           n.action = 'smoke'; n.actionT = 0; n.actionEnd = 1.4;
           setTimeout(() => { if (n.char && !n.dead && n.scene.visible) G.fx?.puff(n.char.headWorld?.(V1) || n.pos, V2.set(Math.sin(n.yaw), 0.4, Math.cos(n.yaw)), 0.7, 0xb8b0a8); }, 1100);
         } else { n.action = 'drink'; n.actionT = 0; n.actionEnd = 1.6; }
@@ -494,8 +505,9 @@ export class ClubGame {
     // la VIP: el patovica de la puerta
     if (A.vipDoor) add('vip', { name: 'El Patovica', look: { model: 'portero' }, pos: A.vipDoor.clone(), yaw: Math.PI * 0.75, height: 1.06, role: this._keeperRole(['Mirar sí, tocar no.', 'Acá adentro se portan bien, ¿estamos?', 'Bienvenido a la VIP, capo.']) });
     // el coffeeshop: la que atiende y la gente fumando o tomando en los sillones (asientos que no usan los jugadores)
-    if (A.budtender) add('cafe', { name: 'Mery Juana', look: { model: 'v_aldeana' }, pos: A.budtender.clone(), yaw: 0, role: this._keeperRole(['¡Hola, amor! ¿Qué te armo?', 'Probá el blunt de la casa.', 'Tranqui, acá nadie apura a nadie.', 'Lo de la huerta es todo nuestro, eh.'], 4.5) });
-    const people = [['v_vecino', 'El Rasta', 2], ['v_parrillero', 'El Tano', 2], ['v_abuela', 'La Abuela Porro', 2], ['gordo', 'Don Billetes', 1], ['v_tabernero', 'El Colorado', 1]];
+    if (A.budtender) this.budtender = add('cafe', { name: 'Mery Juana', look: { model: 'v_aldeana' }, pos: A.budtender.clone(), yaw: 0, role: this._keeperRole(['¡Hola, amor! ¿Qué te armo?', 'Probá el blunt de la casa.', 'Tranqui, acá nadie apura a nadie.', 'Lo de la huerta es todo nuestro, eh.'], 4.5) });
+    // cada uno con lo suyo en la mano (los números son los modelos de equipment.js: blunt, habano, pipa, whisky, fernet)
+    const people = [['v_vecino', 'El Rasta', 15], ['v_parrillero', 'El Tano', 16], ['v_abuela', 'La Abuela Porro', 17], ['gordo', 'Don Billetes', 12], ['v_tabernero', 'El Colorado', 11]];
     (A.npcSeats || []).forEach((s, i) => { const p = people[i]; if (p) add(s.wing, { name: p[1], look: { model: p[0] }, pos: new THREE.Vector3(s.x, s.y - 0.46, s.z), yaw: s.yaw, role: this._loungeRole(p[2], s) }); });
     // la sala de cultivo y el arsenal
     if (A.gardener) add('grow', { name: 'El Jardinero', look: { model: 'v_granjero' }, pos: A.gardener.clone(), yaw: Math.PI, role: this._keeperRole(['Despacito con las nenas, que están floreciendo.', 'Cortá uno, nomás. Bueno, dos.', 'Las riego con las lágrimas de los que pierden al póker.'], 4.5) });

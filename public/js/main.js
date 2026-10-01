@@ -20,6 +20,7 @@ import { LocalPlayer, RemotePlayer, predictHit, CASH_BUNDLES } from './game/play
 import { VehicleManager } from './game/entities.js';
 import { PropManager, defOf } from './game/props.js';
 import { releaseEquipped } from './game/held-release.js';
+import { consumable } from './shared/consumables.js';
 import { preloadAssets, registerManifest } from './game/assets.js';
 import { Haunt } from './game/haunt.js';
 import { ClubGame } from './game/club.js';
@@ -552,6 +553,7 @@ function updatePrompt() {
     else if (it === 'potion') H.hint('potion', 'Click', 'Tomarse la poción (vaya uno a saber qué hace)');
     else if (it === 'chori') H.hint('chori', 'Click', 'Morder el choripán');
     else if (it === 'apple') H.hint('apple', 'Click', 'Morder la manzana acaramelada');
+    else if (consumable(it)) { const C = consumable(it); H.hint(it, 'Click', `${C.kind === 'drink' ? 'Tomar' : C.kind === 'smoke' ? 'Pitar' : 'Comer'}: ${C.label} (${C.uses - (L.hands.r.bites || 0)})`); }
   };
   const popcornHint = () => {
     const pl = state.props?.get(L.hands.l.prop)?.type === 'popcorn', pr = state.props?.get(L.hands.r.prop)?.type === 'popcorn';
@@ -736,14 +738,28 @@ function stepRadial(inp) {
   R.move(inp.dx, inp.dy);
   inp.dx = inp.dy = 0;
   const released = R.by === 'mid' ? inp.btnUp(1) : inp.up(R.by === 'y' ? 'KeyY' : 'KeyZ');
-  const pick = R.kind === 'view' ? chooseView : chooseEmote;
+  const pick = R.kind === 'view' ? chooseView : R.kind === 'pick' ? choosePick : chooseEmote;
   if (!R.sticky && released) {
     const it = R.release();
     if (it !== null) pick(it || null);
   } else if (R.sticky) {
     if (inp.btnHit(0)) pick(R.items[R.sel] || null);
-    else if (inp.btnHit(2) || inp.btnHit(1) || inp.hit('KeyZ') || inp.hit('KeyY')) pick(null);
+    else if (inp.btnHit(2) || inp.btnHit(1) || inp.hit('KeyZ') || inp.hit('KeyY') || inp.hit('KeyX')) pick(null);
   }
+}
+
+// Menú de una barra o un mostrador (el Búnker): la ruedita se abre suelta; click elige, derecho o X la cierran
+function openPick(items, onPick) {
+  if (state.mode !== 'game' || !state.radial || state.radial.open) return false;
+  state.radial.show(items, 'pick');
+  state.radial.kind = 'pick'; state.radial.sticky = true;
+  state.pickCb = onPick;
+  return true;
+}
+function choosePick(it) {
+  state.radial.hide();
+  const cb = state.pickCb; state.pickCb = null;
+  if (it) cb?.(it);
 }
 
 // Vistas de cámara. Y: un toque pasa a la siguiente; sostenida abre la rueda (izquierda y derecha quedan a los costados)
@@ -941,6 +957,35 @@ function hitFx(pos, amount = 0.5, dir = null) {
 }
 
 // click corto de un brazo
+// Lo que se pide en el Búnker (shared/consumables.js): cada uso hace efecto al final del gesto; al terminarse, la mano
+// queda libre. Los demás ven el humo y escuchan el trago.
+function consume(L, hand, item, generation, stillHeld) {
+  const C = consumable(item);
+  if (!C) return;
+  if (C.kind === 'drink') G.sfx?.trigger('pickup', null, 0.25);
+  setTimeout(() => {
+    const P = state.local;
+    if (P !== L || !stillHeld()) return;
+    const fx = C.fx || {};
+    if (C.kind === 'drink') { G.sfx?.trigger('gulp', null, 0.65); state.net.send({ t: 'ev', k: 'drink' }); }
+    else if (C.kind === 'smoke') { puffFrom(P, C.puff || 1); state.net.send({ t: 'ev', k: 'puff', a: C.puff || 1 }); }
+    else G.sfx?.trigger('munch', null, 0.6);
+    if (fx.drunk) P.drunk = clamp(P.drunk + fx.drunk, 0, 1.6);
+    if (fx.high) P.high = clamp(P.high + fx.high, 0, 1.6);
+    if (fx.pill) P.pill = Math.max(P.pill || 0, fx.pill);
+    if (fx.cough && Math.random() < fx.cough) setTimeout(() => G.sfx?.trigger('cough', null, 0.75), 450);
+    if (fx.shake) state.shake = Math.max(state.shake || 0, fx.shake);
+    if (fx.fire && P.char) {
+      const m = P.char.mouthWorld(new THREE.Vector3()), d = new THREE.Vector3(Math.sin(P.yaw), 0.1, Math.cos(P.yaw));
+      G.fx?.sparks(m, d, 14); G.fx?.puff(m, d, 1.2, 0xff6a20);
+      bigMessage('🔥', 'Te quema hasta el alma', 1400);
+    }
+    if (fx.later) setTimeout(() => { const Q = state.local; if (!Q) return; Q.high = clamp(Q.high + fx.later.high, 0, 1.6); bigMessage('🍫', 'El brownie pegó', 1800); }, fx.later.s * 1000);
+    hand.bites = (hand.bites || 0) + 1;
+    if (hand.bites >= C.uses) { hand.item = null; hand.bites = 0; hand.itemGeneration = generation + 1; updateHotbar(); }
+  }, C.kind === 'drink' || item === 'bong' ? 750 : C.kind === 'smoke' ? 900 : 450);
+}
+
 // La plata, como los pochoclos: con la mano de los dólares (click izquierdo) sale un fajo; con la mano libre (derecho)
 // agarrás del fajo y revoleás todo lo que queda. Salen al final del envión. Son billetes: no lastiman.
 // Sin fajos se termina; la pila del trono del Diablo no se acaba.
@@ -1004,7 +1049,8 @@ function doTap(side) {
       hand.bites = (hand.bites || 0) + 1;
       if (hand.bites >= 3) { hand.item = null; hand.bites = 0; hand.itemGeneration = generation + 1; updateHotbar(); }
     }, 450);
-  } else if (r === 'cash' || r === 'cashall') G.sfx?.trigger('swing', null, 0.3); // los billetes salen al final del envión ('cashthrow')
+  } else if (r === 'consume') consume(L, hand, item, generation, stillHeld);
+  else if (r === 'cash' || r === 'cashall') G.sfx?.trigger('swing', null, 0.3); // los billetes salen al final del envión ('cashthrow')
   else if (r === 'shoot') G.items?.shoot(L);
   else if (r === 'nade') { G.items?.throwNade(L,side); updateHotbar(); }
   else if (r === 'punch' || r === 'swing') G.sfx?.trigger('swing', null, r === 'swing' ? 0.45 : 0.28);
@@ -1088,7 +1134,7 @@ function handleEvent(m) {
       break;
     }
     case 'puff':
-      if (rp) puffFrom(rp, 1);
+      if (rp) puffFrom(rp, clamp(+m.a || 1, 0.5, 3));
       break;
     case 'bong':
       if (rp) setTimeout(() => puffFrom(rp, 1.8), 1800);
@@ -2014,6 +2060,7 @@ async function boot() {
         notify: (h) => G.hud?.notify(h, 3500), big: (t, s, ms) => bigMessage(t, s, ms),
         teleport: teleportLocal, fade: fadeScreen, shake: (k) => { state.shake = Math.max(state.shake || 0, k); },
         puff: (p, a) => G.fx?.puff(p, new THREE.Vector3(0, 1, 0), a, 0x9a9090),
+        pick: (items, cb) => openPick(items, cb),
         openUI: (name) => { setMode('club'); state.clubUI = name; G.input.unlock(); },
         closeUI: () => { state.clubUI = null; if (state.mode === 'club') closeOverlayToGame(); },
         onItems: () => updateHotbar(),

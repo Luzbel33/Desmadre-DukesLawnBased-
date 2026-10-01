@@ -18,6 +18,7 @@ import { PoseRig } from '../char/rig.js';
 import { PoseContact } from './pose-contact.js';
 import { gripCandidate } from './grip-target.js';
 import { releaseEquipped, recoverEquipped } from './held-release.js';
+import { CONSUMABLES, consumable } from '../shared/consumables.js';
 import { Ragdoll, PART } from './ragdoll.js';
 import { HitReact, ROLL } from './react.js';
 import { EquipmentView } from './equipment.js';
@@ -44,7 +45,7 @@ const PART_DMG = [0.9, 1, 1.7, 0.45, 0.35, 0.45, 0.35, 0.55, 0.4, 0.55, 0.4];
 const PLAYER_DMG_K = 0.6;
 // cosa en la mano -> modelo que se ve (equipment.js); 4 = mano libre
 export const CASH_BUNDLES = 10;
-export const ITEM_EQ = { beer: 1, smoke: 2, spray: 3, cash: 5, pistol: 6, grenade: 7, potion: 8, chori: 9, apple: 10 };
+export const ITEM_EQ = { beer: 1, smoke: 2, spray: 3, cash: 5, pistol: 6, grenade: 7, potion: 8, chori: 9, apple: 10, ...Object.fromEntries(Object.entries(CONSUMABLES).map(([k, c]) => [k, c.slot])) };
 // la parte de la que cuelga cada una (un antebrazo ya no se corta si se fue el brazo entero)
 const PARENT_PART = [-1, 0, 1, 1, 3, 1, 5, 0, 7, 0, 9];
 // desangrarse por un miembro cortado no mata solo: la vida no baja de acá por la sangre (otro golpe sí)
@@ -1650,6 +1651,14 @@ export class LocalPlayer {
     // lo que se compra en la feria: la poción se toma de un trago; el choripán y la manzana, de a mordiscos
     if (h.item === 'potion') { startScript(a, 'drink', 1.5); this.setAction('drink-arm', 1.5); return 'potion'; }
     if (h.item === 'chori' || h.item === 'apple') { startScript(a, 'eat', 1.1); return 'food'; }
+    // lo que se pide en el Búnker (tragos, blunt, habano, pipa, bong, brownie): el gesto según qué es
+    const C = consumable(h.item);
+    if (C) {
+      if (C.kind === 'drink' || h.item === 'bong') { startScript(a, 'drink', 1.5); this.setAction('drink-arm', 1.5); }
+      else if (C.kind === 'smoke') startScript(a, 'smoke', 1.3);
+      else startScript(a, 'eat', 1.1);
+      return 'consume';
+    }
     if (h.item === 'spray') return 'spray';
     // el Búnker: tirar billetes, disparar, revolear la granada
     // la plata, como los pochoclos: la mano con los dólares tira un fajo y la mano libre agarra del fajo y revolea todo

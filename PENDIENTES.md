@@ -23,6 +23,9 @@ Fuente única de trabajo pendiente.
 - [ ] Hacer una pasada visual de cerca y de lejos a cada personaje no protegido después de los arreglos para evitar accesorios flotantes, invertidos o que desaparezcan por culling.
 
 ### Comportamiento / física
+
+- [ ] **Sepulturero:** la pala está mal (al revés, con una mano, parece que apuñala el piso). Animación propia de cavar
+      con las dos manos. Revisar que no quede ningún NPC con animaciones rotas o mal hechas.
 - [ ] Colisiones de cuerpo completo: brazos activos, cabeza y piernas contra jugadores, NPC, vehículos y objetos.
 - [ ] Ragdolls y miembros cortados como **props de red autoritativos**, agarrables/revoleables y sincronizados para todos los clientes.
 - [ ] Movimiento secundario del cuerpo más natural/pesado, estilo GTA V / Half Sword, sin romper el controlador actual.
@@ -64,10 +67,8 @@ modelos cargados al acercarse.
 - [ ] Arsenal: polígono de tiro con blancos, banco de armas contra el muro norte; llenar mejor la sala.
 - [ ] Coffeeshop y VIP: más vida y relleno (rincón de almohadones, narguiles, banquetas en la barra); VIP más iluminada.
 - [ ] Lava del Infierno que queme al que se mete en el foso.
-- [ ] Barra con tragos distintos.
-- [ ] Sala de cultivo (ganja) y sustancias distintas con efectos distintos; blunts, habanos, tabaco, pipas, bongs
-      bien hechos y agarrables.
-- [ ] Tienda tipo coffee shop de Amsterdam "con esteroides" que venda todo eso.
+- [ ] Más sustancias con efectos distintos (hoy: línea, pastilla, hongos, y en el coffeeshop blunt, habano, pipa, bong,
+      brownie; en la barra fernet, whisky, Sangre del Diablo y absenta). Bongs/pipas de la decoración agarrables.
 - Todo optimizado (culling por sala, luces del pool, instancias) y con buenas prácticas.
 
 ## 4. Fogata / sector chill

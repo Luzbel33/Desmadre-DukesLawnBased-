@@ -1,5 +1,6 @@
 // Visible held items. These are presentation meshes, not a dual-hand physics system.
 import * as THREE from 'three';
+import { SLOT_KIND } from '../shared/consumables.js';
 
 function labelTexture(title, subtitle, background) {
   if (typeof document === 'undefined') return null; // geometry-only tests
@@ -91,7 +92,61 @@ export function createEquippedModel(slot){
     const apple=mesh(new THREE.SphereGeometry(.038,20,16),new THREE.MeshPhysicalMaterial({color:0x9a0a10,roughness:.12,clearcoat:1,clearcoatRoughness:.05}),0,.06,0);apple.scale.set(1,.9,1);group.add(apple);
     group.add(mesh(new THREE.CylinderGeometry(.003,.003,.12,6),new THREE.MeshStandardMaterial({color:0xd8c29a,roughness:.9}),0,0,0));
   }
+  if(slot>=11&&slot<=19)consumableModel(slot,group);
   return group;
+}
+
+// Lo que se pide en el Búnker (shared/consumables.js): tragos, blunt, habano, pipa, bong y brownie
+function consumableModel(slot,group){
+  const glass=new THREE.MeshStandardMaterial({color:0xdfe8ee,roughness:.06,metalness:.1,transparent:true,opacity:.32,depthWrite:false});
+  const liquid=(col,em=0,ei=0)=>new THREE.MeshStandardMaterial({color:col,roughness:.15,emissive:em,emissiveIntensity:ei,transparent:true,opacity:.92});
+  const ice=new THREE.MeshStandardMaterial({color:0xeaf6ff,roughness:.05,transparent:true,opacity:.6,depthWrite:false});
+  const ember=()=>new THREE.MeshStandardMaterial({color:0x68260b,emissive:0xff3d08,emissiveIntensity:.65,roughness:1});
+  if(slot===11){ // fernet con coca: vaso alto, oscuro, la espuma clarita, hielo y sorbete
+    group.add(mesh(new THREE.CylinderGeometry(.034,.029,.15,24,1,true),glass,0,.02));
+    group.add(mesh(new THREE.CylinderGeometry(.031,.027,.11,20),liquid(0x2a1206),0,0));
+    group.add(mesh(new THREE.CylinderGeometry(.031,.031,.02,20),liquid(0xb98a5a),0,.065));
+    for(let k=0;k<2;k++){const c=mesh(new THREE.BoxGeometry(.018,.018,.018),ice,(k-.5)*.02,.07,(k-.5)*.012);c.rotation.set(k,k*.7,0);group.add(c);}
+    group.add(mesh(new THREE.CylinderGeometry(.003,.003,.16,6),new THREE.MeshStandardMaterial({color:0xff3060,roughness:.6}),.012,.06,0));
+  } else if(slot===12){ // whisky: vaso corto con un hielo grande
+    group.add(mesh(new THREE.CylinderGeometry(.038,.035,.085,24,1,true),glass,0,0));
+    group.add(mesh(new THREE.CylinderGeometry(.036,.034,.006,24),glass,0,-.04));
+    group.add(mesh(new THREE.CylinderGeometry(.034,.033,.045,20),liquid(0xb86a1a),0,-.016));
+    const c=mesh(new THREE.BoxGeometry(.028,.026,.028),ice,0,.01,0);c.rotation.set(.3,.5,.2);group.add(c);
+  } else if(slot===13){ // sangre del diablo: copa con algo rojo que brilla y una llamita arriba
+    group.add(mesh(new THREE.LatheGeometry([[0,0],[.045,.05],[.046,.052]].map(([r,y])=>new THREE.Vector2(r,y)),24),glass,0,.03));
+    const fill=new THREE.ConeGeometry(.04,.044,24,1,true);fill.rotateX(Math.PI);group.add(mesh(fill,liquid(0xa00010,0xff1020,1.2),0,.058));
+    group.add(mesh(new THREE.CylinderGeometry(.004,.004,.07,8),glass,0,-.005));
+    group.add(mesh(new THREE.CylinderGeometry(.028,.028,.004,20),glass,0,-.04));
+    const fl=mesh(new THREE.ConeGeometry(.012,.04,10),new THREE.MeshBasicMaterial({color:0xff8a20,transparent:true,opacity:.8,blending:THREE.AdditiveBlending,depthWrite:false}),0,.1);fl.name='flame';fl.castShadow=false;group.add(fl);
+  } else if(slot===14){ // absenta: vasito con el verde que brilla y la cucharita con el terrón
+    group.add(mesh(new THREE.CylinderGeometry(.03,.024,.075,20,1,true),glass,0,0));
+    group.add(mesh(new THREE.CylinderGeometry(.027,.022,.04,20),liquid(0x40d020,0x30ff20,.9),0,-.015));
+    group.add(mesh(new THREE.BoxGeometry(.075,.002,.016),new THREE.MeshStandardMaterial({color:0xb9b9ac,metalness:.8,roughness:.32}),0,.04));
+    group.add(mesh(new THREE.BoxGeometry(.012,.01,.012),new THREE.MeshStandardMaterial({color:0xffffff,roughness:.8}),0,.046));
+  } else if(slot===15||slot===16){ // blunt y habano: palito gordo con brasa (el habano con su anillo dorado)
+    const stick=new THREE.Group();stick.rotation.x=Math.PI/2;
+    const len=slot===15?.11:.14,r=slot===15?.008:.011;
+    stick.add(cylinder(r,len,new THREE.MeshStandardMaterial({color:slot===15?0x5a3a1e:0x4a2a12,roughness:.9}),len/2));
+    if(slot===16)stick.add(cylinder(r+.0006,.012,new THREE.MeshStandardMaterial({color:0xc9a13b,roughness:.4,metalness:.5}),len*.8));
+    const coal=cylinder(r*.92,.004,ember(),len+.002);coal.name='ember';stick.add(coal);
+    group.add(stick);
+  } else if(slot===17){ // pipa: cazoleta de madera, brasa y boquilla
+    group.add(mesh(new THREE.CylinderGeometry(.018,.015,.035,16),new THREE.MeshStandardMaterial({color:0x5a2e14,roughness:.45}),0,.02,0));
+    const coal=mesh(new THREE.CylinderGeometry(.014,.014,.003,12),ember(),0,.037,0);coal.name='ember';group.add(coal);
+    const stem=mesh(new THREE.CylinderGeometry(.005,.006,.1,8),new THREE.MeshStandardMaterial({color:0x151515,roughness:.3}),0,.008,.055);stem.rotation.x=Math.PI/2-.2;group.add(stem);
+  } else if(slot===18){ // bong de vidrio con agua, el tubito y la brasa
+    const teal=new THREE.MeshStandardMaterial({color:0x5fd8c8,roughness:.06,transparent:true,opacity:.42,depthWrite:false});
+    group.add(mesh(new THREE.CylinderGeometry(.026,.026,.24,20,1,true),teal,0,.08));
+    group.add(mesh(new THREE.SphereGeometry(.055,20,14),teal,0,-.06));
+    group.add(mesh(new THREE.SphereGeometry(.05,16,10,0,Math.PI*2,Math.PI/2,Math.PI/2),liquid(0x6ab0c8),0,-.065));
+    const ds=mesh(new THREE.CylinderGeometry(.006,.006,.08,8),glass,.035,-.03,0);ds.rotation.z=-.7;group.add(ds);
+    group.add(mesh(new THREE.CylinderGeometry(.014,.008,.018,12),glass,.062,0,0));
+    const coal=mesh(new THREE.CylinderGeometry(.011,.011,.003,10),ember(),.062,.008,0);coal.name='ember';group.add(coal);
+  } else if(slot===19){ // brownie
+    group.add(mesh(new THREE.BoxGeometry(.07,.034,.065),new THREE.MeshStandardMaterial({color:0x3a1e0e,roughness:.85}),0,0));
+    group.add(mesh(new THREE.BoxGeometry(.066,.004,.061),new THREE.MeshStandardMaterial({color:0x5a3018,roughness:.6}),0,.019));
+  }
 }
 let _bill=null;
 // Billete de 100 dólares (verde grisáceo, guarda, retrato en óvalo, sellos, "100" en las esquinas). Se dibuja una vez y
@@ -135,13 +190,13 @@ export { billTexture };
 export class EquipmentView {
   constructor(scene){this.scene=scene;this.group=null;this.slot=0;}
   update(char,slot,yaw,action,actionT=0,hidden=false){
-    const desired=hidden||![1,2,3,5,6,7,8,9,10].includes(slot)?0:slot;
+    const desired=hidden||!([1,2,3,5,6,7,8,9,10].includes(slot)||SLOT_KIND[slot])?0:slot;
     if(desired!==this.slot){this.dispose();this.slot=desired;if(desired){this.group=createEquippedModel(desired);this.scene.add(this.group);}}
     if(!this.group)return;
     char.root.updateWorldMatrix(true,true);char.handR.getWorldPosition(this.group.position);
     this.group.rotation.set(0,yaw,0,'YXZ');
-    if(action==='drink'&&(slot===1||slot===8))this.group.rotateX(-1.3*Math.sin(Math.min(1,actionT/1.7)*Math.PI));
-    if(slot===2){this.group.position.y+=.018;const ember=this.group.getObjectByName('ember');if(ember)ember.material.emissiveIntensity=action==='smoke'?2:.65;}
+    if(action==='drink'&&(slot===1||slot===8||SLOT_KIND[slot]==='drink'||slot===18))this.group.rotateX(-1.3*Math.sin(Math.min(1,actionT/1.7)*Math.PI));
+    if(slot===2||SLOT_KIND[slot]==='smoke'){if(slot===2)this.group.position.y+=.018;const ember=this.group.getObjectByName('ember');if(ember)ember.material.emissiveIntensity=action==='smoke'||(slot===18&&action==='drink')?2:.65;}
     if(slot===3&&action==='spray')this.group.rotateX(-.15);
     if(slot===6){this.group.rotateX(-(char.aimPitch||0));const f=this.group.getObjectByName('flash');if(f){this.flashT=Math.max(0,(this.flashT||0)-1/60);f.material.opacity=this.flashT>0?1:0;}}
   }

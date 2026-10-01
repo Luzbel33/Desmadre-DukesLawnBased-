@@ -274,7 +274,7 @@ export class ClubWings {
     // máquina de café y la gente que atiende
     this.model('b_coffeecart', -15.6, 0, zN + 0.62);
     this.anchors.budtender = new THREE.Vector3(-24, 0, zN + 0.95);
-    this.c.use('club_cafe', [-24, 1.1, zc + 0.6], 2.6, 'Pedir en el coffeeshop', { e: 'give', item: 'smoke' });
+    this.c.use('club_cafe', [-24, 1.1, zc + 0.6], 2.6, 'Pedir en el coffeeshop', { e: 'cafe' });
     // living: sillones, mesas ratonas, sillones individuales, almohadones y plantas
     const tables = [[-31.5, -484], [-24.5, -486.5], [-19, -483], [-25, -492.5], [-19.5, -490.5]];
     for (const [x, z] of tables) {

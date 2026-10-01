@@ -466,7 +466,7 @@ export class Club {
       this.seat(x + 1.1, 0.86, z, -Math.PI / 2, { stool: true });
     }
     this.light(x + 0.6, 2.6, (za + zb) / 2, 0xff3050, 12, 14, { priority: 1.7 });
-    this.use('club_bar', [x + 1.0, 1.1, (za + zb) / 2], 7, 'Pedir un trago', { e: 'bar' });
+    this.use('club_bar', [x + 1.0, 1.1, (za + zb) / 2], 7, 'Pedir un trago (menú)', { e: 'bar' });
     this.anchors.bartender = new THREE.Vector3(x - 0.75, 0, (za + zb) / 2);
   }
 

@@ -89,3 +89,19 @@ test('dropped and thrown items clean themselves up: per-player cap and idle life
   assert.deepEqual([...pm.items.keys()], [held.id], 'idle drops must vanish by themselves, the held one must stay');
   ph.world.free(); G.phys = null; G.props = null;
 });
+
+test('lo que se pide en el Búnker: cada cosa tiene modelo, versión física, número propio y está en un menú', async () => {
+  const { CONSUMABLES, BAR_MENU, CAFE_MENU } = await import('../public/js/shared/consumables.js');
+  const { HELD_ITEMS } = await import('../public/js/shared/held-items.js');
+  const { ITEM_EQ } = await import('../public/js/game/player.js');
+  const { createEquippedModel } = await import('../public/js/game/equipment.js');
+  const slots = new Set(Object.values(ITEM_EQ).filter((s, i, a) => a.indexOf(s) !== i));
+  assert.equal(slots.size, 0, 'two items share a held-model number');
+  for (const [item, c] of Object.entries(CONSUMABLES)) {
+    assert.equal(ITEM_EQ[item], c.slot, `${item} is not synced to other players`);
+    assert.equal(HELD_ITEMS[item]?.slot, c.slot, `${item} has no physical drop`);
+    assert.ok(createEquippedModel(c.slot).children.length > 0, `${item} has no model in the hand`);
+    assert.ok(c.uses >= 1 && ['drink', 'smoke', 'eat'].includes(c.kind));
+  }
+  for (const m of [...BAR_MENU, ...CAFE_MENU]) assert.ok(m.item in ITEM_EQ, `${m.item} in a menu cannot be held`);
+});
