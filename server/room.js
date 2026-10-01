@@ -230,7 +230,7 @@ export class Room {
     const props = [];
     for (const pr of this.props.values()) {
       if (pr.gone) continue;
-      props.push([pr.id, pr.type, ...pr.p.map(r3), ...pr.q.map(r4), pr.o, pr.h]);
+      props.push([pr.id, pr.type, ...pr.p.map(r3), ...pr.q.map(r4), pr.o, pr.h, ...(pr.extra ? [pr.extra] : [])]);
     }
     const vehicles = [];
     for (const v of this.vehicles.values()) {

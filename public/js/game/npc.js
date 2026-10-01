@@ -11,6 +11,7 @@ import { GR, RAPIER, groups } from '../core/physics.js';
 import { goreFor, branchOf } from './gore.js';
 import { EquipmentView } from './equipment.js';
 import { stepSound } from '../audio/surface.js';
+import { startNpcDefense, stepNpcDefense } from './npc-defense.js';
 
 const V1 = new THREE.Vector3();
 const V2 = new THREE.Vector3();
@@ -163,7 +164,7 @@ export class Npc {
     this.char?.dispose?.();
     this.char = null;
     this.pos.copy(this.home.pos); this.yaw = this.baseYaw = this.home.yaw;
-    this.hp = 100; this.lost = 0; this.dead = false; this.deadT = 0; this.down = 0; this.burnT = 0; this.hpShowT = 0;
+    this.hp = 100; this.lost = 0; this.dead = false; this.deadT = 0; this.down = 0; this.burnT = 0; this.hpShowT = 0; this.defense = null;
     this.action = null; this.emote = null; this.speed = 0; this.data = {};
     for (const k of Object.values(this.snap)) k.set(0, 0);
     this.onRespawn?.(this);
@@ -209,6 +210,8 @@ export class Npc {
     this._floatDmg(dmg, point, part === PART.HEAD);
     G.fx?.blood(point.clone(), V1.copy(dir).negate().add(V2.set(0, 0.6, 0)).normalize(), Math.min(1.4, 0.3 + s * 0.6));
     this.onHurt?.(this, s, point, byPlayer);
+    // Choreographed masked dancers keep their existing role and model untouched.
+    if (byPlayer && !this.onHurt && !MODELS[this.look?.model]?.mask) startNpcDefense(this, G.me);
     if (s > 0.2) this.vocal(s > 1 || kind !== 'blunt' ? 'scream' : 'hurt');
     const vel = V1.copy(dir).multiplyScalar(2 + s * 2.5).setY(1 + s * 0.6);
     // gore: filo o bala cortan; un mazazo brutal a la cabeza la revienta
@@ -382,7 +385,7 @@ export class Npc {
     // prendido fuego no hace caso a su rol: corre en pánico (ver _burnStep). Tirado, tampoco: antes el rol seguía
     // andando con el cuerpo en el piso y la posición "lógica" perseguía y pegaba sola (el guardia invisible)
     const moveX = this.pos.x, moveZ = this.pos.z;
-    if (simulate && !(this.burnT > 0) && !(this.down > 0)) this.role?.(this, dt);
+    if (simulate && !(this.burnT > 0) && !(this.down > 0) && !stepNpcDefense(this, dt)) this.role?.(this, dt);
     if (simulate) this._resolveMove();
     if (simulate && !this.sit && !this.down && !this.dead && !(this.burnT > 0) && dt > 0) this.speed = Math.min(5, Math.hypot(this.pos.x - moveX, this.pos.z - moveZ) / dt);
     // mirar a alguien: la cabeza primero, el cuerpo si hace falta

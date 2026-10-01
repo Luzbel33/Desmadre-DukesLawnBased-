@@ -872,9 +872,9 @@ export class Castle {
     this.phys.cylinder(fx, 0.2, fz, 0.2, 1.25);
     this.anchors.fire = new THREE.Vector3(fx, 0, fz);
     this.fire = { x: fx, z: fz, flames: [], boost: 0 };
-    this.fire.vol = this.fire3d(fx, 0.16, fz, 0.62, 0.62, 2.1, { intensity: 1.15 });
+    this.fire.vol = this.fire3d(fx, 0.16, fz, 0.62, 0.62, 0.72, { intensity: 1.15 });
     this.fire.embers = this.world.embers?.add(fx, 0.5, fz, 70, { radius: 0.45, height: 5.5, strength: 1, speed: 0.4 });
-    this.fire.smoke = this.world.smoke?.add(fx, 1.8, fz, 26, { radius: 0.6, height: 9, opacity: 0.16, speed: 0.07 });
+    this.fire.smoke = this.world.smoke?.add(fx, 1.0, fz, 18, { radius: 0.4, height: 4, opacity: 0.045, speed: 0.07 });
     this.fire.light = this.light(fx, 1.25, fz, 0xff7a30, 22, 23, { flicker: true, priority: 3, decay: 1.4, shadow: true });
     this.fire.light2 = this.light(fx, 3.6, fz, 0xff9a50, 5, 14, { flicker: true, priority: 2 });
     // bancos de troncos en ronda (asientos que miran al fuego)

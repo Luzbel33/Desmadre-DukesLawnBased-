@@ -41,3 +41,33 @@ test('thrown bottles invoke the NPC damage, recoil, voice and onHurt pipeline on
   PropManager.prototype._thrownHits.call({},prop);
   assert.equal(npc.hp,hp,'multiple limb contacts counted the same thrown object twice');
 });
+
+test('all equipped drops preserve meshes, state and replica identity with real Rapier bodies', async () => {
+  const { Physics } = await import('../public/js/core/physics.js');
+  const { HELD_ITEMS, heldType } = await import('../public/js/shared/held-items.js');
+  const { createEquippedModel } = await import('../public/js/game/equipment.js');
+  const ph = new Physics(); await ph.init(); G.phys = ph; G.scene = new THREE.Scene(); G.myId = 1;
+  const packets = [], pm = new PropManager({ send: p => packets.push(p) }, null); G.props = pm;
+  for (const [item, spec] of Object.entries(HELD_ITEMS)) {
+    const p = pm.spawnThrow(heldType(item), new THREE.Vector3(0, 2, 0), new THREE.Vector3(0, -.2, 0), { bites: 2 });
+    assert.equal(p.def.item, item); assert.equal(p.group.name, `equipped-${spec.slot}`);
+    assert.ok(p.body.mass() > 0); assert.ok(Math.abs(p.body.mass() - spec.mass) < .001);
+    const reference = createEquippedModel(spec.slot), expected = new THREE.Box3().setFromObject(reference).getSize(new THREE.Vector3());
+    const clone = p.group.clone(); clone.position.set(0,0,0); clone.quaternion.identity();
+    const actual = new THREE.Box3().setFromObject(clone).getSize(new THREE.Vector3());
+    assert.ok(expected.distanceTo(actual) < .00001, `dropped ${item} changed its mesh dimensions`);
+    assert.equal(p.extra.bites, 2); assert.equal(packets.at(-1).k, heldType(item)); assert.equal(packets.at(-1).x.bites, 2);
+    pm.remove(p.id);
+  }
+  ph.world.free(); G.phys = null; G.props = null;
+});
+
+test('G launches the actual item and drops do not require arm movement', async () => {
+  const { releaseEquipped } = await import('../public/js/game/held-release.js');
+  const spawned=[]; G.props={spawnThrow(type,pos,vel){spawned.push({type,pos,vel}); return {id:1};}};
+  G.camera={getWorldDirection:v=>v.set(0,0,1)};
+  const p={hands:{l:{item:'potion'}},handPos:(_,v)=>v.set(0,1,0),handVelocity:()=>new THREE.Vector3()};
+  assert.ok(releaseEquipped(p,'l',{throwing:true}));
+  assert.equal(spawned[0].type,'held_potion'); assert.ok(spawned[0].vel.z>12);
+  assert.equal(p.hands.l.item,null);
+});

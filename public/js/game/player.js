@@ -17,6 +17,7 @@ import { HumanCharacter } from '../char/human.js';
 import { PoseRig } from '../char/rig.js';
 import { PoseContact } from './pose-contact.js';
 import { gripCandidate } from './grip-target.js';
+import { releaseEquipped, recoverEquipped } from './held-release.js';
 import { Ragdoll, PART } from './ragdoll.js';
 import { HitReact, ROLL } from './react.js';
 import { EquipmentView } from './equipment.js';
@@ -1290,23 +1291,7 @@ export class LocalPlayer {
       best.body.grabCount = (best.body.grabCount || 0) + 1;
       return true;
     }
-    if (best.kind === 'prop') {
-      // firme en la mano (sin resorte: el arma no cuelga ni se bambolea). Si ya está en la otra mano,
-      // ahora va con las dos (la que lo agarró primero manda y esta se pone en el mango).
-      const p = best.prop;
-      const other = this.hands[side === 'l' ? 'r' : 'l'];
-      if (other.prop !== p.id) {
-        if (!G.props.claimForHand(p, side)) return false;
-        G.props.hold(p, side, this.yaw);
-      }
-      h.joint = HOLD_JOINT;
-      h.prop = p.id;
-      h.fixed = false;
-      h.spring = false;
-      if (side === 'r') this.heldProp = p.id;
-      this.onEvent?.('grab', { side, prop: p.id });
-      return true;
-    }
+    if (best.kind === 'prop') return this.takeProp(best.prop, side);
     // agarrar a otro jugador: mi mano se queda en ese punto de su cuerpo y le aviso; él siente el tirón
     // (su cliente lo mueve hacia mi mano). Él sigue en control: puede resistir, pegarme o zafarse.
     const rp = best.rp;
@@ -1329,6 +1314,21 @@ export class LocalPlayer {
     return true;
   }
 
+  takeProp(p, side = 'r') {
+    if (!p || !this.hasHand(side) || (p.heldBy && p.heldBy !== G.myId)) return false;
+    const h = this.hands[side];
+    if ((h.item || h.joint) && !this.release(side, false)) return false;
+    const other = this.hands[side === 'l' ? 'r' : 'l'];
+    if (other.prop !== p.id) {
+      if (!G.props.claimForHand(p, side)) return false;
+      G.props.hold(p, side, this.yaw);
+    }
+    h.joint = HOLD_JOINT; h.prop = p.id; h.fixed = false; h.spring = false;
+    if (side === 'r') this.heldProp = p.id;
+    this.onEvent?.('grab', { side, prop: p.id });
+    return true;
+  }
+
   // Punto donde tengo agarrado a otro (mundo) o null si ya no está
   _gripAnchor(h, out) {
     const rp = G.players.get(h.player);
@@ -1347,11 +1347,7 @@ export class LocalPlayer {
   release(side, throwIt = true) {
     const h = this.hands[side];
     if (h.item) {
-      // consumible "de la heladerita": se revolea como objeto físico
-      const item = h.item;
-      h.item = null;
-      if (throwIt && (item === 'beer' || item === 'spray')) this.onEvent?.('throwitem', { side, item });
-      return true;
+      return releaseEquipped(this, side);
     }
     if (!h.joint) return false;
     if (h.loose) {
@@ -1575,6 +1571,7 @@ export class LocalPlayer {
     if (h.joint) this.release(side, false);
     h.item = item;
     h.bites = 0;
+    h.itemGeneration = (h.itemGeneration || 0) + 1;
   }
 
   // ---------------------------------------------------------------- brazos (mouse)
@@ -1582,8 +1579,16 @@ export class LocalPlayer {
     const k = side === 'l' ? 0 : 1;
     return this.rig.upperLen[k] + this.rig.foreLen[k];
   }
+  setCombatBlocked(value) {
+    const blocked = !!value;
+    if (blocked && !this.combatBlocked) {
+      this._resetArms();
+      if (['kick', 'headbutt'].includes(this.action)) { this.action = null; this.actionT = 0; }
+    }
+    this.combatBlocked = blocked;
+  }
   _canUseArms() {
-    return ['active', 'stun', 'seated', 'driving'].includes(this.state) && !this.dead;
+    return !this.combatBlocked && ['active', 'stun', 'seated', 'driving'].includes(this.state) && !this.dead;
   }
 
   // click sostenido: control libre del brazo
@@ -1633,6 +1638,7 @@ export class LocalPlayer {
 
   // click corto: usar lo que hay en la mano o tirar una piña
   tap(side) {
+    if (this._canUseArms() && this.hasHand(side)) recoverEquipped(this, side);
     if (!this._canUseArms() || !this.hasHand(side)) return null;
     const h = this.hands[side];
     const a = this.arm[side];
@@ -1646,7 +1652,7 @@ export class LocalPlayer {
     // el Búnker: tirar billetes, disparar, revolear la granada
     if (h.item === 'cash') { startScript(a, 'throw', 0.42, this._aimLocal(side, V3, 0.9)); return 'cash'; }
     if (h.item === 'pistol') return 'shoot';
-    if (h.item === 'grenade') { startScript(a, 'throw', 0.42, this._aimLocal(side, V3, 0.95)); this.hands[side].item = null; return 'nade'; }
+    if (h.item === 'grenade') { startScript(a, 'throw', 0.42, this._aimLocal(side, V3, 0.95)); return 'nade'; }
     const held = h.prop ? G.props?.get(h.prop) : null;
     if (held?.type === 'popcorn') { startScript(a, 'eat', 1.1); return 'eat'; }
     // mano libre y en la otra un balde de pochoclos: agarra un puñado y lo revolea
@@ -1685,13 +1691,13 @@ export class LocalPlayer {
   }
 
   kick() {
-    if (this.state !== 'active') return;
+    if (this.combatBlocked || this.state !== 'active') return;
     this.setAction('kick', 0.5);
     this.push.x += Math.sin(this.yaw) * 0.8;
     this.push.y += Math.cos(this.yaw) * 0.8;
   }
   headbutt() {
-    if (this.state !== 'active') return;
+    if (this.combatBlocked || this.state !== 'active') return;
     this.setAction('headbutt', 0.42);
     this.push.x += Math.sin(this.yaw) * 1.1;
     this.push.y += Math.cos(this.yaw) * 1.1;

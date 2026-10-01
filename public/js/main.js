@@ -18,6 +18,7 @@ import { FX, Decals } from './fx/particles.js';
 import { LocalPlayer, RemotePlayer, predictHit } from './game/player.js';
 import { VehicleManager } from './game/entities.js';
 import { PropManager, defOf } from './game/props.js';
+import { releaseEquipped } from './game/held-release.js';
 import { preloadAssets, registerManifest } from './game/assets.js';
 import { Haunt } from './game/haunt.js';
 import { ClubGame } from './game/club.js';
@@ -830,24 +831,19 @@ function saveAudioOptions() {
 function quickThrow() {
   const L = state.local;
   if (!L || !['active', 'stun', 'seated'].includes(L.state)) return;
-  const side = L.hands.r.joint || L.hands.r.item ? 'r' : L.hands.l.joint ? 'l' : null;
+  const side = L.hands.r.joint || L.hands.r.item ? 'r' : L.hands.l.joint || L.hands.l.item ? 'l' : null;
   if (!side) return;
   if (L.startThrow(side)) G.sfx?.trigger('swing', null, 0.45);
 }
 
 function doThrowRelease(side) {
   const L = state.local;
-  if (!L) return;
+  if (!L || L.combatBlocked) return;
   const h = L.hands[side];
   const dir = G.camera.getWorldDirection(new THREE.Vector3());
   const hv = L.handVelocity(side);
   if (h.item) {
-    const item = h.item;
-    h.item = null;
-    if (item === 'smoke') { G.fx?.ember(L.handPos(side, new THREE.Vector3())); updateHotbar(); return; }
-    const pos = L.handPos(side, new THREE.Vector3()).addScaledVector(dir, 0.18);
-    state.props.spawnThrow(item === 'beer' ? 'bottle' : 'spraycan', pos, dir.clone().multiplyScalar(14.5).addScaledVector(hv, 0.3).add(new THREE.Vector3(0, 1.8, 0)));
-    G.sfx?.trigger('swing', null, 0.6);
+    if (releaseEquipped(L, side, { throwing: true, direction: dir, velocity: hv })) G.sfx?.trigger('swing', null, 0.6);
     updateHotbar();
     return;
   }
@@ -900,7 +896,8 @@ function hitFx(pos, amount = 0.5, dir = null) {
 function doTap(side) {
   const L = state.local;
   if (!L) return;
-  const r = L.tap(side);
+  const r = L.tap(side), hand = L.hands[side], item = hand.item, generation = hand.itemGeneration || 0;
+  const stillHeld = () => state.local === L && !L.dead && hand.item === item && (hand.itemGeneration || 0) === generation;
   if (r === 'drink') {
     G.sfx?.trigger('pickup', null, 0.25);
     setTimeout(() => {
@@ -922,9 +919,9 @@ function doTap(side) {
     // la poción de la bruja: un efecto al azar (y el frasco se termina)
     setTimeout(() => {
       const P = state.local;
-      if (!P) return;
+      if (!stillHeld()) return;
       G.sfx?.trigger('gulp', null, 0.7);
-      P.hands.r.item = null; updateHotbar();
+      hand.item = null; hand.itemGeneration = generation + 1; updateHotbar();
       const fx = [
         () => { P.speedHigh = 1; bigMessage('¡PATAS DE LIEBRE!', 'Corrés como si te persiguiera el Diablo', 1800); },
         () => { P.pill = 1; bigMessage('TODO BRILLA', 'La poción era de colores', 1800); },
@@ -938,16 +935,16 @@ function doTap(side) {
   } else if (r === 'food') {
     setTimeout(() => {
       const P = state.local;
-      if (!P) return;
+      if (!stillHeld()) return;
       G.sfx?.trigger('munch', null, 0.6);
       P.heal(14, { blood: 8 });
       // tres mordiscos y se terminó
-      P.hands.r.bites = (P.hands.r.bites || 0) + 1;
-      if (P.hands.r.bites >= 3) { P.hands.r.item = null; P.hands.r.bites = 0; updateHotbar(); }
+      hand.bites = (hand.bites || 0) + 1;
+      if (hand.bites >= 3) { hand.item = null; hand.bites = 0; hand.itemGeneration = generation + 1; updateHotbar(); }
     }, 450);
   } else if (r === 'cash') G.items?.throwCash(L);
   else if (r === 'shoot') G.items?.shoot(L);
-  else if (r === 'nade') { G.items?.throwNade(L); updateHotbar(); }
+  else if (r === 'nade') { G.items?.throwNade(L,side); updateHotbar(); }
   else if (r === 'punch' || r === 'swing') G.sfx?.trigger('swing', null, r === 'swing' ? 0.45 : 0.28);
 }
 
@@ -1050,7 +1047,7 @@ function handleEvent(m) {
       if (rp) rp.stateData = { ...(rp.stateData || {}), em: m.e, et: 0 };
       break;
     case 'rs': // reapareció: cuerpo entero y limpio para todos
-      rp?.resetBody();
+      rp?.resetBody(); G.owner?.extinguish(m.id);
       break;
     default:
       break;
@@ -1164,16 +1161,11 @@ function onLocalEvent(type, d) {
       updateHotbar();
       break;
     case 'respawn':
+      G.owner?.extinguish('me');
       net?.send({ t: 'ev', k: 'rs' });
       break;
     case 'throwitem': {
-      const L = state.local;
-      const dir = G.camera.getWorldDirection(new THREE.Vector3());
-      const v = L.handVelocity(d.side);
-      if (v.length() > 2.5) {
-        const pos = L.handPos(d.side, new THREE.Vector3());
-        state.props.spawnThrow(d.item === 'beer' ? 'bottle' : 'spraycan', pos, v.multiplyScalar(1.4).addScaledVector(dir, 3));
-      }
+      if (state.local) releaseEquipped(state.local, d.side);
       updateHotbar();
       break;
     }
@@ -1260,7 +1252,7 @@ function setupNetHandlers(net) {
   net.on('gt', (m) => G.grass.growTo(m.n));
   net.on('po', (m) => { state.props.handleOwnership(m); updateHotbar(); });
   net.on('pa', (m) => {
-    const p = state.props.addRow(m.pr);
+    const p = state.props.addRow(m.x ? [...m.pr.slice(0, 11), m.x] : m.pr);
     // algo revoleado por otro (una birra, un aerosol): peligroso por un rato
     if (p && m.v) { p.thrownAt = performance.now(); p.thrownBy = m.pr[9] || 0; }
   });
@@ -1560,6 +1552,11 @@ function updateInput(dt) {
   if (state.mode !== 'game' || !G.input.locked || !state.local) return;
   const L = state.local;
   const inp = G.input;
+  if (inp.hit('KeyY')) {
+    state.cameraMode = (state.cameraMode + 1) % 4;
+    G.hud?.notify(['Cámara: tercera persona', 'Cámara: tercera persona cerca', 'Cámara: primera persona', 'Cámara: <b>de frente</b> · ataques desactivados'][state.cameraMode], 1600);
+  }
+  L.setCombatBlocked(state.cameraMode === 3);
   const sens = 0.0022 * G.opts.sens;
   if (state.radial?.open) { stepRadial(inp); return; } // menú de gestos: el mouse elige, la cámara queda quieta
   // al subirte a un vehículo la mirada baja un poco: se ven el volante, el tablero y las manos
@@ -1567,12 +1564,12 @@ function updateInput(dt) {
     state.driving = L.vehicle || null;
     if (L.vehicle) { state.viewYaw = L.vehicle.yaw; state.viewPitch = Math.min(state.viewPitch, -0.3); }
   }
-  const painting = L.hands.r.item === 'spray';
+  const painting = !L.combatBlocked && L.hands.r.item === 'spray';
   const driving = !!L.vehicle;
   const onFoot = !driving && !L.seat;
   const down = L.dead || L.state === 'ko';
   // los dos clicks: guardia (manos arriba, la cámara sigue libre)
-  const bothHeld = inp.btn(0) && inp.btn(2) && !painting && !driving && !down;
+  const bothHeld = !L.combatBlocked && inp.btn(0) && inp.btn(2) && !painting && !driving && !down;
   L.setGuard(bothHeld);
   // brazo controlado con el mouse (Half Sword): el mouse mueve la mano; lo que sobra al llegar al tope del
   // brazo gira el cuerpo (el brazo arrastra). Pintando, la mira sigue a la cámara.
@@ -1612,11 +1609,6 @@ function updateInput(dt) {
   }
   if (inp.hit('KeyT') || inp.hit('Enter')) openChat();
   if (inp.hit('Tab')) renderPlayerList();
-  if (inp.hit('KeyY')) {
-    // Y: tercera lejos -> tercera cerca -> primera persona -> de frente (para verte la cara y la pinta)
-    state.cameraMode = (state.cameraMode + 1) % 4;
-    G.hud?.notify(['Cámara: tercera persona', 'Cámara: tercera persona cerca', 'Cámara: primera persona', 'Cámara: <b>de frente</b> (mirate)'][state.cameraMode], 1400);
-  }
   G.owner?.input(inp); // Diablo: K/rueda aliento · N bola · I invisible · O inmortal · L risa
   const items = [null, 'beer', 'smoke', 'spray', null];
   for (let i = 1; i <= 4; i++) {
@@ -1632,7 +1624,7 @@ function updateInput(dt) {
   const now = performance.now();
   state.press = state.press || { l: 0, r: 0 };
   for (const [btn, side] of [[0, 'r'], [2, 'l']]) {
-    if (down) { L.armControl(side, false); continue; }
+    if (down || L.combatBlocked) { L.armControl(side, false); state.press[side] = -1e9; continue; }
     if (side === 'r' && painting) { L.armControl('r', inp.btn(0) && !driving); continue; }
     if (inp.btnHit(btn)) state.press[side] = now;
     if (bothHeld) { L.armControl(side, false); state.press[side] = -1e9; continue; } // la guardia no dispara piñas al soltar

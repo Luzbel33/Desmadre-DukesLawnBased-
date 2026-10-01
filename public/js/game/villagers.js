@@ -6,6 +6,8 @@
 import * as THREE from 'three';
 import { G, clamp } from '../core/G.js';
 import { Npc } from './npc.js';
+import { startNpcDefense } from './npc-defense.js';
+import { SCREEN_BY_ID } from '../shared/mapdata.js';
 import { whenAsset, assetModel } from './assets.js';
 
 const V1 = new THREE.Vector3();
@@ -16,6 +18,12 @@ const NEAR = 40, FAR = 75, PHYS = 30;
 
 // ---------------------------------------------------------------- lo que vende cada puesto
 export const SHOPS = {
+  cinema: {
+    title: 'Pochoclos del cine', vendor: 'cineVendor',
+    items: [{ id: 'popcorn', icon: '🍿', name: 'Balde de pochoclos', desc: 'Para comer mirando la película. O revolear.' }, { id: 'beer', icon: '🍺', name: 'Una birra', desc: 'Bien fría.' }],
+    hello: ['¿Dulces o salados? ¡Hay pochoclos!', 'Pasá, la película ya empieza.'],
+    sold: ['¡Disfrutá la peli!', 'No me ensucien las butacas, eh.'],
+  },
   potions: {
     title: 'Pociones de la Bruja Morgana', vendor: 'bruja',
     items: [{ id: 'potion', icon: '🧪', name: 'Poción misteriosa', desc: 'Nadie sabe qué hace. Ni ella.' }],
@@ -133,9 +141,15 @@ export class Villagers {
     add('pepe', 'El Negro Pepe', 'v_parrillero', [-17.2, 0, -97.35], Math.PI, (n) => this._vendor(n, 'grill'));
     // el bar El Cortacésped: Rulo atiende la barra; dos parados tomando en una mesa alta
     add('rulo', 'Rulo', 'bartender', [104, 0, -41.1], 0, (n) => this._vendor(n, 'barra'));
-    const b1 = add('toro2', 'Un grandote', 'toro', [99.5, 0, -33.6], Math.PI, (n) => this._chatter(n), { item: 1 });
-    const b2 = add('venus2', 'Una morocha', 'coneja', [99.5, 0, -35.4], 0, (n) => this._chatter(n), { item: 1 });
-    this._pair(b1, b2, 'bar');
+    // Use real couch/bench seats. Never stand NPCs inside loose chair props.
+    const barSeats = (this.world.seats || []).filter(s => !s.poker && !s.taken && s.x > 95 && s.x < 123 && s.z > -43 && s.z < -20);
+    const patrons = [['toro2','Un grandote','toro'], ['venus2','Una morocha','coneja'], ['barTito','Don Tito del bar','v_vecino'], ['barFan','El hincha del bar','v_hincha']];
+    const bar = [];
+    patrons.forEach(([key,name,model],i) => { if (barSeats[i]) bar.push(this._sitter(add,key,name,model,barSeats[i],1,'bar')); });
+    this._group(bar, 'bar');
+    add('cineVendor', 'El Pochoclero', 'v_tabernero', [98,0,-9.7], 0, n => this._vendor(n,'cinema'));
+    const cinemaSeats = (this.world.seats || []).filter(s => !s.poker && !s.taken && s.x >= 103 && s.x < 120 && Math.abs(s.z-2) < 7);
+    [5,22,41,61].forEach((index,i) => { const seat=cinemaSeats[index]; if(seat) this._sitter(add,'cineViewer'+i,['El Cinéfilo','El Vecino','El Trasnochado','El Fanático'][i],['v_vecino','v_granjero','v_tabernero','v_hincha'][i],seat,0,'cinema'); });
     // la cancha: dos hinchas alentando; el Gran Pasto: una que sale a correr
     add('hincha1', 'Hincha', 'v_hincha', [-6.5, 0, 17.3], 0, (n) => this._fan(n));
     add('hincha2', 'Hincha', 'v_hincha', [-5.2, 0, 17.1], 0.2, (n) => this._fan(n), { h: 0.96 });
@@ -178,9 +192,9 @@ export class Villagers {
         if (nn.item === 1) { nn.action = 'drink'; nn.actionT = 0; nn.actionEnd = 1.6; }
         else if (nn.item === 2) { nn.action = 'smoke'; nn.actionT = 0; nn.actionEnd = 1.4; setTimeout(() => { if (nn.char && !nn.dead) G.fx?.puff(nn.char.headWorld?.(V1) || nn.pos, V2.set(Math.sin(nn.yaw), 0.4, Math.cos(nn.yaw)), 0.6, 0xb8b0a8); }, 1100); }
       }
-      nn.lookAt = d.partner && !d.partner.dead ? d.partner.pos : this._near(nn, 4);
+      nn.lookAt = group === 'cinema' ? new THREE.Vector3(...SCREEN_BY_ID.cine.c) : d.partner && !d.partner.dead ? d.partner.pos : this._near(nn, 4);
     }, { item });
-    n.data.seat = ws;
+    n.data.seat = ws; n.sit = true; n.table = !!seat.table;
     return n;
   }
   _chatter(n) {
@@ -319,6 +333,7 @@ export class Villagers {
     G.sfx?.trigger(s > 0.8 ? 'hit' : 'hit-soft', point, Math.min(1, 0.4 + s * 0.4));
     G.fx?.blood(point.clone(), V1.set(Math.random() - 0.5, 0.6, Math.random() - 0.5).normalize(), Math.min(1.2, s));
     if (!byPlayer) return;
+    startNpcDefense(npc, this.getLocal());
     const k = npc.data.key;
     if (k === 'guardia1' || k === 'guardia2' || k === 'toro2') { npc.data.aggro = G.time + 12; npc.say(pick(['¡Te la buscaste!', 'Ahora vas a ver.', 'Mal día para pegarme.']), 2.2); }
     else if ((npc.data.ouchT ?? 0) < G.time) { npc.data.ouchT = G.time + 4; npc.say(pick(['¡¿Qué hacés, loco?!', '¡Ay! ¡Salvaje!', '¡Guardia! ¡GUARDIA!', '¡Pará, pará!']), 2.2); for (const g of [this.byKey.guardia1, this.byKey.guardia2]) if (g && !g.dead && g.pos.distanceTo(npc.pos) < 35) g.data.aggro = G.time + 12; }
@@ -424,6 +439,12 @@ export class Villagers {
       v.say(f, 5);
       this.big?.('🔮 LAS CARTAS DICEN', f, 3200);
       return;
+    }
+    if (id === 'popcorn') {
+      const pos = L.handPos('r', new THREE.Vector3());
+      const prop = G.props?.spawnThrow('popcorn', pos, new THREE.Vector3());
+      if (prop) L.takeProp(prop, 'r');
+      v.say(pick(s.sold), 2.8); this.onItems?.(); return;
     }
     if (id === 'round') {
       L.giveItem('beer');

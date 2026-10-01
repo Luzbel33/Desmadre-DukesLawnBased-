@@ -343,6 +343,7 @@ F('ramp', -95, 0, 38, Math.PI / 2 + 0.3, { w: 4, l: 5, h: 1.0 });
 // Puntos de interacción (se completan en el cliente con los muebles que tienen id)
 export const INTERACT = [
   { id: 'rockola', k: 'media', screen: 'rockola', p: [99.6, 1.0, -21.2], r: 1.8, label: 'Elegir música en la rockola' },
+  { id: 'cine_pochoclos', k: 'npc', shop: 'cinema', p: [98,1,-7.8], r: 2, label: 'Pedir pochoclos o una bebida' },
   { id: 'cine_cabina', k: 'media', screen: 'cine', p: [97.5, 1.0, 2], r: 2.2, label: 'Elegir película / video' },
   { id: 'cine_cabina2', k: 'media', screen: 'cine', p: [103, 1.0, 2], r: 2.0, label: 'Elegir película / video' },
   { id: 'autocine_poste', k: 'media', screen: 'autocine', p: [0, 1.0, 64], r: 2.4, label: 'Elegir video del autocine' },
