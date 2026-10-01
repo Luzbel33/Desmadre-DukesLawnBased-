@@ -112,6 +112,8 @@ export function startScript(a, kind, dur, aim = null) {
   a.dur = dur;
   a.kicked = false;
   a.released = false;
+  a.handful = false; // revoleo de un puñado de pochoclos (lo marca tap después)
+  a.cash = 0; // revoleo de plata: 1 = un fajo, -1 = todos (lo marca tap después)
   if (aim) a.aim.copy(aim);
   if (kind === 'punch' || kind === 'swing') a.stance = ARM.stance;
 }

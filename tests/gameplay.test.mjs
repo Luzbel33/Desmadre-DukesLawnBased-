@@ -960,6 +960,11 @@ test('tirar plata hace el gesto pero el fajo no sale volando como objeto (antes 
   assert.equal(p.tap('r'), 'cash');
   for (let k = 0; k < 45; k++) frame(p, ph);
   assert.equal(events.filter(e => e.type === 'throwrelease').length, 0, 'the throw gesture released the whole bundle');
+  assert.deepEqual(events.filter(e => e.type === 'cashthrow').map(e => e.d), [{ side: 'r', all: false }], 'one bundle leaves the money hand at the end of the swing');
   assert.equal(p.hands.r.item, 'cash');
+  // como los pochoclos: la mano libre agarra del fajo y revolea todo
+  assert.equal(p.tap('l'), 'cashall');
+  for (let k = 0; k < 45; k++) frame(p, ph);
+  assert.deepEqual(events.filter(e => e.type === 'cashthrow').map(e => e.d).at(-1), { side: 'l', all: true });
   G.players = new Map(); ph.world.free();
 });

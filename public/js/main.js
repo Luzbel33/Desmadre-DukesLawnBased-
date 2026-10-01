@@ -546,7 +546,7 @@ function updatePrompt() {
     if (it === 'beer') H.hint('beer', 'Click', 'Tomar');
     else if (it === 'smoke') H.hint('smoke', 'Click', 'Pitar');
     else if (it === 'spray') H.hint('spray', 'Click', `Pintar (sostenido) · ${keys.label('palette')} colores`);
-    else if (it === 'cash') H.hint('cash', 'Click', `Tirar un fajo · click der.: todos (${L.hands.r.fajos ?? CASH_BUNDLES})`);
+    else if (it === 'cash') H.hint('cash', 'Click', `Tirar un fajo · click der.: agarrar y tirar todo (${L.hands.r.fajos ?? CASH_BUNDLES})`);
     else if (it === 'pistol') H.hint('pistol', 'Click', 'Disparar');
     else if (it === 'grenade') H.hint('grenade', 'Click', 'Revolear la granada (explota a los 3 s)');
     else if (it === 'potion') H.hint('potion', 'Click', 'Tomarse la poción (vaya uno a saber qué hace)');
@@ -941,27 +941,23 @@ function hitFx(pos, amount = 0.5, dir = null) {
 }
 
 // click corto de un brazo
-// La plata (en cualquier mano): click izquierdo tira un fajo, derecho todos los que quedan. Son billetes: no lastiman.
+// La plata, como los pochoclos: con la mano de los dólares (click izquierdo) sale un fajo; con la mano libre (derecho)
+// agarrás del fajo y revoleás todo lo que queda. Salen al final del envión. Son billetes: no lastiman.
 // Sin fajos se termina; la pila del trono del Diablo no se acaba.
-function tapCash(L, button) {
-  const cs = L.hands.r.item === 'cash' ? 'r' : L.hands.l.item === 'cash' ? 'l' : null;
-  if (!cs) return false;
-  const other = L.hands[button];
-  if (button !== cs && (other.item || other.prop || other.joint)) return false; // la otra mano ocupada: usa lo suyo
-  const h = L.hands[cs];
-  if (L.tap(cs) !== 'cash') return true;
-  const left = h.fajos ?? CASH_BUNDLES, n = button === 'r' ? 1 : left;
-  G.items?.throwCash(L, n, cs);
+function throwCashFrom(side, all) {
+  const L = state.local;
+  const cs = L?.hands.r.item === 'cash' ? 'r' : L?.hands.l.item === 'cash' ? 'l' : null;
+  if (!cs) return;
+  const h = L.hands[cs], left = h.fajos ?? CASH_BUNDLES, n = all ? left : 1;
+  G.items?.throwCash(L, n, side);
   h.fajos = left - n;
   if (h.fajos <= 0) { h.item = null; h.fajos = 0; h.itemGeneration = (h.itemGeneration || 0) + 1; G.hud?.notify('💸 Te quedaste seco. Hay más dólares al lado del trono.', 2200); }
   updateHotbar();
-  return true;
 }
 
 function doTap(side) {
   const L = state.local;
   if (!L) return;
-  if (tapCash(L, side)) return;
   const r = L.tap(side), hand = L.hands[side], item = hand.item, generation = hand.itemGeneration || 0;
   const stillHeld = () => state.local === L && !L.dead && hand.item === item && (hand.itemGeneration || 0) === generation;
   if (r === 'drink') {
@@ -1008,7 +1004,7 @@ function doTap(side) {
       hand.bites = (hand.bites || 0) + 1;
       if (hand.bites >= 3) { hand.item = null; hand.bites = 0; hand.itemGeneration = generation + 1; updateHotbar(); }
     }, 450);
-  } else if (r === 'cash') G.items?.throwCash(L);
+  } else if (r === 'cash' || r === 'cashall') G.sfx?.trigger('swing', null, 0.3); // los billetes salen al final del envión ('cashthrow')
   else if (r === 'shoot') G.items?.shoot(L);
   else if (r === 'nade') { G.items?.throwNade(L,side); updateHotbar(); }
   else if (r === 'punch' || r === 'swing') G.sfx?.trigger('swing', null, r === 'swing' ? 0.45 : 0.28);
@@ -1198,6 +1194,9 @@ function onLocalEvent(type, d) {
       break;
     case 'handful':
       throwPopcorn(d.side);
+      break;
+    case 'cashthrow':
+      throwCashFrom(d.side, d.all);
       break;
     case 'ko':
       bigMessage('KO', 'Quedaste en el piso...', 2200);

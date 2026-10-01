@@ -1652,9 +1652,10 @@ export class LocalPlayer {
     if (h.item === 'chori' || h.item === 'apple') { startScript(a, 'eat', 1.1); return 'food'; }
     if (h.item === 'spray') return 'spray';
     // el Búnker: tirar billetes, disparar, revolear la granada
-    // la plata: el brazo hace el gesto de tirar billetes, pero el fajo queda en la mano (antes al final del envión se
-    // soltaba entero como objeto: pegaba y se juntaban fajos tirados)
-    if (h.item === 'cash') { startScript(a, 'throw', 0.42, this._aimLocal(side, V3, 0.9)); a.released = true; return 'cash'; }
+    // la plata, como los pochoclos: la mano con los dólares tira un fajo y la mano libre agarra del fajo y revolea todo
+    // (abajo). Los billetes salen al final del envión ('cashthrow'); el fajo nunca sale volando entero (antes pegaba y
+    // se juntaban fajos tirados).
+    if (h.item === 'cash') { startScript(a, 'throw', 0.42, this._aimLocal(side, V3, 0.9)); a.cash = 1; return 'cash'; }
     if (h.item === 'pistol') return 'shoot';
     if (h.item === 'grenade') { startScript(a, 'throw', 0.42, this._aimLocal(side, V3, 0.95)); return 'nade'; }
     const held = h.prop ? G.props?.get(h.prop) : null;
@@ -1666,6 +1667,11 @@ export class LocalPlayer {
       startScript(a, 'throw', 0.42, this._aimLocal(side, V3, 0.9));
       a.handful = true;
       return 'handful';
+    }
+    if (!h.prop && !h.player && !h.item && other.item === 'cash') {
+      startScript(a, 'throw', 0.42, this._aimLocal(side, V3, 0.9));
+      a.cash = -1;
+      return 'cashall';
     }
     if (this.state === 'driving') return null; // manejando solo se toma y se fuma
     if (held) {
@@ -2047,7 +2053,7 @@ export class LocalPlayer {
       // revoleo: la mano suelta al final del envión
       if (a.script === 'throw' && !a.released && a.t >= 0.2) {
         a.released = true;
-        this.onEvent?.(a.handful ? 'handful' : 'throwrelease', { side });
+        this.onEvent?.(a.handful ? 'handful' : a.cash ? 'cashthrow' : 'throwrelease', { side, all: a.cash < 0 });
       }
     }
   }
