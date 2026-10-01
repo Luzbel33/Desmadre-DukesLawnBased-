@@ -400,15 +400,41 @@ export class ClubGame {
 
   // ---------------------------------------------------------------- roles que se repiten
   _near(n, r) { const L = this.getLocal(); return L && Math.hypot(L.pos.x - n.pos.x, L.pos.z - n.pos.z) < r ? L.pos : null; }
-  // bailarinas del caño: giran alrededor, cambian de baile cada tanto y miran al que se acerca
+  // bailarinas del caño: una coreografía de verdad (giros colgadas del caño, ondas de frente, apoyadas de espaldas,
+  // trepadas, de cabeza y un poco de baile suelto). Cada una arranca en otra parte y a otro ritmo.
   _poleRole(c, phase) {
+    const MOVES = [['pole_wave', 8], ['pole_spin', 5], ['dance1', 5], ['pole_lean', 8], ['pole_spin', 6], ['pole_climb', 7], ['pole_invert', 6], ['pole_spin', 4]];
+    const T = new THREE.Vector3();
     return (n, dt) => {
-      const t = G.time * 0.45 + phase;
-      n.pos.set(c.x + Math.sin(t) * 0.42, c.y, c.z + Math.cos(t) * 0.42);
-      n.baseYaw = t + Math.PI / 2 + Math.sin(G.time * 0.3 + phase) * 0.8;
-      n.data.t = (n.data.t || 0) - dt;
-      if (n.data.t <= 0) { n.data.t = 5 + Math.random() * 5; n.emote = ['dance1', 'dance2', 'dance1', 'dance3'][Math.floor(Math.random() * 4)]; n.emoteT = 0; }
-      n.lookAt = this._near(n, 6);
+      const d = n.data;
+      if (d.mi === undefined) { d.mi = Math.floor(phase * 7) % MOVES.length; d.mt = 0; d.th = phase * 2.1; d.y = 0; n.noCollide = true; }
+      d.mt += dt;
+      if (d.mt > MOVES[d.mi][1]) { d.mi = (d.mi + 1) % MOVES.length; d.mt = 0; d.th0 = d.th; }
+      const mv = MOVES[d.mi][0], mt = d.mt, end = MOVES[d.mi][1];
+      if (n.emote !== mv) { n.emote = mv; n.emoteT = 0; }
+      let r = 0.42, yaw, up = 0;
+      if (mv === 'pole_spin') {
+        d.th -= dt * (1.7 + Math.sin(mt * 1.3 + phase) * 0.5); // gira de frente (el caño a su derecha)
+        r = 0.34; yaw = d.th - Math.PI / 2;
+      } else if (mv === 'pole_wave' || mv === 'pole_climb' || mv === 'pole_invert') {
+        if (mv !== 'pole_wave') d.th -= dt * 0.45;
+        r = mv === 'pole_wave' ? 0.38 : 0.27;
+        yaw = Math.atan2(-Math.sin(d.th), -Math.cos(d.th)); // mirando al caño
+        if (mv === 'pole_climb') up = Math.min(1.15, mt * 0.55) * Math.min(1, (end - mt) / 1.2);
+        if (mv === 'pole_invert') up = 1.15 * Math.min(1, mt * 1.5) * Math.min(1, (end - mt) / 0.9);
+      } else if (mv === 'pole_lean') {
+        r = 0.26; yaw = Math.atan2(Math.sin(d.th), Math.cos(d.th)); // de espaldas al caño
+      } else {
+        d.th -= dt * 0.25; r = 0.5; yaw = Math.atan2(Math.sin(d.th), Math.cos(d.th)) + Math.sin(mt) * 0.4;
+      }
+      T.set(c.x + Math.sin(d.th) * r, c.y, c.z + Math.cos(d.th) * r);
+      const k = 1 - Math.exp(-dt * 7);
+      n.pos.x += (T.x - n.pos.x) * k; n.pos.z += (T.z - n.pos.z) * k;
+      d.y += (up - d.y) * Math.min(1, dt * 4);
+      n.pos.y = c.y + d.y;
+      n.baseYaw = yaw;
+      if (mv === 'pole_spin' || mv === 'pole_climb' || mv === 'pole_invert') { n.yaw = yaw; n.lookAt = null; }
+      else n.lookAt = this._near(n, 6);
     };
   }
   // la gente de la pista: cada uno en la suya, se mueve un poco y cambia de baile

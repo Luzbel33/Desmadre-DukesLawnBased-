@@ -60,7 +60,7 @@ patovica). Ala oeste: sala psicodélica (shader caleidoscópico, hongos, ojos, l
 un poco en la pantalla) y laberinto de espejos con tres espejos deformantes reales. Cada sala se dibuja solo si se ve;
 modelos cargados al acercarse.
 
-- [ ] Bailarinas que bailen de verdad en el caño (agarrarse, girar, trepar, invertirse) en vez de bailar alrededor.
+- [ ] Probar en el juego la coreografía de caño (giro, ondas, apoyada, trepada, de cabeza) y ajustar distancias al caño.
 - [ ] Arsenal: polígono de tiro con blancos, banco de armas contra el muro norte; llenar mejor la sala.
 - [ ] Coffeeshop y VIP: más vida y relleno (rincón de almohadones, narguiles, banquetas en la barra); VIP más iluminada.
 - [ ] Lava del Infierno que queme al que se mete en el foso.

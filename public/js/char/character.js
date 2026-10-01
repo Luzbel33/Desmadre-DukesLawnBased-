@@ -1026,6 +1026,59 @@ export class Character {
         addY(-0.06 - Math.abs(b) * 0.03);
         break;
       }
+      // ---------------------------------------------------------------- caño (el rol de la bailarina la ubica: game/club.js)
+      case 'pole_spin': { // colgada de la mano derecha (el caño a su derecha), el cuerpo afuera, una pierna enganchada
+        const s = Math.sin(et * 2.2);
+        J.hips = [-0.12, 0.15, -0.32];
+        J.shoulderR[0] = -0.25; J.shoulderR[2] = -2.55; J.elbowR[0] = -0.2;
+        J.shoulderL[0] = 0.35 + s * 0.15; J.shoulderL[2] = 1.25 + s * 0.2; J.elbowL[0] = -0.25;
+        J.spine[0] = -0.1; J.spine[2] = -0.15;
+        J.neck[0] = -0.35; J.neck[1] = 0.25;
+        J.hipR[0] = -1.15; J.kneeR[0] = 1.75; J.hipR[2] = 0.1;
+        J.hipL[0] = 0.45 + s * 0.1; J.kneeL[0] = 0.25; J.hipL[2] = 0.15;
+        addY(0.18);
+        break;
+      }
+      case 'pole_wave': { // de frente al caño, las dos manos arriba: ondas de cuerpo y bajadas hasta el piso
+        const w = Math.sin(et * 2.8), d = 0.5 + 0.5 * Math.sin(et * 0.9);
+        J.hips = [-w * 0.28, Math.sin(et * 1.4) * 0.2, 0];
+        J.shoulderL[0] = J.shoulderR[0] = -2.45; J.shoulderL[2] = 0.18; J.shoulderR[2] = -0.18;
+        J.elbowL[0] = J.elbowR[0] = -0.45 - d * 0.5;
+        J.spine[0] = w * 0.35; J.neck[0] = -w * 0.25;
+        J.hipL[0] = J.hipR[0] = -0.25 - d * 0.75; J.kneeL[0] = J.kneeR[0] = 0.35 + d * 1.25;
+        J.hipL[2] = 0.18; J.hipR[2] = -0.18;
+        addY(-0.06 - d * 0.42);
+        break;
+      }
+      case 'pole_lean': { // de espaldas al caño, manos arriba atrás: la cadera va y viene y se desliza para abajo
+        const s = Math.sin(et * 2.0), d = 0.5 + 0.5 * Math.sin(et * 0.7);
+        J.hips = [0, s * 0.3, s * 0.14];
+        J.shoulderL[2] = 2.65; J.shoulderR[2] = -2.65; J.shoulderL[0] = J.shoulderR[0] = 0.35; J.elbowL[0] = J.elbowR[0] = -0.6;
+        J.spine[2] = -s * 0.12; J.spine[0] = -0.12;
+        J.neck[0] = -0.15; J.neck[2] = s * 0.15;
+        J.hipL[0] = -0.35 - d * 0.6; J.kneeL[0] = 0.6 + d * 1.0; J.hipL[2] = -0.12;
+        J.hipR[0] = -0.1 - d * 0.6; J.kneeR[0] = 0.2 + d * 1.0;
+        addY(-d * 0.38);
+        break;
+      }
+      case 'pole_climb': { // trepada: manos arriba y las piernas cruzadas abrazando el caño (el rol la sube)
+        const s = Math.sin(et * 1.6);
+        J.hips = [-0.2, 0, 0];
+        J.shoulderL[0] = J.shoulderR[0] = -2.75; J.shoulderL[2] = 0.12; J.shoulderR[2] = -0.12; J.elbowL[0] = J.elbowR[0] = -0.35;
+        J.spine[0] = -0.15 + s * 0.08; J.neck[0] = -0.4;
+        J.hipL[0] = -0.85; J.kneeL[0] = 1.35; J.hipL[2] = -0.2;
+        J.hipR[0] = -0.55; J.kneeR[0] = 1.75; J.hipR[2] = 0.25;
+        break;
+      }
+      case 'pole_invert': { // cabeza abajo: piernas abiertas arriba agarrando el caño, brazos hacia el piso
+        const s = Math.sin(et * 1.2);
+        J.hips = [Math.PI - 0.12, 0, s * 0.1];
+        J.spine[0] = -0.15; J.neck[0] = -0.35;
+        J.shoulderL[2] = 1.3 + s * 0.3; J.shoulderR[2] = -1.3 + s * 0.3; J.shoulderL[0] = J.shoulderR[0] = -0.5; J.elbowL[0] = J.elbowR[0] = -0.3;
+        J.hipL[0] = -0.4; J.hipL[2] = 0.75 + s * 0.1; J.kneeL[0] = 0.5;
+        J.hipR[0] = -0.4; J.hipR[2] = -0.75 - s * 0.1; J.kneeR[0] = 0.5;
+        break;
+      }
       case 'dance2': { // brazos arriba, saltito
         const b = Math.sin(et * 8);
         J.shoulderL[2] = 2.6 + b * 0.2; J.shoulderR[2] = -2.6 - b * 0.2;
