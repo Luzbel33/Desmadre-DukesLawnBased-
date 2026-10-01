@@ -62,7 +62,7 @@ un poco en la pantalla) y laberinto de espejos con tres espejos deformantes real
 modelos cargados al acercarse.
 
 - [ ] Probar en el juego la coreografía de caño (giro, ondas, apoyada, trepada, de cabeza) y ajustar distancias al caño.
-- [ ] Coffeeshop y VIP: más vida y relleno (rincón de almohadones, narguiles, banquetas en la barra); VIP más iluminada.
+- [ ] Narguile del coffeeshop usable (hoy decorativo) y bongs/pipas de la decoración agarrables.
 - [ ] Más sustancias con efectos distintos (hoy: línea, pastilla, hongos, y en el coffeeshop blunt, habano, pipa, bong,
       brownie; en la barra fernet, whisky, Sangre del Diablo y absenta). Bongs/pipas de la decoración agarrables.
 - Todo optimizado (culling por sala, luces del pool, instancias) y con buenas prácticas.

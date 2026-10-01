@@ -275,6 +275,14 @@ export class ClubWings {
     this.model('b_coffeecart', -15.6, 0, zN + 0.62);
     this.anchors.budtender = new THREE.Vector3(-24, 0, zN + 0.95);
     this.c.use('club_cafe', [-24, 1.1, zc + 0.6], 2.6, 'Pedir en el coffeeshop', { e: 'cafe' });
+    // banquetas frente al mostrador (se sientan jugadores)
+    for (let k = 0; k < 6; k++) {
+      const x = x0 + 1.1 + k * 1.95;
+      this.model('d_metal_stool', x, 0, zc + 0.85, 0);
+      this.seat(x, 0.82, zc + 0.85, Math.PI);
+    }
+    // rincón de almohadones con alfombra, mesita baja y narguile (al lado de la máquina de café)
+    this._hookahCorner(-17.2, -494.6);
     // living: sillones, mesas ratonas, sillones individuales, almohadones y plantas
     const tables = [[-31.5, -484], [-24.5, -486.5], [-19, -483], [-25, -492.5], [-19.5, -490.5]];
     for (const [x, z] of tables) {
@@ -335,6 +343,30 @@ export class ClubWings {
     // humito de los que fuman
     const fog = this.c.fog;
     if (fog) for (const [x, z] of [[-29, -483.5], [-24.5, -488], [-19, -486]]) fog.add(x, 1.0, z, 4, { radius: 1.8, height: 1.6, opacity: 0.05, speed: 0.04 });
+  }
+  _hookahCorner(x, z) {
+    const r = this.rand;
+    this.deco('carpet', x, 0.05, z, 4.2, 0.02, 3.2);
+    this.cyl('blackWood', x, 0.16, z, 0.55, 0.55, 0.06, 18, { collide: true });
+    for (const dy of [0.08, 0.04]) this.cyl('blackWood', x, dy, z, 0.07, 0.07, 0.1, 8);
+    // narguile: base de vidrio, columna, cazoleta con brasa y la manguera
+    this.cyl('bongGlass', x, 0.3, z, 0.11, 0.08, 0.2, 14);
+    this.cyl('gold', x, 0.55, z, 0.02, 0.03, 0.32, 10);
+    this.cyl('gold', x, 0.72, z, 0.09, 0.05, 0.03, 12);
+    this.cyl('terracotta', x, 0.76, z, 0.05, 0.035, 0.06, 10);
+    this.deco('ember', x, 0.795, z, 0.07, 0.01, 0.07);
+    const hose = new THREE.CatmullRomCurve3([new THREE.Vector3(x + 0.03, 0.5, z), new THREE.Vector3(x + 0.35, 0.3, z + 0.1), new THREE.Vector3(x + 0.7, 0.12, z + 0.35), new THREE.Vector3(x + 0.95, 0.2, z + 0.55)]);
+    this.c.b.geo('leatherBlack', new THREE.TubeGeometry(hose, 16, 0.012, 6));
+    // almohadones alrededor (se sientan jugadores)
+    const cols = ['shroomPink', 'velvet', 'fabricGreen', 'yellow', 'fabricBlue', 'orange'];
+    for (let k = 0; k < 6; k++) {
+      const a = k / 6 * Math.PI * 2 + 0.3, px = x + Math.sin(a) * 1.25, pz = z + Math.cos(a) * 1.0;
+      const g = new THREE.SphereGeometry(0.42, 14, 8); g.scale(1, 0.38, 1);
+      this.c.b.geo(cols[k], g, mat4(px, 0.14, pz, r() * 3));
+      this.seat(px, 0.3, pz, Math.atan2(x - px, z - pz));
+    }
+    const fog = this.c.fog;
+    if (fog) fog.add(x, 0.9, z, 4, { radius: 0.5, height: 1.8, opacity: 0.07, speed: 0.06 });
   }
   _bong(x, y, z) {
     this.cyl('bongGlass', x, y + 0.16, z, 0.035, 0.035, 0.32, 10);
@@ -642,6 +674,12 @@ export class ClubWings {
     this.neon('mirar no cuesta nada', { font: 'Rubik', px: 52, color: '#ffb0e0', h: 128 }, 3.2, 0.4, 24, 3.0, vp.z0 + 0.08);
     this.light(24, 3.6, -484, 0xb050ff, 14, 22, { priority: 1.3, decay: 1.0 });
     this.light(32, 2.8, -496, 0xffb080, 9, 14, { priority: 1.1, decay: 1.1 });
+    for (const z of [-482, -488, -494, -499]) this.deco('neonPink', vp.x1 - 0.07, 1.9, z, 0.03, 1.8, 0.04);
+    for (const x of [15, 21, 27, 33]) this.deco('neonPink', x, 1.9, vp.z0 + 0.08, 0.04, 1.8, 0.03);
+    this.deco('neonPurple', (vp.x0 + vp.x1) / 2, vp.h - 0.05, vp.z0 + 0.1, vp.x1 - vp.x0, 0.04, 0.04);
+    this.deco('neonPurple', vp.x1 - 0.1, vp.h - 0.05, (vp.z0 + vp.z1) / 2, 0.04, 0.04, vp.z1 - vp.z0);
+    this.light(34, 2.6, -486, 0xff70b0, 10, 12, { priority: 1.1, decay: 1.1 });
+    this.light(18, 3.4, -482, 0xffc090, 8, 12, { priority: 1.0, decay: 1.1 });
     this.anchors.vipDoor = new THREE.Vector3(15.8, 0, -480.2);
   }
 
