@@ -26,25 +26,31 @@ try {
     window.__dukesPause=true;
     const {loadHuman}=await import('/js/char/human.js');
     await Promise.all(['v_tabernero','v_vecino','v_hincha','v_granjero','toro','coneja'].map(loadHuman));
-    G.renderer.setPixelRatio(.6);G.renderer.setSize(innerWidth,innerHeight,false);G.post.setPixelRatio(.6);G.post.setSize(innerWidth,innerHeight);G.renderer.shadowMap.enabled=false;
+    // Software rendering QA: preserve real geometry/materials but skip the expensive post pipeline.
+    G.renderer.setPixelRatio(1);G.renderer.setSize(640,420,false);G.renderer.shadowMap.enabled=false;
+    G.camera.aspect=640/420;G.camera.far=60;G.camera.updateProjectionMatrix();
+    G.world._baked=true;G.post.render=()=>{};
+    for(const mesh of G.grass?.meshes||[])mesh.visible=false;
+    window.drawWorld=()=>{G.renderer.setRenderTarget(null);G.renderer.render(G.scene,G.camera);return G.renderer.domElement.toDataURL('image/png');};
     window.pose=(position,look)=>{
       G.me.teleport(new G.camera.position.constructor(...position));
       G.camera.position.set(...position);G.camera.lookAt(...look);G.camera.updateMatrixWorld(true);
-      G.world.update(1/60,G.me.pos);for(let i=0;i<35;i++){G.time+=1/60;G.villagers.update(1/60,G.camera);}
+      G.world.update(1/60,G.me.pos,{bake:false});for(let i=0;i<35;i++){G.time+=1/60;G.villagers.update(1/60,G.camera);}
       G.post.render(1/60);
     };
     pose([100,1.8,-5.8],[98,1.5,-9.5]);
   });
   fs.mkdirSync('/tmp/media-qa',{recursive:true});
-  await page.screenshot({path:'/tmp/media-qa/cinema-vendor.png'});
+  const capture=async name=>{const image=await page.evaluate(()=>drawWorld());fs.writeFileSync('/tmp/media-qa/'+name+'.png',Buffer.from(image.split(',')[1],'base64'));console.log('CAPTURE',name,await page.evaluate(()=>G.renderer.info.render));};
+  await capture('cinema-vendor');
   const cinema=await page.evaluate(()=>{
     const v=G.villagers.byKey;return {vendor:!!v.cineVendor?.char,viewers:[0,1,2,3].map(i=>v['cineViewer'+i]).filter(n=>n?.data.seat&&n.sit).length,sign:!!G.scene.getObjectByName('cinema-popcorn-sign')};
   });
   assert.deepEqual(cinema,{vendor:true,viewers:4,sign:true});
   await page.evaluate(()=>pose([117,2.2,4],[109,1.2,1]));
-  await page.screenshot({path:'/tmp/media-qa/cinema-viewers.png'});
+  await capture('cinema-viewers');
   await page.evaluate(()=>pose([99,1.8,-23],[96.1,1.2,-25.2]));
-  await page.screenshot({path:'/tmp/media-qa/bar-seats.png'});
+  await capture('bar-seats');
   const seats=await page.evaluate(()=>['toro2','venus2','barTito','barFan'].map(k=>{
     const n=G.villagers.byKey[k];return !!(n?.data.seat&&n.sit&&Math.abs(n.pos.y+.46-n.data.seat.y)<.03);
   }));
@@ -68,7 +74,7 @@ try {
     G.owner.bodyFire.update(G.time,[{seconds:n.burnT,char:n.char}],G.camera,0);
     G.post.render(1/60);
   });
-  await page.screenshot({path:'/tmp/media-qa/npc-burning.png'});
+  await capture('npc-burning');
   const burning=await page.evaluate(()=>({parts:G.owner.bodyFire.active,finite:G.villagers.byKey.cineVendor.pos.toArray().every(Number.isFinite)}));
   assert.ok(burning.parts>=5&&burning.finite);
   assert.deepEqual(errors,[],'world runtime/shader errors');
