@@ -26,7 +26,7 @@ try{
  await until(()=>log.includes('servidor andando'),'server startup');
  for(const file of ['/health','/','/js/audio/audio.js','/js/audio/synthesis.js','/js/media/screens.js','/js/media/playback.js','/js/media/youtube.js','/vendor/three/addons/renderers/CSS3DRenderer.js']){
   const r=await fetch(`http://127.0.0.1:${port}${file}`);assert.equal(r.status,200,file);report.http.push(file);
-  if(file==='/'){assert.equal(r.headers.get('referrer-policy'),'strict-origin-when-cross-origin');assert.match(await r.text(),/AUDIO \+ YOUTUBE/);}
+  if(file==='/'){assert.equal(r.headers.get('referrer-policy'),'strict-origin-when-cross-origin');assert.match(await r.text(),/id="media"/);}
  }
  const a=await peer('QA A'),b=await peer('QA B');
  a.send({t:'media',s:'cine',a:'add',v:'M7lc1UVf-VE'});

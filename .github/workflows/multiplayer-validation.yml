@@ -1,0 +1,49 @@
+name: Multiplayer validation
+on:
+  push:
+    branches: [fix/multiplayer-social-20260930]
+permissions:
+  contents: write
+concurrency:
+  group: multiplayer-social-validation
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 30
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply exact-match scoped corrections
+        run: |
+          node tools/apply-social-fixes.mjs
+          node tools/apply-rtc-fix.mjs
+      - name: Validate modules, physics and network regressions
+        run: |
+          npm run check
+          npm test > /tmp/unit.log 2>&1 || { grep -B1 -A40 '^not ok' /tmp/unit.log; tail -10 /tmp/unit.log; exit 1; }
+          tail -10 /tmp/unit.log
+          npm run test:network > /tmp/network.log 2>&1 || { tail -35 /tmp/network.log; exit 1; }
+          tail -8 /tmp/network.log
+          npm run test:fire
+          git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol diff --check
+      - name: Real browser and audio regressions
+        run: |
+          npm install --prefix /tmp/browser-qa playwright --no-package-lock --no-audit --no-fund
+          /tmp/browser-qa/node_modules/.bin/playwright install --with-deps chromium > /tmp/browser-install.log 2>&1
+          node tests/social-browser.mjs
+      - name: Publish verified corrections to isolated branch only
+        run: |
+          test "$GITHUB_REF" = refs/heads/fix/multiplayer-social-20260930
+          git diff --stat
+          git add public/js public/css public/index.html server/room.js scripts/test-network.mjs tests package.json
+          if ! git diff --cached --quiet; then
+            git config user.name 'Multiplayer regression fixes'
+            git config user.email '118855670+Luzbel33@users.noreply.github.com'
+            git commit -m 'fix: validated multiplayer physics and social interactions'
+            git push origin HEAD:refs/heads/fix/multiplayer-social-20260930
+          fi

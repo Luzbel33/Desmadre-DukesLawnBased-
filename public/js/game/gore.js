@@ -143,10 +143,13 @@ export class Gore {
 
   _add(item) {
     this.items.push(item);
+    for (const body of item.bodies) body.gibItem = item;
     let n = 0;
     for (const it of this.items) n += it.bodies.length;
     while (n > MAX_BODIES && this.items.length > 1) {
-      const old = this.items.shift();
+      const index = this.items.findIndex(it => !it.bodies.some(b => b.grabCount > 0));
+      if (index < 0) break;
+      const [old] = this.items.splice(index, 1);
       n -= old.bodies.length;
       this._remove(old);
     }
@@ -406,7 +409,7 @@ export class Gore {
     // pedazos: seguir a su cuerpo físico y gotear un poco
     for (let i = this.items.length - 1; i >= 0; i--) {
       const it = this.items[i];
-      it.t += dt;
+      if (!it.bodies.some(b => b.grabCount > 0)) it.t += dt;
       if (!it.solid && it.t > 0.6) {
         it.solid = true;
         for (const b of it.bodies) for (const c of b.gibCols || []) { try { c.setCollisionGroups(groups(GR.DEBRIS, GIB_FILTER)); } catch { /* ya borrado */ } }

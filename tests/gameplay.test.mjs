@@ -920,3 +920,33 @@ test('menú circular: mover el mouse elige el sector; un toque sin mover lo deja
   assert.ok(m.sticky);
   delete globalThis.document;
 });
+
+
+test('physical severed limb can be grabbed, held and released without a stale spring', async () => {
+  const { p, ph } = await fixture(); frame(p, ph);
+  const hand = p.handPos('r', new THREE.Vector3());
+  const body = ph.world.createRigidBody(ph.R.RigidBodyDesc.dynamic().setTranslation(hand.x, hand.y, hand.z));
+  ph.tag(ph.world.createCollider(ph.R.ColliderDesc.ball(.08).setMass(.5), body), { kind: 'gib' });
+  assert.equal(p.grab('r'), true, 'near-hand loose limb was not selected');
+  assert.equal(p.hands.r.loose.body.handle, body.handle);
+  assert.equal(body.grabCount, 1);
+  for (let i = 0; i < 10; i++) frame(p, ph);
+  assert.ok(Object.values(body.translation()).every(Number.isFinite));
+  p.release('r', false);
+  assert.equal(body.grabCount, 0);
+  assert.equal(p.hands.r.loose, null);
+  assert.equal(p.hands.r.joint, null);
+  G.players = new Map(); ph.world.free();
+});
+
+test('stale loose body removal releases the hand instead of crashing the simulation', async () => {
+  const { p, ph } = await fixture(); frame(p, ph);
+  const hand = p.handPos('l', new THREE.Vector3());
+  const body = ph.world.createRigidBody(ph.R.RigidBodyDesc.dynamic().setTranslation(hand.x, hand.y, hand.z));
+  ph.tag(ph.world.createCollider(ph.R.ColliderDesc.ball(.08), body), { kind: 'gib' });
+  assert.equal(p.grab('l'), true);
+  ph.world.removeRigidBody(body);
+  assert.doesNotThrow(() => p._gripTug(1 / 60));
+  assert.equal(p.hands.l.joint, null);
+  G.players = new Map(); ph.world.free();
+});

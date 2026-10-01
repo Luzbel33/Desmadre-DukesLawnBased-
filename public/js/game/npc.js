@@ -330,7 +330,15 @@ export class Npc {
     this.talk = Math.min(secs, 0.25 + text.length * 0.06);
   }
 
+  syncRagdollPosition() {
+    if ((!this.dead && !(this.down > 0)) || !this.rag?.alive) return;
+    const center = this.rag.bodies[PART.PELVIS]?.translation();
+    if (center && [center.x, center.y, center.z].every(Number.isFinite)) this.pos.set(center.x, center.y, center.z);
+  }
+
   update(dt, camera, show = true) {
+    this.syncRagdollPosition();
+    if ((this.down > 0 || this.dead) && this.rag?.alive && camera?.position.distanceToSquared(this.pos) < NPC_DRAW_DISTANCE * NPC_DRAW_DISTANCE) show = true;
     if (!show) {
       this.visible = false;
       if (this.rag && !this.down && !this.dead) { this.rag.destroy(); this.rag = null; }
@@ -373,8 +381,10 @@ export class Npc {
     }
     // prendido fuego no hace caso a su rol: corre en pánico (ver _burnStep). Tirado, tampoco: antes el rol seguía
     // andando con el cuerpo en el piso y la posición "lógica" perseguía y pegaba sola (el guardia invisible)
+    const moveX = this.pos.x, moveZ = this.pos.z;
     if (simulate && !(this.burnT > 0) && !(this.down > 0)) this.role?.(this, dt);
     if (simulate) this._resolveMove();
+    if (simulate && !this.sit && !this.down && !this.dead && !(this.burnT > 0) && dt > 0) this.speed = Math.min(5, Math.hypot(this.pos.x - moveX, this.pos.z - moveZ) / dt);
     // mirar a alguien: la cabeza primero, el cuerpo si hace falta
     let want = this.baseYaw, hy = 0;
     if (this.lookAt) {
