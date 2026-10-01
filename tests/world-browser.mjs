@@ -22,8 +22,9 @@ try {
   await page.locator('#m-name').fill('World QA');await page.locator('#m-room').fill('world-regressions');
   await page.locator('#m-play').dispatchEvent('click');
   await page.waitForFunction(()=>!!window.G?.me&&G.myId>0,null,{timeout:90000,polling:100});
+  await page.evaluate(()=>{window.__dukesPause=true;});
+  await page.waitForFunction(()=>G.inGame&&!__dukes.preparingJoin&&G.net.connected,null,{timeout:90000,polling:100});
   await page.evaluate(async()=>{
-    window.__dukesPause=true;
     const {loadHuman}=await import('/js/char/human.js');
     await Promise.all(['v_tabernero','v_vecino','v_hincha','v_granjero','toro','coneja'].map(loadHuman));
     // Software rendering QA: preserve real geometry/materials but skip the expensive post pipeline.
@@ -31,7 +32,7 @@ try {
     G.camera.aspect=640/420;G.camera.far=60;G.camera.updateProjectionMatrix();
     G.world._baked=true;G.post.render=()=>{};
     for(const mesh of G.grass?.meshes||[])mesh.visible=false;
-    window.drawWorld=()=>{G.renderer.setRenderTarget(null);G.renderer.render(G.scene,G.camera);return G.renderer.domElement.toDataURL('image/png');};
+    window.drawWorld=()=>{const own=G.me.char.root.visible;G.me.char.root.visible=false;try{G.renderer.setRenderTarget(null);G.renderer.render(G.scene,G.camera);return G.renderer.domElement.toDataURL('image/png');}finally{G.me.char.root.visible=own;}};
     window.pose=(position,look)=>{
       G.me.teleport(new G.camera.position.constructor(...position));
       G.camera.position.set(...position);G.camera.lookAt(...look);G.camera.updateMatrixWorld(true);
@@ -59,6 +60,7 @@ try {
     __dukes.mode='game';__dukes.cameraMode=2;G.input.enabled=true;G.input.locked=true;G.input.releaseAll();G.me.giveItem('pistol');document.getElementById('game').focus();
   });
   await page.keyboard.press('y');await page.evaluate(()=>__dukesStep());
+  console.log('FRONT_CAMERA_INPUT',await page.evaluate(()=>({mode:__dukes.mode,camera:__dukes.cameraMode,ingame:G.inGame,locked:G.input.locked,enabled:G.input.enabled})));
   assert.equal(await page.evaluate(()=>__dukes.cameraMode),3);
   const oldShot=await page.evaluate(()=>G.items.shotT);
   await page.mouse.click(480,320);await page.keyboard.press('f');await page.keyboard.press('r');await page.keyboard.press('g');await page.evaluate(()=>__dukesStep());
