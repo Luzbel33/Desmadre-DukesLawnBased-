@@ -16,14 +16,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Source snapshot for isolated regression testing
-        run: tar -czf /tmp/desmadre-workspace.tar.gz .
-      - uses: actions/upload-artifact@v4
-        with:
-          name: desmadre-workspace
-          path: /tmp/desmadre-workspace.tar.gz
-          retention-days: 2
+      - name: Focused source diagnostics
+        run: |
+          find public/js -maxdepth 2 -type f | sort
+          find . -name AGENTS.md -o -name CLAUDE.md
+          grep -nE 'grab|ragdoll|bump|push|collision|separat' public/js/game/player.js | head -160
+          grep -nEi 'mask|guard|patrol|walk|stride' public/js/game/npc.js public/js/game/club.js public/js/char/human.js | head -100
       - run: npm run check
       - run: npm test
-      - run: npm run test:network
-      - run: npm run test:fire
+      - if: always()
+        run: npm run test:network
+      - if: always()
+        run: npm run test:fire
