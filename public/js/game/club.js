@@ -409,6 +409,23 @@ export class ClubGame {
     }
   }
 
+  // el foso de lava del Infierno quema (a vos y a los NPC que caigan; el puente pasa por arriba)
+  _lavaStep(dt) {
+    const lv = this.club.anchors.lava;
+    if (!lv) return;
+    this._lavaT = (this._lavaT || 0) - dt;
+    if (this._lavaT > 0) return;
+    this._lavaT = 0.3;
+    const inLava = (p) => { const r = Math.hypot(p.x - lv.x, p.z - lv.z); return r > lv.r0 + 0.1 && r < lv.r1 - 0.05 && p.y < 0.45; };
+    const L = this.getLocal();
+    if (L && !L.dead && inLava(L.pos) && !((G.owner?.burning?.get('me') || 0) > 1)) {
+      G.owner?.ignite('me', 4);
+      this.getNet()?.send({ t: 'ev', k: 'onfire', d: 4 });
+      G.sfx?.trigger('fire-flare', L.pos, 0.6, { full: 3, max: 20 });
+    }
+    for (const n of this.npcs) if (!n.dead && n.char && inLava(n.pos) && !(n.burnT > 1)) n.ignite(4);
+  }
+
   // ---------------------------------------------------------------- roles que se repiten
   _near(n, r) { const L = this.getLocal(); return L && Math.hypot(L.pos.x - n.pos.x, L.pos.z - n.pos.z) < r ? L.pos : null; }
   // bailarinas del caño: una coreografía de verdad (giros colgadas del caño, ondas de frente, apoyadas de espaldas,
@@ -901,6 +918,7 @@ export class ClubGame {
     prepareNpcCulling(cam);
     // los de las alas solo con su sala a la vista (club-wings.js): ocultos no se animan
     for (const n of this.npcs) n.update(dt, cam, this.club.visible && n.scene.visible);
+    if (this.club.visible) this._lavaStep(dt);
     // la música: a pleno en el club; ahogada en la antesala y el ascensor; nada afuera. Se calla con un video puesto
     const p = cam?.position;
     let want = 0, muffle = 1;

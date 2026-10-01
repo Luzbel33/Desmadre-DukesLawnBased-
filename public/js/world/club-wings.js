@@ -649,7 +649,7 @@ export class ClubWings {
   _arsenal() {
     const ar = W.arsenal, r = this.rand;
     // líneas pintadas en el piso, caños y cables por el techo
-    for (const [x, z, sx, sz] of [[35, -469.5, 9, 0.12], [35, -460.5, 9, 0.12], [30.5, -465, 0.12, 9], [39.5, -465, 0.12, 9]]) this.deco('hazard', x, 0.045, z, sx, 0.01, sz);
+    for (const [x, z, sx, sz] of [[31.5, -469.5, 8, 0.12], [31.5, -460.5, 8, 0.12], [27.5, -465, 0.12, 9], [35.5, -465, 0.12, 9], [38.6, -466.5, 0.14, 19]]) this.deco('hazard', x, 0.045, z, sx, 0.01, sz);
     for (const x of [26, 26.35]) this.cyl('rust', x, ar.h - 0.18, (ar.z0 + ar.z1) / 2, 0.06, 0.06, ar.z1 - ar.z0, 8, { rx: Math.PI / 2 });
     this.cyl('black', 45.7, ar.h - 0.25, (ar.z0 + ar.z1) / 2, 0.03, 0.03, ar.z1 - ar.z0, 6, { rx: Math.PI / 2 });
     // estanterías con fusiles y cajas de munición contra el muro norte
@@ -667,22 +667,23 @@ export class ClubWings {
     this.deco('blackWood', 25.0, 0.12, -470.5, 0.5, 0.08, 3.2);
     for (let k = 0; k < 6; k++) this.model('b_rifle', 24.95, 0.62, -471.9 + k * 0.55, Math.PI / 2, 1, 0, Math.PI / 2);
     // banco de trabajo con las pistolas (acá se agarran)
-    const bx = 45.2, bz = -467;
-    this.box('blackWood', bx, 0.45, bz, 1.1, 0.9, 5);
-    this.deco('steel', bx, 0.92, bz, 1.2, 0.04, 5.1);
-    this.deco('blackWood', ar.x1 - 0.06, 2.0, bz, 0.08, 1.6, 5);
-    for (let k = 0; k < 3; k++) this.model('b_pistols', bx - 0.05, 0.94, bz - 1.6 + k * 1.6, Math.PI / 2 + (r() - 0.5) * 0.3);
-    this.model('b_medbox', bx, 0.94, bz + 2.2, 0.3);
-    this.c.use('club_pistol', [bx - 0.8, 1.1, bz - 0.4], 1.9, 'Agarrar una pistola', { e: 'give', item: 'pistol' });
-    this.anchors.sarge = new THREE.Vector3(43.4, 0, -463.6);
+    const bx = 35.8, bz = ar.z0 + 0.55;
+    this.box('blackWood', bx, 0.45, bz, 5, 0.9, 1.0);
+    this.deco('steel', bx, 0.92, bz, 5.1, 0.04, 1.1);
+    this.deco('blackWood', bx, 2.05, ar.z0 + 0.05, 5, 1.6, 0.08);
+    for (const y of [1.55, 1.95, 2.35]) this.modelM('b_rifle', mat4(bx, y, ar.z0 + 0.14, 0, 1));
+    for (let k = 0; k < 3; k++) this.model('b_pistols', bx - 1.6 + k * 1.6, 0.94, bz + 0.05, (r() - 0.5) * 0.3);
+    this.model('b_medbox', bx + 2.1, 0.94, bz, 0.3);
+    this.c.use('club_pistol', [bx, 1.1, bz + 0.9], 2.2, 'Agarrar una pistola', { e: 'give', item: 'pistol' });
+    this.anchors.sarge = new THREE.Vector3(37.4, 0, -457.6);
+    this._range();
     // emplazamiento de bolsas de arena con la red de camuflaje y el reflector; el cajón abierto de granadas
-    this._sandbags(35, -465);
-    this.model('b_searchlight', 35, 0.6, -462, -2.46);
-    this.model('b_crate_old', 35.2, 0, -467.2, 0.08);
-    const gren = [];
-    for (let k = 0; k < 8; k++) gren.push(mat4(34.6 + (k % 4) * 0.13, 0.24, -467.0 + Math.floor(k / 4) * 0.2, 0, 1, Math.PI / 2, 0.2));
-    for (const m of gren) this.modelM('b_stickgren', m);
-    this.c.use('club_nade', [35.2, 0.9, -466.4], 1.8, 'Agarrar una granada', { e: 'give', item: 'grenade' });
+    const sx = 31.5, sz = -465;
+    this._sandbags(sx, sz);
+    this.model('b_searchlight', sx, 0.6, sz + 3, -2.2);
+    this.model('b_crate_old', sx + 0.2, 0, sz - 2.2, 0.08);
+    for (let k = 0; k < 8; k++) this.modelM('b_stickgren', mat4(sx - 0.4 + (k % 4) * 0.13, 0.24, sz - 2.0 + Math.floor(k / 4) * 0.2, 0, 1, Math.PI / 2, 0.2));
+    this.c.use('club_nade', [sx + 0.2, 0.9, sz - 1.4], 1.8, 'Agarrar una granada', { e: 'give', item: 'grenade' });
     // cajones apilados, bidones, botiquines y estantes contra el muro sur
     for (const [x, y, z, yaw] of [[30, 0, -456.7, 0], [31.4, 0, -456.7, 0], [30.7, 0.464, -456.7, 0.05], [43.6, 0, -457, 0], [43.6, 0.464, -457, -0.04]]) this.model('b_crate_wood', x, y, z, yaw);
     for (const [x, z] of [[27.5, -456.6], [27.9, -456.7], [41.2, -456.6]]) this.model('b_jerrycan', x, 0, z, r() * 0.4);
@@ -719,6 +720,71 @@ export class ClubWings {
     const fog = this.c.fog;
     if (fog) fog.add(35, 2.4, -466, 4, { radius: 5, height: 0.6, opacity: 0.03, speed: 0.02 });
   }
+  // polígono de tiro: mostrador en la línea de tiro, cuatro calles con separadores y blancos de papel al fondo. Los
+  // blancos se balancean con cada tiro, te dicen el puntaje y les quedan los agujeros (bunker-items.js: kind 'target').
+  _range() {
+    const ar = W.arsenal, x0 = 38.9, x1 = ar.x1, lanes = [-473.5, -469.5, -465.5, -461.5];
+    this.box('blackWood', x0 + 0.3, 0.5, -466.5, 0.6, 1.0, 18.5);
+    this.deco('steel', x0 + 0.3, 1.02, -466.5, 0.7, 0.04, 18.6);
+    for (const z of [-475.5, -471.5, -467.5, -463.5, -459.5]) { this.box('bunkerConcrete', x0 + 2.2, 1.1, z, 3.2, 2.2, 0.12, { noShadow: true }); this.deco('hazard', x0 + 0.62, 1.04, z, 0.05, 0.05, 0.3); }
+    this.box('dirt', x1 - 0.5, 0.6, -466.5, 0.9, 1.2, 18.6, { rz: 0.35 }); // talud de tierra atrás de los blancos
+    this.sign((g, w, h) => {
+      g.fillStyle = '#2f3524'; g.fillRect(0, 0, w, h); g.fillStyle = '#d8b020'; g.font = 'bold 80px "Courier New", monospace'; g.textAlign = 'center';
+      g.fillText('POLÍGONO', w / 2, 95); g.font = 'bold 30px "Courier New", monospace'; g.fillStyle = '#e8e2c8'; g.fillText('agarrá una pistola y tirale al papel', w / 2, 150);
+    }, 700, 190, 3.2, 0.87, x1 - 0.05, 3.25, -466.5, -Math.PI / 2);
+    if (!HAS_DOM) return;
+    this.targets = [];
+    for (const z of lanes) {
+      const cv = canvas(256, 384), g = cv.getContext('2d');
+      const draw = () => {
+        g.fillStyle = '#efe6cf'; g.fillRect(0, 0, 256, 384);
+        g.fillStyle = '#20242a'; g.beginPath(); g.ellipse(128, 92, 46, 54, 0, 0, 7); g.fill();
+        g.beginPath(); g.moveTo(40, 384); g.quadraticCurveTo(44, 168, 128, 160); g.quadraticCurveTo(212, 168, 216, 384); g.fill();
+        g.strokeStyle = '#efe6cf'; g.lineWidth = 3;
+        for (const [rr, y] of [[20, 230], [45, 230], [70, 230], [16, 92], [34, 92]]) { g.beginPath(); g.arc(128, y, rr, 0, 7); g.stroke(); }
+        g.fillStyle = '#c0392b'; g.font = 'bold 22px Arial'; g.textAlign = 'center'; g.fillText('10', 128, 238);
+      };
+      draw();
+      const tex = ctex(cv);
+      const t = { z, cv, g, tex, draw, holes: 0, swing: 0, v: 0 };
+      const pivot = new THREE.Group(); pivot.position.set(x1 - 1.3, 2.05, z);
+      const paper = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.93), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, side: THREE.DoubleSide }));
+      paper.position.y = -0.55; paper.rotation.y = -Math.PI / 2; paper.castShadow = true;
+      pivot.add(paper);
+      this.c.group.add(pivot);
+      for (const s of [-1, 1]) this.cyl('iron', x1 - 1.3, 2.25, z + s * 0.38, 0.012, 0.012, 0.5, 4);
+      this.deco('iron', x1 - 1.3, 2.5, z, 0.04, 0.04, 0.9);
+      t.pivot = pivot; t.paper = paper;
+      // el blanco tiene su collider (las balas le pegan); bunker-items.js le avisa con hit()
+      const col = this.c.phys.box(x1 - 1.3, 1.5, z, 0.02, 0.47, 0.31, 0, { paint: false, mat: 'wood' });
+      t.hit = (point) => this._targetHit(t, point);
+      this.c.phys.tag(col, { kind: 'target', ref: t, mat: 'wood' });
+      this.targets.push(t);
+    }
+    this.c.anim.push((tt, dt) => {
+      for (const t of this.targets) {
+        if (Math.abs(t.swing) < 1e-4 && Math.abs(t.v) < 1e-4) continue;
+        t.v += (-40 * t.swing - 3 * t.v) * dt; t.swing += t.v * dt;
+        t.pivot.rotation.z = t.swing;
+      }
+    });
+    this.light(x1 - 2.2, 3.2, -466.5, 0xfff0d8, 10, 12, { priority: 1.1, decay: 1.2 });
+  }
+  _targetHit(t, point) {
+    // dónde le pegó, en el papel (u: de izquierda a derecha mirando desde la línea de tiro, v: de arriba abajo)
+    const local = t.paper.worldToLocal(point.clone());
+    const u = THREE.MathUtils.clamp(local.x / 0.62 + 0.5, 0, 1), v = THREE.MathUtils.clamp(0.5 - local.y / 0.93, 0, 1);
+    const px = u * 256, py = v * 384;
+    const d = Math.min(Math.hypot(px - 128, py - 230) / 70, Math.hypot(px - 128, py - 92) / 34 * 1.2);
+    const pts = d < 0.3 ? 10 : d < 0.65 ? 8 : d < 1 ? 5 : 1;
+    if (t.holes > 40) { t.draw(); t.holes = 0; }
+    t.g.fillStyle = '#111'; t.g.beginPath(); t.g.arc(px, py, 4, 0, 7); t.g.fill();
+    t.g.strokeStyle = 'rgba(80,60,40,0.6)'; t.g.lineWidth = 1.5; t.g.stroke();
+    t.holes++; t.tex.needsUpdate = true;
+    t.v += 2.2;
+    G.hud?.notify(pts === 10 ? '🎯 <b>¡CENTRO!</b> 10' : `🎯 ${pts}`, 900);
+  }
+
   // bolsas de arena (instanciadas) en U alrededor de (x, z), con la red de camuflaje encima
   _sandbags(x, z) {
     const list = [];

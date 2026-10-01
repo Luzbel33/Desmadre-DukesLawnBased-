@@ -112,6 +112,9 @@ export class BunkerItems {
       G.fx?.blood(point.clone(), V1.copy(d).negate().add(UP).normalize(), 0.9);
     } else if (info?.kind === 'bag' && info.ref?.punch) {
       info.ref.punch(16, point, d.clone(), 1.6, true, 'bullet');
+    } else if (info?.kind === 'target' && info.ref?.hit) {
+      info.ref.hit(point); // los blancos del polígono del Arsenal (club-wings.js)
+      G.fx?.puff(point.clone(), V1.set(-d.x, 0.2, -d.z), 0.15, 0xd8ccb0);
     } else if (info?.kind === 'prop' && info.ref) {
       L._whack?.(info.ref, d.clone(), 12, point, { mass: 1 });
       G.fx?.sparks(point.clone(), V1.set(-d.x, -d.y, -d.z), 8);
