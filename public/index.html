@@ -232,6 +232,9 @@
             <select id="o-shadows"><option value="baja">Bajas</option><option value="media">Medias</option><option value="alta">Altas</option><option value="ultra">Ultra</option></select>
           </label>
           <label>Campo de visión <input type="range" id="o-fov" min="55" max="100" step="1"></label>
+          <label>Cámara en tercera persona
+            <select id="o-camera-shoulder"><option value="left">Hombro izquierdo</option><option value="center">Centrada</option><option value="right">Hombro derecho</option></select>
+          </label>
           <label class="chk" title="Chrome solo deja frenar Ctrl+W, Ctrl+T, Ctrl+N en pantalla completa"><input type="checkbox" id="o-fullscreen"> Pantalla completa al jugar (bloquea Ctrl+W y otros atajos que cierran la pestaña)</label>
         </div>
         <button id="p-fullscreen">Pasar a pantalla completa ahora</button>
@@ -240,7 +243,7 @@
         <summary>🔊 Sonido</summary>
         <div class="settings">
           <label>Volumen general <input type="range" id="o-vol" min="0" max="1" step="0.01"></label>
-          <label>Música / videos <input type="range" id="o-music" min="0" max="1" step="0.01"></label>
+          <label>Música del juego <input type="range" id="o-music" min="0" max="1" step="0.01"></label>
           <label>Efectos <input type="range" id="o-sfx" min="0" max="1" step="0.01"></label>
           <label>Ambiente <input type="range" id="o-ambient" min="0" max="1" step="0.01"></label>
           <label class="chk"><input type="checkbox" id="o-mute"> Silenciar todo</label>

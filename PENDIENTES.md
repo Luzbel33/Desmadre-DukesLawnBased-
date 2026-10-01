@@ -4,6 +4,49 @@ Documento de traspaso: si la conversación se compacta o se abre otro chat, leer
 GitHub: https://github.com/Luzbel33/Desmadre-DukesLawnBased- · Render: srv-das85jg473hc7384nqn0.
 Desde el 30/09 Luz pidió: **cada tarea terminada se sube a `main`** (así prueba hasta donde se llegó).
 
+## Actualización 01/10/2026 — entregas verificadas, sin tocar personajes del club
+
+**Restricción vigente de Luz:** no modificar modelos, texturas, materiales, rigs ni generadores de las chicas
+ del club. Para estas entregas quedaron intactos `assets/`, `public/assets/`, `public/js/char/` y `game/club.js`.
+ No reabrir el pase de caras del club por las notas antiguas de este documento.
+
+### Entregado en `a8bf6d4` (Render manual `live` el 01/10)
+- [x] YouTube: Fogón/Cine y las otras pantallas se ven en el panel; conserva el mismo iframe al abrir/cerrar.
+      Volumen personal y silenciar, guardados localmente. No cambia la cola ni el volumen de otros jugadores.
+- [x] Soltar/revolear conserva el objeto equipado: birra, pucho, aerosol, fajo, pistola, granada sin activar,
+      poción, choripán y manzana. Q/E sueltan; G revolea. Se pueden recuperar y usar; comida conserva mordidas.
+- [x] Los objetos revoleados alcanzan la ruta de daño/reacción/voz de NPC; un impacto por víctima y lanzamiento.
+      Se mantiene la validación y las zonas PvP de jugadores; no se habilitó daño global fuera de esas reglas.
+- [x] NPC comunes se defienden del agresor, respetan paredes y vuelven a su zona. No se reemplazaron los roles
+      específicos ni las coreografías del club. La simulación de NPC sigue siendo local, como antes.
+- [x] Cine: cartel de pochoclos legible de ambos lados, vendedor con el menú existente y cuatro espectadores
+      en butacas reales. Bar: cuatro parroquianos en asientos reales, sin sentarlos sobre sillas-prop.
+- [x] Cámara frontal (Y): bloquea golpes, tiros, lanzamientos y fuego del Diablo; al salir vuelve el control.
+- [x] Fuego visible en cuerpos con un pool independiente que sigue huesos, sin modificar sus materiales.
+      Contacto con fuego real prende NPC y jugadores. Fogata y llamarada de leño más bajas para despejar el video.
+
+### Bloque acotado posterior de este tablero
+- [x] Tercera persona: selector de hombro izquierdo / centro / derecho en **Esc → Imagen**, con preferencia
+      persistente. Aplica a ambas distancias; primera persona, cámara frontal y CCTV no se desplazan.
+      Mantiene el control de obstrucción con paredes. El lado inicial conserva el encuadre previo.
+
+### Pendiente real / traspaso para Opus, Codex o Dot
+- [ ] Corregir caras de personajes no protegidos: diagnóstico de materiales/UV/ojos y comparación visual por
+      personaje. **No tocar las chicas del club ni el código compartido que les altere el aspecto.**
+- [ ] Cocinar malvaviscos: obtener palito, tostado/quemado progresivo, comer, soltar/revolear y estado de red.
+- [ ] Ragdolls y miembros cortados como props de red autoritativos: el agarre local ya mejoró en `4d33fd0`,
+      pero eso NO equivale a sincronizar completamente los pedazos para todos los clientes.
+- [ ] Validar la comodidad de cámara/agarre y la vista del trono con Luz. No considerar todo el punto 4 terminado
+      solo porque haya selector de hombro y bloqueo de ataques en frontal.
+- [ ] QA con dos PCs y micrófonos reales/redes diferentes; reproducción real de YouTube con bloqueadores,
+      restricciones de videos y autoplay. Chromium comprobó la superficie/iframe, UI y voz con captura de prueba;
+      esas pruebas no certifican cada video ni todos los dispositivos/NAT.
+
+La base de `a8bf6d4` pasó 134 tests, red (3/4 clientes), Chromium de media/chat/voz y escenas reales de cine/bar.
+El selector agrega cuatro tests (138 en total) sobre la función de cámara real, obstrucción y persistencia.
+Las secciones fechadas anteriores se conservan como historial: no rehacer chat/susurros ni interpretar los
+antiguos bloqueos de acceso a `props.js` como una limitación vigente. GitHub y Render se usaron realmente.
+
 ## Tablero (30/09, pedido grande de QA de Luz) — [x] listo · [ ] pendiente
 
 Reglas de este pedido: respetar lo que subió GPT (arreglos y NPCs del club); **no tocar el cuerpo de las
@@ -57,11 +100,11 @@ bajar la calidad. Orden: primero bugs y lo importante, lo "random" al final.
 - [ ] Piso de arriba ampliado con más lugares.
 
 ### 4. Sensación de juego
-- [ ] Tercera persona: hombro derecho/izquierdo/centro, agarrar e interactuar cómodo, verse sentado en el trono.
+- [~] Tercera persona: hombro derecho/izquierdo/centro entregado el 01/10. Queda QA de comodidad de agarre/interacción y vista del trono.
 - [ ] Armas: apuntar de verdad, la mano y el arma siguen la mira, animaciones y retroceso.
 - [ ] Colisiones de todo el cuerpo (brazos activos, cabeza, piernas) contra jugadores, NPCs, vehículos y objetos.
-- [ ] Revolear objetos a jugadores: daño, reacción y feedback.
-- [ ] Gore más dinámico: miembros como objetos agarrables/revoleables.
+- [~] Revolear objetos: tipos y feedback de NPC entregados el 01/10; ruta de impactos a jugadores conservada. Queda QA multijugador real con Luz.
+- [~] Gore: agarre local de miembros/ragdolls mejorado en `4d33fd0`; sincronización completa como props de red pendiente.
 - [ ] Cuchillos/armas blancas que quedan clavados (jugador, piso, madera) y se sacan.
 
 ### 5. Pase visual (sigue del plan de 12 puntos)
@@ -154,8 +197,8 @@ Nombre: solo **DESMADRE** (hecho: título, carteles, zonas, marcas; quedan clave
 ## Para más adelante (pedidos de Luz, NO ahora)
 
 - Menú previo al juego: ver salas, crearlas, ponerles clave, etc.
-- Chat con historial.
-- Susurros (que solo un jugador te lea o te escuche, como Habbo Hotel).
+- [x] Chat con historial (entregado en `4d33fd0`; no rehacer).
+- [x] Susurros de texto y voz a uno o varios elegidos (entregado en `4d33fd0`; no rehacer).
 
 ## Reglas y convenciones
 
