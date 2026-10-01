@@ -3,6 +3,12 @@ function edit(file,before,after){const raw=fs.readFileSync(file,'utf8'),eol=raw.
 edit('public/js/ui/social.js','.chat-roster{display:flex;', '.chat-roster[hidden]{display:none!important}\n.chat-roster{display:flex;');
 // Keep the established drag strength: lowering it made a downed player stop following.
 edit('public/js/game/player.js','RAPIER.JointData.spring(0.05, 1100, 85,','RAPIER.JointData.spring(0.05, 1800, 90,');
+edit('tests/social-browser.mjs', "  assert.equal(await page.locator('#m-mask option').count(), 6);", `  assert.equal(await page.locator('#m-mask option').count(), 6);
+  // The CI machine renders in software: reduce only its drawing resolution, not game logic.
+  await page.evaluate(async () => { const { G } = await import('/js/core/G.js'); if (G.renderer) { G.renderer.setPixelRatio(.25); G.renderer.setSize(640, 400, false); G.renderer.shadowMap.enabled = false; } });
+  console.log('Browser menu loaded', JSON.stringify(pageErrors));`);
+edit('tests/social-browser.mjs', "  await page.locator('#m-play').click();", `  console.log('Play button', await page.locator('#m-play').evaluate(el => ({ disabled: el.disabled, rect: el.getBoundingClientRect().toJSON(), display: getComputedStyle(el).display })));
+  await page.locator('#m-play').click({ timeout: 60000 });`);
 const tests = 'tests/gameplay.test.mjs';
 const suffix = `
 
