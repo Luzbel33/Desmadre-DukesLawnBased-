@@ -43,6 +43,7 @@ const PART_DMG = [0.9, 1, 1.7, 0.45, 0.35, 0.45, 0.35, 0.55, 0.4, 0.55, 0.4];
 // los jugadores aguantan más (antes con dos tropezones te morías): todo el daño de golpes, tiros y choques por esto
 const PLAYER_DMG_K = 0.6;
 // cosa en la mano -> modelo que se ve (equipment.js); 4 = mano libre
+export const CASH_BUNDLES = 10;
 export const ITEM_EQ = { beer: 1, smoke: 2, spray: 3, cash: 5, pistol: 6, grenade: 7, potion: 8, chori: 9, apple: 10 };
 // la parte de la que cuelga cada una (un antebrazo ya no se corta si se fue el brazo entero)
 const PARENT_PART = [-1, 0, 1, 1, 3, 1, 5, 0, 7, 0, 9];
@@ -1571,6 +1572,7 @@ export class LocalPlayer {
     if (h.joint) this.release(side, false);
     h.item = item;
     h.bites = 0;
+    h.fajos = item === 'cash' ? CASH_BUNDLES : 0; // la plata: fajos que te quedan (click izq. uno, der. todos)
     h.itemGeneration = (h.itemGeneration || 0) + 1;
   }
 
@@ -1650,7 +1652,9 @@ export class LocalPlayer {
     if (h.item === 'chori' || h.item === 'apple') { startScript(a, 'eat', 1.1); return 'food'; }
     if (h.item === 'spray') return 'spray';
     // el Búnker: tirar billetes, disparar, revolear la granada
-    if (h.item === 'cash') { startScript(a, 'throw', 0.42, this._aimLocal(side, V3, 0.9)); return 'cash'; }
+    // la plata: el brazo hace el gesto de tirar billetes, pero el fajo queda en la mano (antes al final del envión se
+    // soltaba entero como objeto: pegaba y se juntaban fajos tirados)
+    if (h.item === 'cash') { startScript(a, 'throw', 0.42, this._aimLocal(side, V3, 0.9)); a.released = true; return 'cash'; }
     if (h.item === 'pistol') return 'shoot';
     if (h.item === 'grenade') { startScript(a, 'throw', 0.42, this._aimLocal(side, V3, 0.95)); return 'nade'; }
     const held = h.prop ? G.props?.get(h.prop) : null;

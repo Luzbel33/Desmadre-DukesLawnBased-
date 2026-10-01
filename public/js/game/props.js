@@ -599,7 +599,7 @@ export class PropManager {
   // Solo cuenta si alguien lo blande, si lo revolearon hace poco o si cae de arriba a toda velocidad;
   // un objeto que empujás caminando o que rueda por ahí no lastima.
   dangerOf(p) {
-    if (!p) return null;
+    if (!p || p.def?.harmless) return null; // papel: la plata revoleada no lastima
     const now = performance.now();
     if (p.heldBy && p.heldBy !== G.myId) {
       const rp = G.players.get(p.heldBy);
@@ -748,7 +748,7 @@ export class PropManager {
       const info = G.phys.info(other);
       const remote = info?.kind === 'remote';
       const npc = (info?.kind === 'bag' || info?.kind === 'npc') && info.ref?.punch ? info.ref : null;
-      if ((!remote && !npc) || (p.mass ?? 1) < .04) return;
+      if ((!remote && !npc) || (p.mass ?? 1) < .04 || p.def?.harmless) return;
       const key = remote ? info.id : npc;
       if ((p._hitIds || (p._hitIds = new Set())).has(key)) return;
       let touching = false;

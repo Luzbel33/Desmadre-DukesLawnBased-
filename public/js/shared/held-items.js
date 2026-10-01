@@ -1,9 +1,9 @@
 // Physical versions of equipped items reuse the exact presentation mesh.
 export const HELD_ITEMS = {
   beer: { slot: 1, shape: 'cyl', r: .034, h: .31, oy: .045, mass: .45, breakDv: 6.5, glass: 0x2f5a2c, label: 'birra' },
-  smoke: { slot: 2, shape: 'box', hx: .007, hy: .007, hz: .085, oy: 0, mass: .006, label: 'pucho' },
+  smoke: { slot: 2, shape: 'box', hx: .007, hy: .007, hz: .085, oy: 0, mass: .006, harmless: true, label: 'pucho' },
   spray: { slot: 3, shape: 'cyl', r: .034, h: .225, oy: .045, mass: .4, label: 'aerosol' },
-  cash: { slot: 5, shape: 'box', hx: .08, hy: .02, hz: .055, oy: 0, mass: .12, label: 'fajo de billetes' },
+  cash: { slot: 5, shape: 'box', hx: .08, hy: .02, hz: .055, oy: 0, mass: .12, harmless: true, label: 'fajo de dólares' },
   pistol: { slot: 6, shape: 'box', hx: .025, hy: .075, hz: .19, oy: .015, mass: .8, label: 'pistola' },
   grenade: { slot: 7, shape: 'ball', r: .055, oy: .025, mass: .4, label: 'granada con seguro' },
   potion: { slot: 8, shape: 'ball', r: .07, oy: 0, mass: .28, breakDv: 7, glass: 0x2aff70, label: 'poción' },

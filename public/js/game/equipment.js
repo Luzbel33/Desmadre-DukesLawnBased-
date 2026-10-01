@@ -94,13 +94,42 @@ export function createEquippedModel(slot){
   return group;
 }
 let _bill=null;
+// Billete de 100 dólares (verde grisáceo, guarda, retrato en óvalo, sellos, "100" en las esquinas). Se dibuja una vez y
+// lo comparten el fajo en la mano, la pila del Búnker y la lluvia de billetes.
 function billTexture(){
   if(_bill||typeof document==='undefined')return _bill;
-  const c=document.createElement('canvas');c.width=256;c.height=112;const g=c.getContext('2d');
-  g.fillStyle='#b9d4a0';g.fillRect(0,0,256,112);g.strokeStyle='#3e6a3a';g.lineWidth=5;g.strokeRect(6,6,244,100);
-  g.fillStyle='#2f5a2e';g.font='bold 40px Georgia, serif';g.textAlign='center';g.fillText('666',60,72);g.fillText('666',196,72);
-  g.beginPath();g.ellipse(128,56,26,34,0,0,7);g.fill();g.fillStyle='#b9d4a0';g.font='bold 26px Georgia';g.fillText('⛧',128,66);
-  _bill=new THREE.CanvasTexture(c);_bill.colorSpace=THREE.SRGBColorSpace;return _bill;
+  const W=512,H=224,c=document.createElement('canvas');c.width=W;c.height=H;const g=c.getContext('2d');
+  const bg=g.createLinearGradient(0,0,W,H);bg.addColorStop(0,'#cfdcbf');bg.addColorStop(.5,'#bccfab');bg.addColorStop(1,'#c8d6b6');
+  g.fillStyle=bg;g.fillRect(0,0,W,H);
+  // guilloché: ondas finas que se cruzan
+  g.lineWidth=1;g.strokeStyle='rgba(70,110,80,.18)';
+  for(let k=0;k<26;k++){g.beginPath();for(let x=0;x<=W;x+=6){const y=H/2+Math.sin(x*.035+k*.5)*(30+k*3);x?g.lineTo(x,y):g.moveTo(x,y);}g.stroke();}
+  // guarda
+  g.strokeStyle='#2c4632';g.lineWidth=7;g.strokeRect(9,9,W-18,H-18);
+  g.lineWidth=2;g.strokeRect(19,19,W-38,H-38);
+  g.fillStyle='rgba(44,70,50,.85)';
+  for(let x=24;x<W-24;x+=9){g.fillRect(x,12,4,4);g.fillRect(x,H-16,4,4);}
+  // textos
+  g.fillStyle='#22382a';g.textAlign='center';g.textBaseline='middle';
+  g.font='bold 21px Georgia, serif';g.fillText('THE UNITED STATES OF AMERICA',W/2,38);
+  g.font='bold 17px Georgia, serif';g.fillText('ONE HUNDRED DOLLARS',W/2,H-36);
+  g.font='bold 46px Georgia, serif';
+  for(const [x,y] of [[60,58],[W-60,58],[60,H-58],[W-60,H-58]])g.fillText('100',x,y);
+  // retrato en el óvalo (busto genérico)
+  const ox=W/2,oy=H/2+4;
+  g.fillStyle='#e6ead9';g.beginPath();g.ellipse(ox,oy,50,64,0,0,7);g.fill();
+  g.strokeStyle='#2c4632';g.lineWidth=4;g.stroke();g.lineWidth=1.5;g.beginPath();g.ellipse(ox,oy,56,70,0,0,7);g.stroke();
+  const sh=g.createLinearGradient(ox-40,oy-40,ox+40,oy+60);sh.addColorStop(0,'#5d7461');sh.addColorStop(1,'#2a3f2f');
+  g.fillStyle=sh;g.beginPath();g.ellipse(ox,oy-12,20,25,0,0,7);g.fill();
+  g.beginPath();g.moveTo(ox-44,oy+64);g.quadraticCurveTo(ox-40,oy+16,ox,oy+12);g.quadraticCurveTo(ox+40,oy+16,ox+44,oy+64);g.closePath();g.fill();
+  // sello de la reserva (izquierda, negro) y del tesoro (derecha, verde)
+  g.strokeStyle='#1e2a22';g.lineWidth=3;g.beginPath();g.arc(128,H/2+6,24,0,7);g.stroke();
+  g.fillStyle='#1e2a22';g.font='bold 24px Georgia, serif';g.fillText('B',128,H/2+7);
+  g.strokeStyle='#2f7a45';g.fillStyle='rgba(47,122,69,.2)';g.lineWidth=3;g.beginPath();g.arc(W-128,H/2+6,24,0,7);g.fill();g.stroke();
+  for(let k=0;k<16;k++){const a=k/16*Math.PI*2;g.beginPath();g.moveTo(W-128+Math.cos(a)*24,H/2+6+Math.sin(a)*24);g.lineTo(W-128+Math.cos(a)*29,H/2+6+Math.sin(a)*29);g.stroke();}
+  // números de serie en verde
+  g.fillStyle='#2f7a45';g.font='bold 15px "Courier New", monospace';g.fillText('LB 66606660 D',150,72);g.fillText('LB 66606660 D',W-150,H-72);
+  _bill=new THREE.CanvasTexture(c);_bill.colorSpace=THREE.SRGBColorSpace;_bill.anisotropy=4;return _bill;
 }
 export { billTexture };
 export class EquipmentView {

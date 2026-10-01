@@ -9,6 +9,7 @@ import { G, clamp, rng } from '../core/G.js';
 import { Builder, getMat, defineMat } from './builder.js';
 import { CLUB } from '../shared/mapdata.js';
 import { whenAsset, assetModel } from '../game/assets.js';
+import { billTexture } from '../game/equipment.js';
 
 const HAS_DOM = typeof document !== 'undefined';
 const C = CLUB, H = C.hall;
@@ -604,7 +605,7 @@ export class Club {
     this.use('club_nade', [ax - 0.7, 1.0, az + 0.9], 1.5, 'Agarrar una granada', { e: 'give', item: 'grenade' });
     // la plata del Diablo: una pila de fajos al lado del trono
     const px = 21.4, pz = -452.6;
-    for (let k = 0; k < 40; k++) this.deco('green', px + ((k % 5) - 2) * 0.17, 0.6 + 0.04 + Math.floor(k / 20) * 0.036, pz + ((Math.floor(k / 5) % 4) - 1.5) * 0.075, 0.155, 0.035, 0.068, { yaw: (k * 0.37) % 0.2 });
+    this._cashPile(px, 0.6, pz);
     this.use('club_cash', [px, 1.2, pz], 1.8, 'Agarrar un fajo de billetes', { e: 'give', item: 'cash' });
     // la mesa ratona del medio: rayas en el espejo, pastillas de colores y hongos
     const d = this.anchors.drugTable;
@@ -614,6 +615,32 @@ export class Club {
     this.use('club_line', [d.x - 0.2, 0.9, d.z], 1.3, 'Tomarse una línea (corrés como loco)', { e: 'drug', drug: 'line' });
     this.use('club_pill', [d.x + 0.3, 0.9, d.z], 1.3, 'Tomar una pastilla de colores', { e: 'drug', drug: 'pill' });
     this.use('club_shroom', [d.x - 0.5, 0.9, d.z + 0.2], 1.3, 'Comerse unos hongos', { e: 'drug', drug: 'shroom' });
+  }
+
+  // pila de fajos de dólares (una sola malla instanciada: arriba y abajo el billete, los cantos de papel y la faja)
+  _cashPile(px, py, pz) {
+    if (!HAS_DOM) return;
+    const mats = [];
+    const edge = new THREE.MeshStandardMaterial({ color: 0xd9dfcc, roughness: 1 });
+    const bill = new THREE.MeshStandardMaterial({ map: billTexture(), roughness: 0.85 });
+    mats.push(edge, edge, bill, bill, edge, edge);
+    const geo = new THREE.BoxGeometry(0.156, 0.03, 0.066);
+    const at = [];
+    // tres pisos que se achican (pirámide desprolija) + unos fajos sueltos al costado
+    for (let lv = 0; lv < 3; lv++) {
+      const nx = 5 - lv, nz = 4 - lv;
+      for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) at.push([px + (i - (nx - 1) / 2) * 0.165, py + 0.015 + lv * 0.031, pz + (j - (nz - 1) / 2) * 0.072, (this.rand() - 0.5) * 0.12]);
+    }
+    for (let k = 0; k < 5; k++) at.push([px + 0.55 + this.rand() * 0.25, py + 0.015, pz + (this.rand() - 0.5) * 0.5, this.rand() * 3]);
+    const im = new THREE.InstancedMesh(geo, mats, at.length);
+    const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(1, 1, 1);
+    at.forEach(([x, y, z, yaw], i) => im.setMatrixAt(i, M.compose(V1.set(x, y, z), Q.setFromAxisAngle(V2.set(0, 1, 0), yaw), S)));
+    im.castShadow = true; im.receiveShadow = true;
+    this.group.add(im);
+    // las fajas de papel (bandas color mostaza) de los fajos de arriba
+    const band = new THREE.InstancedMesh(new THREE.BoxGeometry(0.032, 0.032, 0.068), new THREE.MeshStandardMaterial({ color: 0xc9a13b, roughness: 0.6 }), at.length);
+    at.forEach(([x, y, z, yaw], i) => band.setMatrixAt(i, M.compose(V1.set(x, y, z), Q.setFromAxisAngle(V2.set(0, 1, 0), yaw), S)));
+    this.group.add(band);
   }
 
   // ---------------------------------------------------------------- efectos

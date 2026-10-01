@@ -80,7 +80,7 @@ export class ClubGame {
       case 'doorman': this._askPassword(); break;
       case 'give':
         L.giveItem(it.item); G.sfx?.trigger('pickup'); this.onItems?.();
-        if (it.item === 'cash') this.notify('💸 <b>Click</b>: tirar billetes. La plata del Diablo no se termina.');
+        if (it.item === 'cash') this.notify('💵 <b>Click izquierdo</b>: tirás un fajo · <b>derecho</b>: todos. Los dólares del Diablo no se terminan.');
         else if (it.item === 'pistol') this.notify('🔫 <b>Click</b>: disparar (apuntás con la mira). El Búnker es zona PvP.');
         else if (it.item === 'grenade') this.notify('💣 <b>Click</b>: revolearla. Explota a los 3 segundos.');
         break;

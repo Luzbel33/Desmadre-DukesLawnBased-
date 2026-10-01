@@ -39,19 +39,21 @@ export class BunkerItems {
     G.scene.add(this.billMesh);
     this.MAX = MAX;
   }
-  cash(o, d, n = 14) {
+  // fajos: 1 = un puñado de billetes; todos juntos = una lluvia (más billetes, más abierta y más arriba)
+  cash(o, d, fajos = 1) {
+    const k = clamp(fajos | 0, 1, 20), n = Math.min(160, Math.round(14 * Math.pow(k, 0.8))), spread = 0.9 + Math.min(1.4, (k - 1) * 0.14);
     for (let i = 0; i < n; i++) {
       if (this.bills.length >= this.MAX) this.bills.shift();
-      const v = new THREE.Vector3(d.x + (Math.random() - 0.5) * 0.9, d.y + 0.5 + Math.random() * 0.8, d.z + (Math.random() - 0.5) * 0.9).multiplyScalar(2.2 + Math.random() * 1.6);
+      const v = new THREE.Vector3(d.x + (Math.random() - 0.5) * spread, d.y + 0.5 + Math.random() * (0.8 + spread * 0.4), d.z + (Math.random() - 0.5) * spread).multiplyScalar(2.2 + Math.random() * 1.6);
       this.bills.push({ p: o.clone().add(V1.set((Math.random() - 0.5) * 0.1, 0, (Math.random() - 0.5) * 0.1)), v, rot: new THREE.Euler(Math.random() * 6, Math.random() * 6, Math.random() * 6), spin: new THREE.Vector3((Math.random() - 0.5) * 9, (Math.random() - 0.5) * 9, (Math.random() - 0.5) * 9), t: 0, seed: Math.random() * 10, floor: null });
     }
     G.sfx?.trigger('bills', o, 0.8, { full: 4, max: 30 });
   }
-  throwCash(L) {
-    const o = L.handPos('r', new THREE.Vector3());
+  throwCash(L, fajos = 1, side = 'r') {
+    const o = L.handPos(side, new THREE.Vector3());
     const d = (G.aimCam || G.camera).getWorldDirection(new THREE.Vector3());
-    this.cash(o, d);
-    this.getNet()?.send({ t: 'ev', k: 'cash', o: o.toArray().map((x) => +x.toFixed(2)), d: d.toArray().map((x) => +x.toFixed(2)) });
+    this.cash(o, d, fajos);
+    this.getNet()?.send({ t: 'ev', k: 'cash', o: o.toArray().map((x) => +x.toFixed(2)), d: d.toArray().map((x) => +x.toFixed(2)), n: fajos });
   }
   _stepBills(dt) {
     if (!this.billMesh) return;

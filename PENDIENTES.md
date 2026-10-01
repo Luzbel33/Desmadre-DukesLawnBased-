@@ -54,7 +54,6 @@ Fuente única de trabajo pendiente.
       varias salas y lugares distintos, varios pisos o pistas de baile distintas, mejor iluminación.
 - [ ] Más gente; más bailarinas (duplicar algunas, sin tocar sus cuerpos) que bailen de verdad en el caño.
 - [ ] Armería en una zona que parezca búnker militar (no al lado del trono).
-- [ ] Plata: dólares de verdad; click izquierdo tira un fajo, derecho todos; **no deben hacer daño**.
 - [ ] Máquinas de humo de boliche que tiran humo cada tanto; sala psicodélica; laberinto de espejos que deforma.
 - [ ] Barra con tragos distintos.
 - [ ] Sala de cultivo (ganja) y sustancias distintas con efectos distintos; blunts, habanos, tabaco, pipas, bongs

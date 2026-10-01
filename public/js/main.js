@@ -16,7 +16,7 @@ import { setMaxAniso } from './world/textures.js';
 import { installFarShadowChunk } from './world/shadows.js';
 import { Post } from './fx/post.js';
 import { FX, Decals } from './fx/particles.js';
-import { LocalPlayer, RemotePlayer, predictHit } from './game/player.js';
+import { LocalPlayer, RemotePlayer, predictHit, CASH_BUNDLES } from './game/player.js';
 import { VehicleManager } from './game/entities.js';
 import { PropManager, defOf } from './game/props.js';
 import { releaseEquipped } from './game/held-release.js';
@@ -546,7 +546,7 @@ function updatePrompt() {
     if (it === 'beer') H.hint('beer', 'Click', 'Tomar');
     else if (it === 'smoke') H.hint('smoke', 'Click', 'Pitar');
     else if (it === 'spray') H.hint('spray', 'Click', `Pintar (sostenido) · ${keys.label('palette')} colores`);
-    else if (it === 'cash') H.hint('cash', 'Click', 'Tirar billetes');
+    else if (it === 'cash') H.hint('cash', 'Click', `Tirar un fajo · click der.: todos (${L.hands.r.fajos ?? CASH_BUNDLES})`);
     else if (it === 'pistol') H.hint('pistol', 'Click', 'Disparar');
     else if (it === 'grenade') H.hint('grenade', 'Click', 'Revolear la granada (explota a los 3 s)');
     else if (it === 'potion') H.hint('potion', 'Click', 'Tomarse la poción (vaya uno a saber qué hace)');
@@ -941,9 +941,27 @@ function hitFx(pos, amount = 0.5, dir = null) {
 }
 
 // click corto de un brazo
+// La plata (en cualquier mano): click izquierdo tira un fajo, derecho todos los que quedan. Son billetes: no lastiman.
+// Sin fajos se termina; la pila del trono del Diablo no se acaba.
+function tapCash(L, button) {
+  const cs = L.hands.r.item === 'cash' ? 'r' : L.hands.l.item === 'cash' ? 'l' : null;
+  if (!cs) return false;
+  const other = L.hands[button];
+  if (button !== cs && (other.item || other.prop || other.joint)) return false; // la otra mano ocupada: usa lo suyo
+  const h = L.hands[cs];
+  if (L.tap(cs) !== 'cash') return true;
+  const left = h.fajos ?? CASH_BUNDLES, n = button === 'r' ? 1 : left;
+  G.items?.throwCash(L, n, cs);
+  h.fajos = left - n;
+  if (h.fajos <= 0) { h.item = null; h.fajos = 0; h.itemGeneration = (h.itemGeneration || 0) + 1; G.hud?.notify('💸 Te quedaste seco. Hay más dólares al lado del trono.', 2200); }
+  updateHotbar();
+  return true;
+}
+
 function doTap(side) {
   const L = state.local;
   if (!L) return;
+  if (tapCash(L, side)) return;
   const r = L.tap(side), hand = L.hands[side], item = hand.item, generation = hand.itemGeneration || 0;
   const stillHeld = () => state.local === L && !L.dead && hand.item === item && (hand.itemGeneration || 0) === generation;
   if (r === 'drink') {
@@ -1012,7 +1030,7 @@ function handleEvent(m) {
       G.club?.remote(m);
       break;
     case 'cash': // otro tiró billetes
-      if (Array.isArray(m.o) && Array.isArray(m.d)) G.items?.cash(new THREE.Vector3().fromArray(m.o), new THREE.Vector3().fromArray(m.d));
+      if (Array.isArray(m.o) && Array.isArray(m.d)) G.items?.cash(new THREE.Vector3().fromArray(m.o), new THREE.Vector3().fromArray(m.d), clamp(+m.n || 1, 1, 20));
       break;
     case 'shot': // otro disparó (el daño llega aparte, como un golpe: 'hc')
       G.items?.remoteShot(m);
