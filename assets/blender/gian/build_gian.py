@@ -25,6 +25,61 @@ for o in list(sc.objects):
     if o.type == 'MESH' and o not in meshes:
         bpy.data.objects.remove(o, do_unlink=True)   # la esfera suelta del paquete
 print('piezas', [(o.name, len(o.data.vertices)) for o in meshes])
+
+
+# El buzo del paquete trae un agujero en la espalda alta (de la nuca a los omóplatos): de atrás se veía el forro
+# interno, oscuro. Se tapa con un abanico de triángulos sobre el borde del agujero; el vértice nuevo del centro hereda
+# pesos de huesos y UV de su borde (sin pesos, al animar se iría al origen).
+def tapar_espalda(o):
+    import bmesh
+    M = o.matrix_world
+    Mi = M.inverted()
+    ring = [(0, .023, 1.502), (.064, .021, 1.499), (.128, .022, 1.477), (.125, .106, 1.475), (.089, .177, 1.359),
+            (0, .165, 1.366), (-.089, .177, 1.359), (-.125, .106, 1.475), (-.128, .022, 1.477), (-.064, .021, 1.499)]
+    bm = bmesh.new(); bm.from_mesh(o.data)
+    bm.verts.ensure_lookup_table()
+    dl = bm.verts.layers.deform.verify()
+    uvl = bm.loops.layers.uv.active
+    vs = []
+    for p in ring:
+        q = Mi @ Vector(p)
+        v = min(bm.verts, key=lambda v: (v.co - q).length_squared)
+        if (v.co - q).length > 0.004:
+            print('ESPALDA: no encontré el borde cerca de', p); bm.free(); return
+        vs.append(v)
+    # centro algo salido hacia afuera (arriba-atrás): la espalda queda redondeada, no hundida
+    cw = sum((M @ v.co for v in vs), Vector()) / len(vs) + Vector((0, .02, .012))
+    c = bm.verts.new(Mi @ cw)
+    w = {}
+    for v in vs:
+        for g, x in v[dl].items():
+            w[g] = w.get(g, 0) + x / len(vs)
+    for g, x in w.items():
+        c[dl][g] = x
+    uv = lambda v: next(iter(l[uvl].uv.copy() for l in v.link_loops), None) if uvl else None
+    cuv = None
+    if uvl:
+        us = [uv(v) for v in vs if uv(v) is not None]
+        cuv = sum(us, Vector((0, 0))) / max(1, len(us))
+    out = Vector((0, .7, .7))
+    for i in range(len(vs)):
+        a, b = vs[i], vs[(i + 1) % len(vs)]
+        f = bm.faces.new((a, b, c))
+        f.normal_update()
+        if (M.to_3x3() @ f.normal).dot(out) < 0:
+            f.normal_flip()
+        f.smooth = True
+        f.material_index = next(iter(l.face.material_index for l in a.link_loops if l.face is not f), 0)
+        if uvl:
+            for l in f.loops:
+                l[uvl].uv = cuv if l.vert is c else (uv(l.vert) or cuv)
+    bm.to_mesh(o.data); bm.free(); o.data.update()
+    print('espalda tapada en', o.name)
+
+
+for o in meshes:
+    if 'hoodie' in o.name.lower():
+        tapar_espalda(o)
 # la cara multiplica la foto por un color de vértice: al unir las piezas ese atributo se pierde y la cara sale negra.
 # Para el horneado, la foto va directo al color base.
 for o in meshes:
