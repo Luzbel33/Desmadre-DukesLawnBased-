@@ -12,3 +12,9 @@ Texturas originales conservadas.
 Galleta (cookie.glb)
 Malla, rig y texturas procedurales creados para este proyecto con Blender
 (assets/blender/build_cookie2.py). Referencia visual: hoja de personaje aportada por el usuario.
+
+Gian (gian.glb)
+Modelo aportado para el juego por Gian/Luz (base hero.fbx de Gian, cara y capucha agregadas).
+Cambios para este juego: piezas unidas en una malla, atlas horneado (color, rugosidad, normal),
+huesos renombrados al esqueleto del juego y huesos sin peso agregados (columna, dedos, ojos, boca)
+con assets/blender/gian/build_gian.py y retarget_human.py. Licencia comercial del FBX base sin verificar.

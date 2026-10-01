@@ -14,6 +14,9 @@ export const MODELS = {
   carla: { file: 'assets/chars/carla.glb', label: 'Carla', gender: 'f' },
   claudia: { file: 'assets/chars/claudia.glb', label: 'Claudia', gender: 'f' },
   galleta: { file: 'assets/chars/cookie.glb', label: 'Galleta', gender: 'm', voice: 'cookie' },
+  // Gian: su modelo (base hero.fbx + cara y capucha), unido y horneado a un atlas y retargeteado al esqueleto del juego
+  // (assets/blender/gian/build_gian.py + retarget_human.py)
+  gian: { file: 'assets/chars/gian.glb', label: 'Gian', gender: 'm' },
   // exclusivo del dueño (el servidor solo se lo deja a SmokePyro con su clave): "Demon" de VidovicArts (Sketchfab,
   // CC-BY 4.0), rig reparado en Blender (assets/blender/repair_demon.py + retarget_human.py)
   diablo: { file: 'assets/chars/diablo.glb', label: 'El Diablo', gender: 'm', devil: true, owner: true, voice: 'demon' },

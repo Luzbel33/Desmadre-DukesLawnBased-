@@ -870,6 +870,6 @@ function sanitizeLook(l, owner = false) {
     glasses: ['none', 'sun', 'nerd'].includes(l.glasses) ? l.glasses : 'none',
     body: ['normal', 'gordo', 'flaco'].includes(l.body) ? l.body : 'normal',
     mask: l.model !== 'diablo' && ['bull', 'horse', 'lion', 'cat', 'rabbit'].includes(l.mask) ? l.mask : 'none',
-    model: ['eric', 'carla', 'claudia', 'galleta', ...(owner ? ['diablo'] : [])].includes(l.model) ? l.model : 'eric',
+    model: ['eric', 'carla', 'claudia', 'galleta', 'gian', ...(owner ? ['diablo'] : [])].includes(l.model) ? l.model : 'eric',
   };
 }
