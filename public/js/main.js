@@ -1238,6 +1238,7 @@ function setupNetHandlers(net) {
   net.on('pkc', (m) => G.poker?.setCards(m));
   net.on('pke', (m) => G.poker?.event(m));
   net.on('look', (m) => G.players.get(m.id)?.setLook(m.look));
+  net.on('name', (m) => { const rp = G.players.get(m.id); if (rp) rp.name = String(m.name || '').slice(0, 20); });
   net.on('snap', (m) => {
     for (const [id, st] of m.P || []) if (id !== G.myId) G.players.get(id)?.applyState(st, false, m.ts);
     state.props.handleSnap(m.R || []);
@@ -1302,12 +1303,19 @@ async function joinGame() {
   localStorage.setItem('dukes.name', name); localStorage.setItem('dukes.room', room);
 
   if (G.inGame && state.local) {
-    if (room !== state.room || name !== state.joinedName) {
-      // El protocolo actual no tiene rename/cambio de sala en caliente: recargar hace un join limpio.
+    // otra sala, o pasar a ser el dueño (necesita entrar con la clave): join limpio. Cambiar de nombre o de
+    // personaje en la misma sala va en caliente (antes recargaba la página siempre que el nombre no coincidía)
+    const ownerSwitch = isOwnerName(name) && !state.isOwner;
+    if (room !== state.room || ownerSwitch) {
       location.href = `${location.pathname}?sala=${encodeURIComponent(room)}`;
       return;
     }
-    state.local.setLook(look); state.net.send({ t: 'look', look });
+    if (name !== state.joinedName) {
+      state.net.send({ t: 'name', name });
+      state.local.name = name; state.joinedName = name;
+    }
+    const prev = state.local.look || {};
+    if (JSON.stringify(prev) !== JSON.stringify(look)) { state.local.setLook(look); state.net.send({ t: 'look', look }); }
     $('m-err').textContent = ''; resumeGame(); return;
   }
 

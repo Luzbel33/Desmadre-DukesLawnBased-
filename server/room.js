@@ -390,6 +390,18 @@ export class Room {
         }
         else if (msg.a === 'laugh') this.broadcast({ t: 'pow', id: p.id, a: 'laugh', v: Math.max(0, Math.min(2, msg.v | 0)) }, p);
         break;
+      case 'name': {
+        // cambiarse el nombre sin salir de la sala (antes el cliente recargaba la página)
+        const nn = clampStr(msg.name, 20) || 'Anónimo';
+        if (nn === p.name || now - (p.lastRename || 0) < 1500) break;
+        if (isOwnerName(nn) && !p.owner) { this.send(p, { t: 'sys', m: 'El nombre SmokePyro está reservado.' }); break; }
+        p.lastRename = now;
+        const old = p.name;
+        p.name = nn;
+        this.broadcast({ t: 'name', id: p.id, name: nn });
+        this.sys(old + ' ahora se llama ' + nn + '.');
+        break;
+      }
       case 'look':
         p.look = sanitizeLook(msg.look, p.owner);
         if (p.look.model !== 'diablo' && p.owner) {

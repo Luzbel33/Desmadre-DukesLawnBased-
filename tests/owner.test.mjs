@@ -115,3 +115,18 @@ test('ritual: del cuarto secreto al Búnker y del pentagrama del Búnker de vuel
   a.sent.length = 0; say(own, { t: 'pow', a: 'ritual', ids: [] });
   assert.equal(ritual(), undefined, 'lejos de los pentagramas no hay ritual');
 });
+
+test('cambiarse el nombre en la misma sala (sin recargar); el del dueño sigue reservado', () => {
+  const room = new Room('test-rename', fs.mkdtempSync(path.join(os.tmpdir(), 'desmadre-')));
+  const a = fakeWs(); room.accept(a); join(a, 'Ana', {});
+  const b = fakeWs(); room.accept(b); join(b, 'Beto', {});
+  b.sent.length = 0;
+  say(a, { t: 'name', name: 'Anita' });
+  assert.deepEqual(b.sent.find((m) => m.t === 'name'), { t: 'name', id: 1, name: 'Anita' });
+  assert.equal(room.players.get(1).name, 'Anita');
+  room.players.get(1).lastRename = 0;
+  b.sent.length = 0;
+  say(a, { t: 'name', name: 'SmokePyro' });
+  assert.equal(room.players.get(1).name, 'Anita', 'sin la clave no se puede llamar como el dueño');
+  assert.ok(!b.sent.some((m) => m.t === 'name'));
+});
