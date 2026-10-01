@@ -20,12 +20,13 @@ jobs:
           node-version: '22'
       - name: Focused diagnostics
         run: |
-          grep -nEi 'guard|patrol|blocked|walkTo|moveTo' public/js/game/villagers.js public/js/game/club.js | head -100
-          grep -nE 'physicsStep|_gripStep|grips|h.joint|h.player|handPos' public/js/game/player.js | head -80
-          grep -nE 'this.items|this.chunks|this.gibs|push\(|expire|remove|\.t |life|_drop' public/js/game/gore.js | head -70
+          grep -nE 'frustumCulled|applyWorldTransforms|\.visible|cull' public/js/char/human.js | tail -40
+          grep -nE 'duration|dur|cur =|case .ev.|bodybump' server/room.js public/js/media/playback.js | head -50
+          grep -nE 'castRay|ray\(' public/js/core/physics.js
+          sed -n '405,422p' public/js/game/gore.js
       - name: Reproduce targeted regressions
         continue-on-error: true
-        run: node --no-warnings --loader ./tests/loader.mjs --test tests/social-regressions.test.mjs > /tmp/red.log 2>&1 || { tail -16 /tmp/red.log; exit 1; }
+        run: node --no-warnings --loader ./tests/loader.mjs --test tests/*regressions.test.mjs > /tmp/red.log 2>&1 || { tail -70 /tmp/red.log; exit 1; }
       - name: Apply exact-match scoped corrections
         if: hashFiles('tools/apply-social-fixes.mjs') != ''
         run: node tools/apply-social-fixes.mjs
@@ -34,12 +35,18 @@ jobs:
           npm run check
           npm test > /tmp/unit.log 2>&1 || { tail -120 /tmp/unit.log; exit 1; }
           tail -10 /tmp/unit.log
-          node --no-warnings --loader ./tests/loader.mjs --test tests/social-regressions.test.mjs > /tmp/social.log 2>&1 || { cat /tmp/social.log; exit 1; }
+          node --no-warnings --loader ./tests/loader.mjs --test tests/*regressions.test.mjs > /tmp/social.log 2>&1 || { cat /tmp/social.log; exit 1; }
           tail -9 /tmp/social.log
           npm run test:network > /tmp/network.log 2>&1 || { tail -35 /tmp/network.log; exit 1; }
           tail -8 /tmp/network.log
           npm run test:fire
           git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol diff --check
+      - name: Real browser regressions
+        if: hashFiles('tests/social-browser.mjs') != ''
+        run: |
+          npm install --prefix /tmp/browser-qa playwright --no-package-lock --no-audit --no-fund
+          /tmp/browser-qa/node_modules/.bin/playwright install --with-deps chromium > /tmp/browser-install.log 2>&1
+          node tests/social-browser.mjs
       - name: Publish verified corrections to isolated branch only
         if: hashFiles('tools/apply-social-fixes.mjs') != ''
         run: |
