@@ -1,0 +1,74 @@
+name: Camera shoulder follow-up
+on:
+  push:
+    branches: [fix/camera-shoulders-20261001]
+permissions:
+  contents: write
+concurrency:
+  group: camera-shoulder-validation
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 30
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply exact bounded follow-up
+        run: |
+          python - <<'PY'
+          import base64,lzma,hashlib,pathlib
+          data=lzma.decompress(base64.b64decode(pathlib.Path('tools/camera-shoulders.patch.xz.b64').read_text().strip()))
+          assert hashlib.sha256(data).hexdigest()=='cd668ed6b7fdaf71d31f7635bc6f60b901031872609ed83b690e55637f6a7a45'
+          pathlib.Path('/tmp/shoulders.patch').write_bytes(data)
+          PY
+          if git apply --reverse --check /tmp/shoulders.patch 2>/dev/null; then
+            echo 'Follow-up already applied'
+          else
+            git diff --exit-code a8bf6d4bdc0f99897b2a237a303dfcebd865ba71 -- public server tests PENDIENTES.md package.json
+            git apply --check /tmp/shoulders.patch
+            git apply /tmp/shoulders.patch
+          fi
+          git diff --exit-code 4d33fd0c0fd29a865abf04997bfb07b75f4555c9 -- assets public/assets public/js/char public/js/game/club.js
+          git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol diff --check
+      - name: Complete unit, syntax and network regressions
+        run: |
+          npm run check
+          npm test > /tmp/unit.log 2>&1 || { tail -120 /tmp/unit.log; exit 1; }
+          tail -10 /tmp/unit.log
+          npm run test:network
+          npm run test:fire
+      - name: Browser dependencies
+        run: |
+          npm install --prefix /tmp/browser-qa playwright --no-package-lock --no-audit --no-fund
+          /tmp/browser-qa/node_modules/.bin/playwright install --with-deps chromium > /tmp/browser-install.log 2>&1
+      - name: YouTube surface and personal controls
+        run: node tests/media-focus-browser.mjs
+      - name: Chat, private microphone and full game regressions
+        run: node tests/social-browser.mjs
+      - name: World screenshots, shoulder preferences and frontal combat
+        run: node tests/world-browser.mjs
+      - name: Commit verified follow-up only to isolated branch
+        run: |
+          test "$(git ls-remote origin refs/heads/fix/camera-shoulders-20261001 | cut -f1)" = "$GITHUB_SHA"
+          git add PENDIENTES.md package.json public/index.html public/js/main.js public/js/ui/camera-options.js tests/camera-options.test.mjs tests/world-browser.mjs
+          git diff --cached --stat
+          if ! git diff --cached --quiet; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'feat: configurable third-person shoulders and verified pending-work handoff'
+            git push origin HEAD:refs/heads/fix/camera-shoulders-20261001
+          fi
+          git rev-parse HEAD
+          git rev-parse HEAD^{tree}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shoulder-followup-evidence
+          path: |
+            /tmp/media-qa
+            /tmp/unit.log
