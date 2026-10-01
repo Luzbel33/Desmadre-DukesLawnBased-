@@ -34,7 +34,7 @@ export class YouTubeScreenManager {
     const focusCamera=new THREE.OrthographicCamera(-def.w/2,def.w/2,def.h/2,-def.h/2,.01,100);
     focusCamera.position.fromArray(def.c).add(new THREE.Vector3(Math.sin(def.yaw),0,Math.cos(def.yaw)).multiplyScalar(10));
     focusCamera.lookAt(new THREE.Vector3().fromArray(def.c));focusCamera.updateMatrixWorld();
-    const entry={def,layer,renderer,cssScene,object,hole,focusCamera,placeholder,stage,player:null,loading:false,error:'',ready:false,timer:null,w:0,h:0};
+    const entry={def,layer,renderer,cssScene,object,hole,focusCamera,placeholder,stage,center:new THREE.Vector3().fromArray(def.c),normal:new THREE.Vector3(Math.sin(def.yaw),0,Math.cos(def.yaw)),toCamera:new THREE.Vector3(),projected:new THREE.Vector3(),player:null,loading:false,error:'',ready:false,timer:null,w:0,h:0};
     entry.control=new MediaPlayback({screenId:def.id,now:()=>this.net.now(),send:m=>this.net.send(m),changed:()=>this.changed(def.id)});
     this.screens.set(def.id,entry);
   }
@@ -97,15 +97,15 @@ export class YouTubeScreenManager {
     const pageVisible=!this.doc.hidden;
     for(const e of this.screens.values()){
       const focused=this.focused===e.def.id&&!!this.slot;
-      const normal=new THREE.Vector3(Math.sin(e.def.yaw),0,Math.cos(e.def.yaw));
-      const toCamera=camera.position.clone().sub(new THREE.Vector3().fromArray(e.def.c));
-      const projected=new THREE.Vector3().fromArray(e.def.c).project(camera);
-      const facing=toCamera.dot(normal)>0;
-      const visible=facing&&projected.z>-1&&projected.z<1&&Math.abs(projected.x)<1.7&&Math.abs(projected.y)<1.7&&toCamera.length()<160;
+      const toCamera=e.toCamera.subVectors(camera.position,e.center);
+      const projected=e.projected.copy(e.center).project(camera);
+      const facing=toCamera.dot(e.normal)>0;
+      const visible=facing&&projected.z>-1&&projected.z<1&&Math.abs(projected.x)<1.7&&Math.abs(projected.y)<1.7&&toCamera.lengthSq()<160*160;
+      const showLayer=active&&(focused||visible);
       const gain=focused?1:screenGain(e.def,pos);
       const playing=active&&pageVisible&&(focused||(!this.focused&&(visible||gain>.01)));
       e.hole.visible=active&&!focused;
-      e.layer.style.display=active?'':'none';
+      e.layer.style.display=showLayer?'':'none';
       e.object.visible=true;
       let w=innerWidth,h=innerHeight;
       if(focused){
@@ -118,7 +118,7 @@ export class YouTubeScreenManager {
       e.object.element.style.pointerEvents=focused?'auto':'none';
       const iframe=e.stage.querySelector('iframe');if(iframe)iframe.style.pointerEvents=focused?'auto':'none';
       if(e.w!==w||e.h!==h){e.w=w;e.h=h;e.renderer.setSize(w,h);}
-      if(active)e.renderer.render(e.cssScene,focused?e.focusCamera:camera);
+      if(showLayer)e.renderer.render(e.cssScene,focused?e.focusCamera:camera);
       if(tick){
         if(playing&&e.control.state.cur)this._ensure(e);
         const volume=(this.opts.muted?0:clamp01(this.opts.vol??.8))*clamp01(this.opts.volMusic??.7)*gain;

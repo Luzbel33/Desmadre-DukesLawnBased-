@@ -351,7 +351,7 @@ button.big:hover { filter: brightness(1.06); }
 .media-heading button { font-size: 12px; padding: 7px 12px; }
 .media-select { flex-direction: row; align-items: center; margin: 8px 0; }
 .media-select select { flex: 1; }
-#media-view { width: 100%; height: clamp(200px, 37vh, 405px); background: #080d0b; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+#media-view { width: 100%; height: auto; aspect-ratio: 16 / 9; min-height: 0; background: #080d0b; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 #media-status { font-size: 13px; line-height: 1.4; margin: 8px 0; color: #e1ddc9; }
 #media-status.err, #media-input-error { color: #ff9292; }
 #media-input-error:empty { display: none; }

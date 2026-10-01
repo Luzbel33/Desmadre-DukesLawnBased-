@@ -306,7 +306,6 @@ export class Haunt {
     this._buildInteract();
     this._buildWindowLights();
     this._buildOverlay();
-    this._projectorBeam();
     if (world.storm) world.storm.onStrike = (s) => this._onStrike(s);
   }
 
@@ -410,33 +409,6 @@ export class Haunt {
     document.body.appendChild(d);
     this.overlay = d;
     this.overlayK = 0;
-  }
-
-  // haz del proyector del fogón (se ve cuando hay algo en la pantalla)
-  _projectorBeam() {
-    const c = this.castle;
-    const a = c.anchors.projector, s = c.anchors.screen;
-    if (!a || !s) return;
-    const len = a.distanceTo(s);
-    const g = new THREE.CylinderGeometry(2.2, 0.06, len, 16, 1, true);
-    g.translate(0, len / 2, 0);
-    const mat = new THREE.ShaderMaterial({
-      uniforms: { uT: { value: 0 }, uA: { value: 0 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-      vertexShader: /* glsl */ `varying vec2 vUv; varying vec3 vW; void main() { vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
-      fragmentShader: /* glsl */ `uniform float uT, uA; varying vec2 vUv; varying vec3 vW;
-        void main() {
-          float dust = 0.6 + 0.4 * sin(vW.y * 9.0 + uT * 1.3) * sin(vW.z * 7.0 - uT * 0.9);
-          float a = uA * 0.05 * (1.0 - vUv.y * 0.5) * dust;
-          gl_FragColor = vec4(vec3(0.8, 0.85, 1.0) * a, 1.0);
-        }`,
-    });
-    const m = new THREE.Mesh(g, mat);
-    m.position.copy(a);
-    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), V1.copy(s).sub(a).normalize());
-    m.visible = false;
-    m.renderOrder = 7;
-    this.scene.add(m);
-    this.beam = m;
   }
 
   // ---------------------------------------------------------------- utilidades de luz: apagar/prender un cuarto
@@ -885,13 +857,6 @@ export class Haunt {
     // sábana: se sienta
     const sh = this.decor?.models.sheetTorso;
     if (sh) sh.rotation.z += ((this.sheetUp ? 1.15 : 0) - sh.rotation.z) * Math.min(1, dt * (this.sheetUp ? 5 : 1.5));
-    // haz del proyector: prendido si la pantalla del fogón tiene algo
-    if (this.beam) {
-      const on = !!G.media?.screens?.get?.('fogon')?.control?.state?.cur;
-      this.beam.visible = on;
-      this.beam.material.uniforms.uT.value = t;
-      this.beam.material.uniforms.uA.value = on ? 1 : 0;
-    }
     // la campana se hamaca después de tocar
     // latidos y destello de pantalla
     const inCrypt = !!this.inside.crypt;
