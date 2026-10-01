@@ -206,3 +206,41 @@ export const CASTLE_MANIFEST = {
   c_book_a: { url: P + 'castle/book_a.glb', scale: 1, shadow: false },
   c_book_b: { url: P + 'castle/book_b.glb', scale: 1, shadow: false },
 };
+
+// El Búnker grande (world/club-wings.js): Poly Haven CC0 convertidos con assets/blender/ph_batch.py (tamaño real, miran
+// a +Z). Se cargan recién la primera vez que alguien se acerca al Búnker (Club.update), no al entrar al juego.
+const B = P + 'bunker/';
+export const BUNKER_MANIFEST = {
+  b_ammo: { url: B + 'ammo_box.glb', scale: 1, shadow: false },
+  b_rifle: { url: B + 'bolt_action_rifle_7_62.glb', scale: 1, shadow: false },
+  b_pistols: { url: B + 'service_pistol.glb', scale: 1, shadow: false },
+  b_stickgren: { url: B + 'stick_grenade.glb', scale: 1, shadow: false },
+  b_crate_old: { url: B + 'old_military_crate.glb', scale: 1 },
+  b_crate_wood: { url: B + 'wooden_military_crate.glb', scale: 1 },
+  b_gasmask: { url: B + 'old_gas_mask.glb', scale: 1, shadow: false },
+  b_shelf_steel: { url: B + 'steel_frame_shelves_02.glb', scale: 1 },
+  b_rack: { url: B + 'worn_metal_rack.glb', scale: 1 },
+  b_jerrycan: { url: B + 'metal_jerrycan_green.glb', scale: 1, shadow: false },
+  b_searchlight: { url: B + 'portable_searchlight.glb', scale: 1.6, shadow: false },
+  b_fluo: { url: B + 'mounted_fluorescent_lights.glb', scale: 1, shadow: false, lit: true },
+  b_sconce: { url: B + 'industrial_wall_sconce.glb', scale: 1, shadow: false, lit: true },
+  b_powerbox: { url: B + 'power_box_01.glb', scale: 1, shadow: false },
+  b_medbox: { url: B + 'medical_box.glb', scale: 1, shadow: false },
+  b_radio: { url: B + 'vintage_radio_transceiver.glb', scale: 1, shadow: false },
+  b_sofa: { url: B + 'sofa_03.glb', scale: 1 },
+  b_teaset: { url: B + 'tea_set_01.glb', scale: 1, shadow: false },
+  b_planter: { url: B + 'planter_box_02.glb', scale: 1 },
+  b_tray: { url: B + 'seeding_tray_01.glb', scale: 1, shadow: false },
+  b_wcan: { url: B + 'watering_can_metal_01.glb', scale: 1, shadow: false },
+  b_compost: { url: B + 'compost_bags.glb', scale: 1 },
+  b_hose: { url: B + 'garden_hose_wall_mounted_01.glb', scale: 1, shadow: false },
+  b_ctable: { url: B + 'coffee_table_round_01.glb', scale: 1 },
+  b_lounge: { url: B + 'mid_century_lounge_chair.glb', scale: 1 },
+  b_pillows: { url: B + 'throw_pillows_01.glb', scale: 1, shadow: false },
+  b_cube: { url: B + 'wooden_display_shelves_01.glb', scale: 1 },
+  b_pendant: { url: B + 'modern_ceiling_lamp_01.glb', scale: 1, shadow: false, lit: true },
+  b_snake: { url: B + 'potted_plant_04.glb', scale: 1, shadow: false },
+  b_lighter: { url: B + 'vintage_lighter.glb', scale: 1, shadow: false },
+  b_cigcase: { url: B + 'cigarette_case.glb', scale: 1, shadow: false },
+  b_coffeecart: { url: B + 'CoffeeCart_01.glb', scale: 1 },
+};

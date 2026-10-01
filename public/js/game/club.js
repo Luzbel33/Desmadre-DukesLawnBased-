@@ -51,6 +51,7 @@ export class ClubGame {
     this._buildPentagram();
     this._buildThroneScreen();
     this._makeNpcs();
+    this._makeWingNpcs();
     this._interact();
   }
 
@@ -354,15 +355,7 @@ export class ClubGame {
         if (!n.emote && n.data.t < 0) { n.data.t = 6 + Math.random() * 6; n.emote = Math.random() < 0.5 ? 'flex' : null; n.emoteT = 0; setTimeout(() => { if (n.emote === 'flex') n.emote = null; }, 2500); }
       },
     });
-    // bailarinas del caño: giran alrededor, cambian de baile cada tanto y miran al que se acerca
-    const pole = (c, phase) => (n, dt) => {
-      const t = G.time * 0.45 + phase;
-      n.pos.set(c.x + Math.sin(t) * 0.42, c.y, c.z + Math.cos(t) * 0.42);
-      n.baseYaw = t + Math.PI / 2 + Math.sin(G.time * 0.3 + phase) * 0.8;
-      n.data.t = (n.data.t || 0) - dt;
-      if (n.data.t <= 0) { n.data.t = 5 + Math.random() * 5; n.emote = ['dance1', 'dance2', 'dance1', 'dance3'][Math.floor(Math.random() * 4)]; n.emoteT = 0; }
-      n.lookAt = near(n, 6);
-    };
+    const pole = (c, phase) => this._poleRole(c, phase);
     const P = this.club.poles;
     [['lilith', 'Lilith'], ['coneja', 'La Coneja'], ['venus', 'Venus']].forEach(([m, name], i) => { if (P[i]) add({ name, look: { model: m }, pos: P[i].clone(), role: pole(P[i], i * 2.1) }); });
     // gogós en las jaulas colgantes
@@ -383,17 +376,7 @@ export class ClubGame {
       if (n.data.t <= 0) { n.data.t = 8 + Math.random() * 6; n.action = 'cheers'; n.actionT = 0; n.actionEnd = 1.5; }
     } });
     // la gente de la pista: cada uno en la suya
-    const dancer = (home) => (n, dt) => {
-      n.data.t = (n.data.t || 0) - dt;
-      if (n.data.t <= 0) {
-        n.data.t = 6 + Math.random() * 6;
-        n.emote = ['dance1', 'dance2', 'dance3', 'clap', 'dance1'][Math.floor(Math.random() * 5)]; n.emoteT = 0;
-        n.data.to = home.clone().add(V1.set((Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 3));
-        n.baseYaw = Math.random() * Math.PI * 2;
-      }
-      if (n.data.to) { const d = V2.subVectors(n.data.to, n.pos); d.y = 0; const l = d.length(); if (l > 0.05) n.pos.addScaledVector(d, Math.min(1, dt * 0.4 / l)); }
-      n.lookAt = near(n, 4);
-    };
+    const dancer = (home) => this._dancerRole(home);
     for (const [m, name, x, z] of [['metalero', 'El Metalero', -3, -459], ['raver', 'El Raver', 3.5, -464], ['gordo', 'El Gordo', 0.5, -457.5]]) {
       add({ name, look: { model: m }, pos: new THREE.Vector3(x, 0.05, z), role: dancer(new THREE.Vector3(x, 0.05, z)) });
     }
@@ -413,6 +396,84 @@ export class ClubGame {
       }
       this.fighters = [toro, chacal];
     }
+  }
+
+  // ---------------------------------------------------------------- roles que se repiten
+  _near(n, r) { const L = this.getLocal(); return L && Math.hypot(L.pos.x - n.pos.x, L.pos.z - n.pos.z) < r ? L.pos : null; }
+  // bailarinas del caño: giran alrededor, cambian de baile cada tanto y miran al que se acerca
+  _poleRole(c, phase) {
+    return (n, dt) => {
+      const t = G.time * 0.45 + phase;
+      n.pos.set(c.x + Math.sin(t) * 0.42, c.y, c.z + Math.cos(t) * 0.42);
+      n.baseYaw = t + Math.PI / 2 + Math.sin(G.time * 0.3 + phase) * 0.8;
+      n.data.t = (n.data.t || 0) - dt;
+      if (n.data.t <= 0) { n.data.t = 5 + Math.random() * 5; n.emote = ['dance1', 'dance2', 'dance1', 'dance3'][Math.floor(Math.random() * 4)]; n.emoteT = 0; }
+      n.lookAt = this._near(n, 6);
+    };
+  }
+  // la gente de la pista: cada uno en la suya, se mueve un poco y cambia de baile
+  _dancerRole(home, spread = 3) {
+    return (n, dt) => {
+      n.data.t = (n.data.t || 0) - dt;
+      if (n.data.t <= 0) {
+        n.data.t = 6 + Math.random() * 6;
+        n.emote = ['dance1', 'dance2', 'dance3', 'clap', 'dance1'][Math.floor(Math.random() * 5)]; n.emoteT = 0;
+        n.data.to = home.clone().add(V1.set((Math.random() - 0.5) * spread, 0, (Math.random() - 0.5) * spread));
+        n.baseYaw = Math.random() * Math.PI * 2;
+      }
+      if (n.data.to) { const d = V2.subVectors(n.data.to, n.pos); d.y = 0; const l = d.length(); if (l > 0.05) n.pos.addScaledVector(d, Math.min(1, dt * 0.4 / l)); }
+      n.lookAt = this._near(n, 4);
+    };
+  }
+  // sentado en un sillón: cada tanto pita (con su humito) o toma
+  _loungeRole(item, seat) {
+    return (n, dt) => {
+      n.sit = true; n.speed = 0; n.item = item;
+      n.pos.set(seat.x, seat.y - 0.46, seat.z); n.baseYaw = seat.yaw;
+      n.data.t = (n.data.t ?? 2 + Math.random() * 6) - dt;
+      if (n.data.t <= 0 && !n.action) {
+        n.data.t = 6 + Math.random() * 8;
+        if (item === 2) {
+          n.action = 'smoke'; n.actionT = 0; n.actionEnd = 1.4;
+          setTimeout(() => { if (n.char && !n.dead && n.scene.visible) G.fx?.puff(n.char.headWorld?.(V1) || n.pos, V2.set(Math.sin(n.yaw), 0.4, Math.cos(n.yaw)), 0.7, 0xb8b0a8); }, 1100);
+        } else { n.action = 'drink'; n.actionT = 0; n.actionEnd = 1.6; }
+      }
+      n.lookAt = this._near(n, 4);
+    };
+  }
+  // alguien que cuida un lugar: mira al que se acerca y le dice algo (una vez por visita)
+  _keeperRole(lines, r = 5) {
+    return (n) => {
+      const L = this.getLocal(), close = this._near(n, r);
+      n.lookAt = close;
+      if (close && !n.data.said) { n.data.said = true; n.say(lines[Math.floor(Math.random() * lines.length)], 3); }
+      if (!close && L && Math.hypot(L.pos.x - n.pos.x, L.pos.z - n.pos.z) > r + 4) n.data.said = false;
+    };
+  }
+
+  // la gente del Búnker grande (club-wings.js): cada uno en el grupo de su sala, así se dibuja y se anima con ella
+  _makeWingNpcs() {
+    const W = this.club.wings, A = this.club.anchors;
+    if (!W) return;
+    const add = (wing, o) => { const n = new Npc(W.wings.get(wing).group, o); this.npcs.push(n); return n; };
+    // más bailarinas en los caños (los mismos modelos de las del club, sin tocarlos): la VIP y la isla del Infierno
+    [['lilith', 'Jezabel'], ['venus', 'Morgana'], ['coneja', 'Bambi']].forEach(([m, name], i) => { const c = A.vipPoles?.[i]; if (c) add('vip', { name, look: { model: m }, pos: c.clone(), role: this._poleRole(c, i * 1.7 + 0.4) }); });
+    [['raven', 'Nyx'], ['emo', 'Belladona'], ['lilith', 'Lucrecia']].forEach(([m, name], i) => { const c = A.hellPoles?.[i]; if (c) add('hell', { name, look: { model: m }, pos: c.clone(), role: this._poleRole(c, i * 2.3 + 1.1) }); });
+    if (A.hellDj) add('hell', { name: 'DJ Belcebú', look: { model: 'dj' }, pos: A.hellDj.clone(), yaw: 0, role: (n) => { n.emote = 'dance2'; n.lookAt = this._near(n, 9); } });
+    // la pista del Infierno
+    if (A.hellFloor) {
+      const crowd = [['metalero', 'El Pelado Metal', -3.5, -2], ['raver', 'Rayo', 3, -3.5], ['v_punk', 'La Punk', -1.5, 3.5], ['v_hincha', 'El Hincha', 4, 2.5], ['v_corredora', 'La Corredora', -4.5, 3]];
+      for (const [m, name, dx, dz] of crowd) { const h = A.hellFloor.clone().add(V1.set(dx, 0, dz)); add('hell', { name, look: { model: m }, pos: h.clone(), role: this._dancerRole(h, 2.5) }); }
+    }
+    // la VIP: el patovica de la puerta
+    if (A.vipDoor) add('vip', { name: 'El Patovica', look: { model: 'portero' }, pos: A.vipDoor.clone(), yaw: Math.PI * 0.75, height: 1.06, role: this._keeperRole(['Mirar sí, tocar no.', 'Acá adentro se portan bien, ¿estamos?', 'Bienvenido a la VIP, capo.']) });
+    // el coffeeshop: la que atiende y la gente fumando o tomando en los sillones (asientos que no usan los jugadores)
+    if (A.budtender) add('cafe', { name: 'Mery Juana', look: { model: 'v_aldeana' }, pos: A.budtender.clone(), yaw: 0, role: this._keeperRole(['¡Hola, amor! ¿Qué te armo?', 'Probá el blunt de la casa.', 'Tranqui, acá nadie apura a nadie.', 'Lo de la huerta es todo nuestro, eh.'], 4.5) });
+    const people = [['v_vecino', 'El Rasta', 2], ['v_parrillero', 'El Tano', 2], ['v_abuela', 'La Abuela Porro', 2], ['gordo', 'Don Billetes', 1], ['v_tabernero', 'El Colorado', 1]];
+    (A.npcSeats || []).forEach((s, i) => { const p = people[i]; if (p) add(s.wing, { name: p[1], look: { model: p[0] }, pos: new THREE.Vector3(s.x, s.y - 0.46, s.z), yaw: s.yaw, role: this._loungeRole(p[2], s) }); });
+    // la sala de cultivo y el arsenal
+    if (A.gardener) add('grow', { name: 'El Jardinero', look: { model: 'v_granjero' }, pos: A.gardener.clone(), yaw: Math.PI, role: this._keeperRole(['Despacito con las nenas, que están floreciendo.', 'Cortá uno, nomás. Bueno, dos.', 'Las riego con las lágrimas de los que pierden al póker.'], 4.5) });
+    if (A.sarge) add('arsenal', { name: 'El Sargento', look: { model: 'v_guardia' }, pos: A.sarge.clone(), yaw: -Math.PI / 2, role: this._keeperRole(['¡Firmes, recluta!', 'Se agarra una y se usa con cabeza.', 'Acá no se fuma. Andá al coffeeshop, hippie.', 'Si le tirás a una bailarina, te fusilo.'], 6) });
   }
 
   // la campana: cortan la pelea (cada uno a su rincón, a respirar) por un rato, o vuelven a pelear
@@ -800,7 +861,8 @@ export class ClubGame {
     this._throneStep(dt);
     const cam = G.camera;
     prepareNpcCulling(cam);
-    for (const n of this.npcs) n.update(dt, cam, this.club.visible);
+    // los de las alas solo con su sala a la vista (club-wings.js): ocultos no se animan
+    for (const n of this.npcs) n.update(dt, cam, this.club.visible && n.scene.visible);
     // la música: a pleno en el club; ahogada en la antesala y el ascensor; nada afuera. Se calla con un video puesto
     const p = cam?.position;
     let want = 0, muffle = 1;

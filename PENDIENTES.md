@@ -32,6 +32,9 @@ Fuente única de trabajo pendiente.
 
 ## 2. Combate y armas
 
+- [ ] **Patadas rotas:** no conectan bien contra NPC ni jugadores.
+- [ ] **Agarrar con las manos a NPC (y jugadores):** hoy no agarra. Revisar candidatos de agarre y el ragdoll del NPC.
+- [ ] **Modo invisible del Diablo:** que no se vea el nombre arriba de la cabeza.
 - [ ] Apuntado real: mano y arma siguiendo la mira, poses coherentes, animaciones y retroceso.
 - [ ] Cuchillos y armas blancas que puedan quedar clavados en jugadores, piso o madera y luego sacarse/agarrarse.
 - [ ] Revisar interacción entre armas clavadas, ragdoll, gore y props de red para que no se dupliquen ni desaparezcan.
@@ -50,11 +53,16 @@ Fuente única de trabajo pendiente.
 
 ## 3b. Búnker grande — PRIORITARIO (no postergar)
 
-- [ ] Ampliarlo: sector grande y atmosférico, mezcla de club gótico + infierno + búnker + psicodelia/ilusiones;
-      varias salas y lugares distintos, varios pisos o pistas de baile distintas, mejor iluminación.
-- [ ] Más gente; más bailarinas (duplicar algunas, sin tocar sus cuerpos) que bailen de verdad en el caño.
-- [ ] Armería en una zona que parezca búnker militar (no al lado del trono).
-- [ ] Máquinas de humo de boliche que tiran humo cada tanto; sala psicodélica; laberinto de espejos que deforma.
+Hecho (club-wings.js): coffeeshop "Ámsterdam" + sala de cultivo, El Infierno (dos pisos: pista de lava, isla con
+caños, balcón en U, boca del DJ), sala VIP con caños, Arsenal militar (pistolas y granadas se agarran ahí), máquinas de
+humo en el club, ~20 NPC más (6 bailarinas duplicadas en caños, DJ, público, gente fumando, jardinero, sargento,
+patovica). Cada sala se dibuja solo si se ve; modelos cargados al acercarse.
+
+- [ ] Sala psicodélica y laberinto de espejos que deforma (ala oeste, CLUB.wings.psico/maze; puerta desde el club en z -471).
+- [ ] Bailarinas que bailen de verdad en el caño (agarrarse, girar, trepar, invertirse) en vez de bailar alrededor.
+- [ ] Arsenal: polígono de tiro con blancos, banco de armas contra el muro norte; llenar mejor la sala.
+- [ ] Coffeeshop y VIP: más vida y relleno (rincón de almohadones, narguiles, banquetas en la barra); VIP más iluminada.
+- [ ] Lava del Infierno que queme al que se mete en el foso.
 - [ ] Barra con tragos distintos.
 - [ ] Sala de cultivo (ganja) y sustancias distintas con efectos distintos; blunts, habanos, tabaco, pipas, bongs
       bien hechos y agarrables.

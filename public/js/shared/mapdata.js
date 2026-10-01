@@ -52,7 +52,7 @@ export const CASTLE = {
 // o, el Diablo, por el pentagrama del cuarto secreto. De sur a norte: escalera, pasillo, ascensor, antesala (el
 // portero y la puerta blindada) y el club. Metros absolutos; yaw 0 mira al sur (+Z).
 export const CLUB = {
-  x0: -30, x1: 30, z0: -484, z1: -406, // todo el complejo (se puede caminar adentro aunque esté fuera del mapa)
+  x0: -60, x1: 50, z0: -526, z1: -406, // todo el complejo (se puede caminar adentro aunque esté fuera del mapa)
   name: 'El Búnker',
   password: 'tracatraca',
   // escalera: arriba (llegada desde la tumba) en z -410 a 6.3 m; baja hacia el norte hasta el pasillo en y 0
@@ -64,6 +64,17 @@ export const CLUB = {
   door: { x: 0, z: -444, w: 2.6, h: 3.1 }, // puerta blindada (antesala -> club)
   doorman: { x: 2.3, z: -441.2, yaw: -Math.PI / 2 - 0.35 },
   hall: { x0: -24, x1: 24, z0: -478, z1: -444, h: 7.5 }, // el club
+  // las alas (world/club-wings.js): x0..x1, z0 (norte)..z1 (sur), alto. Puertas desde el club: al norte en x = ±14.5
+  // (coffeeshop y VIP), al este en z -475 (arsenal) y al oeste en z -471 (sala psicodélica).
+  wings: {
+    cafe: { x0: -36, x1: -12, z0: -500, z1: -478.4, h: 4.4 }, // el coffeeshop "Ámsterdam"
+    grow: { x0: -56, x1: -36, z0: -500, z1: -478.4, h: 4.4 }, // la sala de cultivo (se ve desde el coffeeshop)
+    hell: { x0: -12, x1: 12, z0: -522, z1: -478.4, h: 12, deck: 4.5 }, // El Infierno: dos pisos (balcón en U a 4.5 m)
+    vip: { x0: 12, x1: 36, z0: -500, z1: -478.4, h: 5 }, // la sala VIP de los caños
+    arsenal: { x0: 24.4, x1: 46, z0: -478, z1: -456, h: 4.2 }, // búnker militar: pistolas y granadas
+    psico: { x0: -48, x1: -24.4, z0: -478, z1: -464, h: 5 }, // sala psicodélica
+    maze: { x0: -48, x1: -24.4, z0: -464, z1: -450, h: 3.6 }, // laberinto de espejos
+  },
   throne: { x: 17.6, z: -449.8, y: 0.62, yaw: -Math.PI / 2 - 0.55 }, // el trono del Diablo (sobre la tarima)
   // el pentagrama del Búnker (en el piso del club, a la vista del trono): adonde llega el ritual y desde donde el
   // Diablo se vuelve al castillo con los que elija. Antes se llegaba al borde de la tarima del trono y los que

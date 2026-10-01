@@ -10,6 +10,10 @@ import { Builder, getMat, defineMat } from './builder.js';
 import { CLUB } from '../shared/mapdata.js';
 import { whenAsset, assetModel } from '../game/assets.js';
 import { billTexture } from '../game/equipment.js';
+import { loadAssetsLater } from '../game/assets.js';
+import { BUNKER_MANIFEST } from '../game/asset-manifest.js';
+import { ClubWings, HALL_DOORS } from './club-wings.js';
+import { Smoke } from '../fx/flame.js';
 
 const HAS_DOM = typeof document !== 'undefined';
 const C = CLUB, H = C.hall;
@@ -133,10 +137,15 @@ export class Club {
     this.group.add(m);
     return m;
   }
+  neon(text, o) { return neonSign(text, o); }
+  printSign(draw, w, h) { return printed(draw, w, h); }
   seat(x, y, z, yaw, extra = {}) { this.seats.push({ x, y, z, yaw, ...extra }); }
   use(id, p, r, label, extra = {}) { this.interact.push({ id, k: 'club', p, r, label, ...extra }); }
 
   build() {
+    // humo propio del Búnker (máquinas de boliche, coffeeshop, lava): se dibuja solo con el Búnker a la vista
+    this.fog = new Smoke(this.group, 180);
+    this.fog.uniforms.uLight.value.setRGB(0.09, 0.075, 0.11);
     this.room(-1.6, 0, -407.8, 1.6, 9.8, C.stairs.zBot, 900);
     this.room(C.lobby.x0, 0, C.lobby.z1, C.lobby.x1, 3.2, C.lobby.z0, 901);
     this.room(C.lift.x0, 0, C.lift.z1, C.lift.x1, C.lift.h, C.lift.z0, 902);
@@ -155,6 +164,8 @@ export class Club {
     this._dungeon();
     this._control();
     this._stash();
+    this._smoke();
+    this.wings = new ClubWings(this).build();
     const meshes = this.b.finish(this.group);
     for (const m of meshes) m.userData.club = true;
     if (HAS_DOM) {
@@ -164,7 +175,6 @@ export class Club {
       this._mirrorBall();
       this._signs();
     }
-    this._smoke();
     this.group.traverse((o) => { if (o.isMesh) o.userData.club = true; });
     return this;
   }
@@ -379,15 +389,18 @@ export class Club {
     this.deco('blackTile', 0, 0.02, (H.z0 + H.z1) / 2, H.x1 - H.x0, 0.04, H.z1 - H.z0);
     // la puerta blindada está en el muro sur (H.z1, el de la antesala); el del norte (atrás del escenario) es macizo
     this.wallX('bunkerBrick', H.x0 - WT, H.x1 + WT, H.z1, h, [[-C.door.w / 2, C.door.w / 2, 0, C.door.h]]);
-    this.wallX('bunkerBrick', H.x0 - WT, H.x1 + WT, H.z0 - WT / 2, h);
-    for (const x of [H.x0 - WT / 2, H.x1 + WT / 2]) this.wallZ('bunkerBrick', x, H.z0, H.z1, h);
+    // puertas a las alas (club-wings.js): coffeeshop y VIP al norte, el arsenal al este
+    this.wallX('bunkerBrick', H.x0 - WT, H.x1 + WT, H.z0 - WT / 2, h, HALL_DOORS.north);
+    this.wallZ('bunkerBrick', H.x0 - WT / 2, H.z1, H.z0, h);
+    this.wallZ('bunkerBrick', H.x1 + WT / 2, H.z1, H.z0, h, HALL_DOORS.east);
     this.deco('black', 0, h + 0.15, (H.z0 + H.z1) / 2, H.x1 - H.x0 + 0.8, 0.3, H.z1 - H.z0 + 0.8);
     // estructura de reticulado en el techo (de donde cuelgan los cabezales) y columnas de hormigón
     for (const z of [-452, -461, -470]) this.deco('iron', 0, h - 1.1, z, H.x1 - H.x0 - 1, 0.18, 0.18);
     for (const x of [-12, 0, 12]) this.deco('iron', x, h - 1.1, (H.z0 + H.z1) / 2, 0.18, 0.18, H.z1 - H.z0 - 1);
     for (const [x, z] of [[-12, -452], [12, -452], [-12, -470], [12, -470]]) this.box('bunkerConcrete', x, h / 2, z, 0.8, h, 0.8);
     // zócalo de neón violeta alrededor
-    for (const [x, z, sx, sz] of [[0, H.z1 - 0.08, H.x1 - H.x0, 0.05], [H.x0 + 0.08, (H.z0 + H.z1) / 2, 0.05, H.z1 - H.z0], [H.x1 - 0.08, (H.z0 + H.z1) / 2, 0.05, H.z1 - H.z0]]) this.deco('neonPurple', x, 0.12, z, sx, 0.05, sz);
+    const ed = HALL_DOORS.east[0];
+    for (const [x, z, sx, sz] of [[0, H.z1 - 0.08, H.x1 - H.x0, 0.05], [H.x0 + 0.08, (H.z0 + H.z1) / 2, 0.05, H.z1 - H.z0], [H.x1 - 0.08, (ed[1] + H.z1) / 2, 0.05, H.z1 - ed[1]], [H.x1 - 0.08, (H.z0 + ed[0]) / 2, 0.05, ed[0] - H.z0]]) this.deco('neonPurple', x, 0.12, z, sx, 0.05, sz);
     // luces de ambiente: bañadores rojos en los muros y violeta en el techo (laten con la música)
     const wash = [[-22, 3, -450, 0xff1030], [-22, 3, -466, 0x8020ff], [22, 3, -458, 0xff1030], [22, 3, -472, 0x8020ff], [0, 6.2, -448, 0xff2060], [-10, 6.2, -476, 0x3040ff], [10, 6.2, -476, 0xff1030]];
     for (const [x, y, z, c] of wash) this.party.push(this.light(x, y, z, c, 14, 18, { priority: 1.6 }));
@@ -593,16 +606,7 @@ export class Club {
 
   // ---------------------------------------------------------------- armería, la plata y la mesa de las drogas
   _stash() {
-    // armería contra el muro este (entre la jaula y el trono): tablero con pistolas y un cajón de granadas
-    const ax = H.x1 - 0.12, az = -457.2;
-    this.box('bunkerIron', ax, 1.6, az, 0.1, 1.6, 2.6);
-    this.deco('hazard', ax - 0.06, 2.45, az, 0.02, 0.1, 2.6);
-    for (let k = 0; k < 4; k++) this.deco('black', ax - 0.08, 1.2 + (k % 2) * 0.45, az - 0.8 + Math.floor(k / 2) * 0.55, 0.06, 0.1, 0.24);
-    this.box('blackWood', ax - 0.5, 0.35, az + 0.9, 0.7, 0.7, 0.6);
-    for (let k = 0; k < 6; k++) this.cyl('bunkerIron', ax - 0.66 + (k % 3) * 0.15, 0.74, az + 0.8 + Math.floor(k / 3) * 0.16, 0.045, 0.045, 0.1, 10);
-    this.light(ax - 0.8, 2.6, az, 0xffe0b0, 3, 5, { priority: 1 });
-    this.use('club_pistol', [ax - 0.7, 1.1, az - 0.5], 1.6, 'Agarrar una pistola', { e: 'give', item: 'pistol' });
-    this.use('club_nade', [ax - 0.7, 1.0, az + 0.9], 1.5, 'Agarrar una granada', { e: 'give', item: 'grenade' });
+    // (las pistolas y las granadas ahora están en el Arsenal: club-wings.js)
     // la plata del Diablo: una pila de fajos al lado del trono
     const px = 21.4, pz = -452.6;
     this._cashPile(px, 0.6, pz);
@@ -762,9 +766,28 @@ export class Club {
 
   _smoke() {
     // humo de máquina a ras del piso en la pista y el escenario
-    const sm = this.world.smoke;
-    if (!sm) return;
-    for (const [x, z] of [[-6, -470], [6, -470], [0, -462], [-4, -458], [4, -458]]) sm.add(x, 0.3, z, 12, { radius: 3, height: 1.6, opacity: 0.1, speed: 0.05 });
+    const sm = this.fog;
+    for (const [x, z] of [[-6, -470], [6, -470], [0, -462], [-4, -458], [4, -458]]) sm.add(x, 0.3, z, 10, { radius: 3, height: 1.6, opacity: 0.08, speed: 0.05 });
+    // máquinas de humo de boliche (a los costados del escenario): cada tanto largan una bocanada que tapa la pista.
+    // El ritmo sale del compás (hora del servidor): todos ven la misma bocanada al mismo tiempo.
+    this.smokers = [];
+    for (const s of [-1, 1]) {
+      const x = s * 12.4, z = -470.6;
+      this.box('black', x, 0.2, z, 0.62, 0.4, 0.42, { yaw: s * 0.5 });
+      this.deco('steel', x - s * 0.2, 0.32, z + 0.2, 0.1, 0.1, 0.12);
+      this.deco('redLamp', x + s * 0.12, 0.41, z, 0.05, 0.01, 0.05);
+      this.smokers.push({ x, z, range: sm.add(x - s * 1.4, 0.25, z + 1.4, 16, { radius: 2.6, height: 1.4, opacity: 0, speed: 0.06 }), o: 0 });
+    }
+  }
+  _smokeStep(B) {
+    // bocanada cada 32 tiempos: sube en 1 tiempo y se va apagando durante 10
+    const k = B.beat % 32, o = k < 1 ? k : k < 11 ? 1 - (k - 1) / 10 : 0;
+    for (const m of this.smokers || []) {
+      const v = 0.22 * o;
+      if (Math.abs(v - m.o) > 0.004 || (v === 0 && m.o !== 0)) { m.o = v; this.fog.set(m.range, v); }
+    }
+    if (k < 0.05 && !this._puffed) { this._puffed = true; for (const m of this.smokers || []) G.sfx?.trigger('spray', V1.set(m.x, 0.4, m.z), 0.5, { full: 3, max: 25, rate: 0.5 }); }
+    else if (k > 1) this._puffed = false;
   }
 
   // ---------------------------------------------------------------- cada cuadro
@@ -776,11 +799,16 @@ export class Club {
       this.visible = near;
       this.group.visible = near;
       for (const l of this.lights) l.visible = near;
+      // los modelos del Búnker grande se piden la primera vez que alguien se acerca (no al entrar al juego)
+      if (near && !this._assetsAsked) { this._assetsAsked = true; loadAssetsLater(BUNKER_MANIFEST); }
     }
     if (!near) return;
     const B = clubBeat(nowMs);
     const kick = Math.exp(-B.f * 5) * level;
     for (const a of this.anim) a(t, dt, B);
+    this.wings?.update(t, dt, B, this.roomOf(cam.x, cam.y, cam.z));
+    this.fog.update(t, G.scene?.fog?.density || 0);
+    this._smokeStep(B);
     // luces que laten: los bañadores respiran con el compás, las de la pista cambian de color en cada negra
     for (let i = 0; i < this.party.length; i++) {
       const l = this.party[i];

@@ -1,0 +1,38 @@
+Modelos del Búnker grande (world/club-wings.js): Poly Haven, licencia CC0 (dominio público).
+https://polyhaven.com/models — convertidos con assets/blender/ph_batch.py (decimados, texturas chicas).
+
+CoffeeCart_01
+ammo_box
+bolt_action_rifle_7_62
+cigarette_case
+coffee_table_round_01
+compost_bags
+garden_hose_wall_mounted_01
+industrial_wall_sconce
+medical_box
+metal_jerrycan_green
+mid_century_lounge_chair
+modern_ceiling_lamp_01
+mounted_fluorescent_lights
+old_gas_mask
+old_military_crate
+planter_box_01
+planter_box_02
+portable_searchlight
+potted_plant_04
+power_box_01
+seeding_tray_01
+service_pistol
+sofa_03
+steel_frame_shelves_02
+stick_grenade
+tea_set_01
+throw_pillows_01
+vintage_lighter
+vintage_radio_transceiver
+watering_can_metal_01
+wooden_display_shelves_01
+wooden_military_crate
+worn_metal_rack
+
+Las plantas de cannabis son procedurales (public/js/world/cannabis.js).
