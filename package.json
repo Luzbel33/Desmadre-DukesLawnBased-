@@ -8,7 +8,7 @@
     "start": "node server/server.js",
     "vendor": "node scripts/vendor.mjs",
     "check": "node scripts/check.mjs",
-    "test": "node --no-warnings --loader ./tests/loader.mjs --test ./tests/core.test.mjs ./tests/audio-media.test.mjs ./tests/gameplay.test.mjs ./tests/owner.test.mjs ./tests/characters.test.mjs ./tests/social-regressions.test.mjs ./tests/body-regressions.test.mjs ./tests/item-regressions.test.mjs ./tests/cinema-defense.test.mjs",
+    "test": "node --no-warnings --loader ./tests/loader.mjs --test ./tests/core.test.mjs ./tests/audio-media.test.mjs ./tests/gameplay.test.mjs ./tests/owner.test.mjs ./tests/characters.test.mjs ./tests/social-regressions.test.mjs ./tests/body-regressions.test.mjs ./tests/item-regressions.test.mjs ./tests/cinema-defense.test.mjs ./tests/camera-options.test.mjs",
     "test:network": "node scripts/test-network.mjs",
     "test:fire": "node scripts/test-demon-network.mjs"
   },

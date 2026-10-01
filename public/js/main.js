@@ -1,6 +1,7 @@
 // DESMADRE — cliente jugable integrado.
 import * as THREE from 'three';
 import { SocialPanel, setupMaskPicker, enhanceMedia } from './ui/social.js';
+import { setupCameraShoulder } from './ui/camera-options.js';
 import { G, clamp } from './core/G.js';
 import { Physics, GR, groups } from './core/physics.js';
 import { Input } from './core/input.js';
@@ -247,6 +248,7 @@ function setupMenuDefaults() {
   } catch {}
   $('o-sens').value = G.opts.sens;
   $('o-fov').value = G.opts.fov;
+  setupCameraShoulder($('o-camera-shoulder'), G.opts, localStorage);
   $('o-vol').value = G.opts.vol;
   $('o-music').value = G.opts.volMusic;
   $('o-voice').value = G.opts.volVoice;
@@ -1756,7 +1758,9 @@ function updateCamera(dt) {
   let dist = mode === 0 ? 4.2 : mode === 3 ? 2.1 : 2.4;
   if (L.vehicle) dist += 1.8;
   if (down) dist = 3.6;
-  const side = mode === 1 ? 0.45 : mode === 3 ? 0 : 0.25;
+  // Shoulder preferences affect only standing/seated third person, never first person, CCTV or front inspection.
+  const shoulder = down ? 'left' : G.opts.cameraShoulder;
+  const side = (mode === 1 ? 0.45 : mode === 3 ? 0 : 0.25) * (shoulder === 'right' ? -1 : shoulder === 'center' ? 0 : 1);
   const right = new THREE.Vector3(-Math.cos(state.viewYaw), 0, Math.sin(state.viewYaw));
   // de frente: la cámara va adelante (hacia donde mirás) y te mira a vos; un poco más baja que los ojos
   if (mode === 3) pivot.y -= 0.25;

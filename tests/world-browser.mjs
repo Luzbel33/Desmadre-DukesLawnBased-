@@ -56,6 +56,14 @@ try {
     const n=G.villagers.byKey[k];return !!(n?.data.seat&&n.sit&&Math.abs(n.pos.y+.46-n.data.seat.y)<.03);
   }));
   assert.ok(seats.every(Boolean),'bar patrons must sit at the real seat height');
+  await page.evaluate(()=>{document.getElementById('pause').classList.remove('hidden');document.querySelector('[data-sec="imagen"]').open=true;__dukes.mode='pause';});
+  for(const side of ['right','center','left']) {
+    await page.locator('#o-camera-shoulder').selectOption(side);
+    assert.equal(await page.evaluate(()=>G.opts.cameraShoulder),side);
+    assert.equal(await page.evaluate(()=>localStorage.getItem('dukes.camera.shoulder')),side);
+  }
+  await page.evaluate(()=>document.getElementById('pause').classList.add('hidden'));
+  console.log('PASS actual pause-menu shoulder selector and saved preference');
   await page.evaluate(()=>{
     __dukes.mode='game';__dukes.cameraMode=2;G.input.enabled=true;G.input.locked=true;G.input.releaseAll();G.me.giveItem('pistol');document.getElementById('game').focus();
   });
