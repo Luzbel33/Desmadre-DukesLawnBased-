@@ -1931,7 +1931,7 @@ function updatePost() {
   const u = G.post.u;
   u.uDrunk.value = state.local.drunk;
   u.uHigh.value = state.local.high;
-  u.uPill.value = state.local.pill || 0;
+  u.uPill.value = Math.max(state.local.pill || 0, G.world?.club?.wings?.psy || 0); // la sala psicodélica también pega
   u.uSpeed.value = state.local.speedHigh || 0;
   u.uHurt.value = state.hurt;
   u.uLowBlood.value = clamp((40 - state.local.blood) / 40, 0, 1);

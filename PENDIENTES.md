@@ -56,9 +56,10 @@ Fuente única de trabajo pendiente.
 Hecho (club-wings.js): coffeeshop "Ámsterdam" + sala de cultivo, El Infierno (dos pisos: pista de lava, isla con
 caños, balcón en U, boca del DJ), sala VIP con caños, Arsenal militar (pistolas y granadas se agarran ahí), máquinas de
 humo en el club, ~20 NPC más (6 bailarinas duplicadas en caños, DJ, público, gente fumando, jardinero, sargento,
-patovica). Cada sala se dibuja solo si se ve; modelos cargados al acercarse.
+patovica). Ala oeste: sala psicodélica (shader caleidoscópico, hongos, ojos, lámparas de lava, espejo infinito; pega
+un poco en la pantalla) y laberinto de espejos con tres espejos deformantes reales. Cada sala se dibuja solo si se ve;
+modelos cargados al acercarse.
 
-- [ ] Sala psicodélica y laberinto de espejos que deforma (ala oeste, CLUB.wings.psico/maze; puerta desde el club en z -471).
 - [ ] Bailarinas que bailen de verdad en el caño (agarrarse, girar, trepar, invertirse) en vez de bailar alrededor.
 - [ ] Arsenal: polígono de tiro con blancos, banco de armas contra el muro norte; llenar mejor la sala.
 - [ ] Coffeeshop y VIP: más vida y relleno (rincón de almohadones, narguiles, banquetas en la barra); VIP más iluminada.

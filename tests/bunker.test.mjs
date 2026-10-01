@@ -25,5 +25,7 @@ test('las puertas del club caen dentro de la sala a la que llevan', () => {
   assert.deepEqual(north, ['cafe', 'vip']);
   const east = HALL_DOORS.east.map(([a, b]) => at(CLUB.hall.x1 + 1, (a + b) / 2));
   assert.deepEqual(east, ['arsenal']);
-  for (const [a, b, y0, y1] of [...HALL_DOORS.north, ...HALL_DOORS.east]) { assert.ok(Math.abs(b - a) >= 2.2, 'puerta muy angosta'); assert.ok(y0 === 0 && y1 >= 2.5, 'puerta muy baja'); }
+  const west = HALL_DOORS.west.map(([a, b]) => at(CLUB.hall.x0 - 1, (a + b) / 2));
+  assert.deepEqual(west, ['psico']);
+  for (const [a, b, y0, y1] of [...HALL_DOORS.north, ...HALL_DOORS.east, ...HALL_DOORS.west]) { assert.ok(Math.abs(b - a) >= 2.2, 'puerta muy angosta'); assert.ok(y0 === 0 && y1 >= 2.5, 'puerta muy baja'); }
 });

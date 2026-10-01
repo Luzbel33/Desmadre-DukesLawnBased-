@@ -12,21 +12,48 @@ import { Builder, getMat, defineMat } from './builder.js';
 import { CLUB } from '../shared/mapdata.js';
 import { whenAsset, assetModel, instanceModel } from '../game/assets.js';
 import { plantField } from './cannabis.js';
+import { Reflector } from 'three/addons/objects/Reflector.js';
+import { G } from '../core/G.js';
 
 const HAS_DOM = typeof document !== 'undefined';
 const W = CLUB.wings, H = CLUB.hall, WT = 0.4;
 // número de sala: las centenas son el "edificio" para el pool de luces (las de otro edificio casi no compiten). El café y
 // la sala de cultivo comparten edificio (se ven por el ventanal); cada una de las demás es el suyo.
-export const WING_ROOM = { cafe: 1001, grow: 1002, hell: 1101, vip: 1201, arsenal: 1301 };
+export const WING_ROOM = { cafe: 1001, grow: 1002, hell: 1101, vip: 1201, arsenal: 1301, psico: 1401, maze: 1402 };
 // qué alas se dibujan según la sala de la cámara (la propia y las que se ven por una puerta)
 const SEES = {
-  904: ['cafe', 'vip', 'arsenal'],
+  904: ['cafe', 'vip', 'arsenal', 'psico'],
   1001: ['cafe', 'grow', 'hell'], 1002: ['grow', 'cafe'], 1101: ['hell', 'cafe', 'vip'], 1201: ['vip', 'hell'], 1301: ['arsenal'],
+  1401: ['psico', 'maze'], 1402: ['maze', 'psico'],
 };
 // puertas desde el club (huecos en sus muros; ver Club._hall)
 export const HALL_DOORS = {
   north: [[-15.7, -13.3, 0, 3], [13.3, 15.7, 0, 3]], // coffeeshop y VIP (en x)
   east: [[-476.2, -473.8, 0, 3]], // arsenal (en z)
+  west: [[-472.2, -469.8, 0, 3]], // sala psicodélica (en z)
+};
+export const MIRROR_LAYER = 7; // lo que se ve en los espejos del laberinto (CubeCamera)
+const V3 = new THREE.Vector3(), V4 = new THREE.Vector3();
+// espejo deformante (Reflector con las coordenadas de la reflexión torcidas): 0 ondas, 1 panza, 2 estirado
+const FUNHOUSE = {
+  name: 'Funhouse',
+  uniforms: { color: { value: null }, tDiffuse: { value: null }, textureMatrix: { value: null }, uT: { value: 0 }, uMode: { value: 0 } },
+  vertexShader: `
+    uniform mat4 textureMatrix; varying vec4 vUv; varying vec2 vP;
+    void main(){ vUv = textureMatrix * vec4(position, 1.0); vP = uv - 0.5; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform vec3 color; uniform sampler2D tDiffuse; uniform float uT, uMode; varying vec4 vUv; varying vec2 vP;
+    void main(){
+      vec2 uv = vUv.xy / vUv.w;
+      if (uMode < 0.5) uv.x += sin(vP.y * 11.0 + uT * 1.7) * 0.03 + sin(vP.y * 23.0 - uT) * 0.008;
+      else if (uMode < 1.5) { float r = length(vP * vec2(1.4, 1.0)); uv -= vP * 0.22 * smoothstep(0.55, 0.0, r); }
+      else { uv.y += vP.y * 0.18 * (1.0 - abs(vP.x) * 2.0); uv.x += sin(vP.y * 5.0) * 0.015; }
+      vec3 c = texture2D(tDiffuse, uv).rgb * color;
+      float edge = smoothstep(0.5, 0.46, max(abs(vP.x), abs(vP.y)));
+      gl_FragColor = vec4(c * edge, 1.0);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`,
 };
 const DOOR_Z = -492; // puertas laterales del Infierno (coffeeshop y VIP)
 
@@ -46,6 +73,8 @@ function mats() {
   defineMat('olive', new THREE.MeshStandardMaterial({ color: 0x4a5230, roughness: 0.8 }));
   defineMat('warmBulb', new THREE.MeshStandardMaterial({ color: 0xffe2a8, emissive: 0xffc070, emissiveIntensity: 2.6 }));
   defineMat('bongGlass', new THREE.MeshStandardMaterial({ color: 0x5fd8c8, metalness: 0.2, roughness: 0.08, transparent: true, opacity: 0.55, depthWrite: false }));
+  for (const [k, col] of [['shroomPink', 0xff3cc8], ['shroomCyan', 0x30e8ff], ['shroomLime', 0x9cff30]]) defineMat(k, new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.9, roughness: 0.4 }));
+  defineMat('shroomStem', new THREE.MeshStandardMaterial({ color: 0xefe4cc, emissive: 0x403020, roughness: 0.7 }));
   defineMat('windowGlass', new THREE.MeshStandardMaterial({ color: 0x8090a0, metalness: 0.3, roughness: 0.05, transparent: true, opacity: 0.18, depthWrite: false }));
 }
 
@@ -69,6 +98,9 @@ export class ClubWings {
     this._wing('hell', () => this._hell());
     this._wing('vip', () => this._vip());
     this._wing('arsenal', () => this._arsenal());
+    this._wing('psico', () => this._psico());
+    this._wing('maze', () => this._maze());
+    this._mirrorLayers();
     return this;
   }
 
@@ -166,6 +198,7 @@ export class ClubWings {
     c.wallZ('bunkerConcrete', ar.x1 + WT / 2, ar.z1 + 0.4, -478.4, ar.h + 0.3);
     c.wallX('bunkerConcrete', ar.x0, ar.x1 + 0.4, ar.z1 + 0.2, ar.h + 0.3);
     this._doors();
+    this._westShell();
   }
 
   // marcos y carteles de las puertas que salen del club
@@ -722,10 +755,306 @@ export class ClubWings {
     for (const s of [-1, 1]) this.c.phys.box(x + s * 3.2, 0.3, z, 0.2, 0.3, 2.4, 0, { mat: 'sand' });
   }
 
+  // ---------------------------------------------------------------- ala oeste: estructura (sala psicodélica + laberinto)
+  _westShell() {
+    const c = this.c, ps = W.psico, mz = W.maze;
+    c.deco('black', (ps.x0 + ps.x1) / 2, 0.015, (ps.z0 + ps.z1) / 2, ps.x1 - ps.x0, 0.03, ps.z1 - ps.z0);
+    c.deco('blackTile', (mz.x0 + mz.x1) / 2, 0.02, (mz.z0 + mz.z1) / 2, mz.x1 - mz.x0, 0.04, mz.z1 - mz.z0);
+    c.deco('black', (ps.x0 + ps.x1) / 2, ps.h + 0.15, (ps.z0 + ps.z1) / 2, ps.x1 - ps.x0 + 0.4, 0.3, ps.z1 - ps.z0 + 0.4);
+    c.deco('black', (mz.x0 + mz.x1) / 2, mz.h + 0.15, (mz.z0 + mz.z1) / 2, mz.x1 - mz.x0 + 0.4, 0.3, mz.z1 - mz.z0 + 0.4);
+    c.wallZ('bunkerBrick', ps.x0 - WT / 2, mz.z1 + 0.4, ps.z0 - 0.4, ps.h + 0.3); // oeste de las dos
+    c.wallX('bunkerBrick', mz.x0 - WT, mz.x1, mz.z1 + 0.2, mz.h + 0.3); // sur del laberinto
+    c.wallX('bunkerBrick', ps.x0, ps.x1, ps.z1, ps.h + 0.3, [[-37.2, -34.8, 0, 2.8]]); // entre las dos, con puerta
+    // la puerta desde el club (lado del club): neón que respira
+    this.neon('LA MENTE', { font: 'Metal Mania', px: 130, color: '#c050ff' }, 2.8, 0.7, H.x0 + 0.03, 3.75, -471, Math.PI / 2);
+    for (const s of [-1, 1]) c.deco('neonPurple', H.x0 + 0.03, 1.5, -471 + s * 1.26, 0.04, 3.0, 0.05);
+    c.deco('neonPurple', H.x0 + 0.03, 3.02, -471, 0.04, 0.05, 2.56);
+  }
+
+  // ---------------------------------------------------------------- sala psicodélica
+  _psico() {
+    const ps = W.psico, r = this.rand;
+    // piso, techo y paredes con el mismo shader: caleidoscopio y espiral op-art que laten con la música
+    if (HAS_DOM) {
+      const mat = this._psyMat();
+      const w = ps.x1 - ps.x0, d = ps.z1 - ps.z0, cx = (ps.x0 + ps.x1) / 2, cz = (ps.z0 + ps.z1) / 2;
+      const planes = [
+        [w, d, cx, 0.035, cz, 0, -Math.PI / 2], [w, d, cx, ps.h - 0.01, cz, 0, Math.PI / 2],
+        [w, ps.h, cx, ps.h / 2, ps.z0 + 0.02, 0, 0], [d, ps.h, ps.x0 + 0.02, ps.h / 2, cz, Math.PI / 2, 0],
+        [-37.2 - ps.x0, ps.h, (ps.x0 - 37.2) / 2, ps.h / 2, ps.z1 - 0.02, Math.PI, 0],
+        [ps.x1 + 34.8, ps.h, (ps.x1 - 34.8) / 2, ps.h / 2, ps.z1 - 0.02, Math.PI, 0],
+        [2.4, ps.h - 2.8, -36, 2.8 + (ps.h - 2.8) / 2, ps.z1 - 0.02, Math.PI, 0],
+        [-471 - 1.2 - ps.z0, ps.h, ps.x1 - 0.02, ps.h / 2, (ps.z0 - 472.2) / 2, -Math.PI / 2, 0],
+        [ps.z1 - (-469.8), ps.h, ps.x1 - 0.02, ps.h / 2, (ps.z1 - 469.8) / 2, -Math.PI / 2, 0],
+        [2.4, ps.h - 3, ps.x1 - 0.02, 3 + (ps.h - 3) / 2, -471, -Math.PI / 2, 0],
+      ];
+      for (const [pw, ph, x, y, z, yaw, rx] of planes) { const m = this.mesh(new THREE.PlaneGeometry(Math.abs(pw), ph), mat, x, y, z, { yaw, rx }); m.receiveShadow = false; m.castShadow = false; }
+    }
+    // hongos gigantes que brillan (los sombreros son emisivos)
+    const caps = [['shroomPink'], ['shroomCyan'], ['shroomLime']];
+    const shrooms = [[-45.5, -475.5, 3.2, 1.6], [-43, -467.5, 2.2, 1.1], [-31, -476, 2.6, 1.3], [-27.5, -466.5, 1.6, 0.8], [-39.5, -475.8, 1.2, 0.7], [-33.5, -466.2, 1.0, 0.6]];
+    shrooms.forEach(([x, z, h, rr], i) => {
+      const cap = caps[i % 3][0];
+      this.cyl('shroomStem', x, h / 2, z, rr * 0.22, rr * 0.3, h, 14, { collide: true });
+      const g = new THREE.SphereGeometry(rr, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2); g.scale(1, 0.62, 1);
+      this.c.b.geo(cap, g, mat4(x, h - 0.05, z, r() * 6));
+      const under = new THREE.CircleGeometry(rr * 0.98, 24); under.rotateX(Math.PI / 2);
+      this.c.b.geo('shroomStem', under, mat4(x, h - 0.04, z));
+      for (let k = 0; k < 7; k++) { const a = r() * Math.PI * 2, e = 0.35 + r() * 0.5, s = new THREE.SphereGeometry(rr * 0.09, 8, 6); s.scale(1, 0.4, 1); this.c.b.geo('white', s, mat4(x + Math.cos(a) * Math.sin(e) * rr, h - 0.05 + Math.cos(e) * rr * 0.62, z + Math.sin(a) * Math.sin(e) * rr)); }
+    });
+    // ojos que flotan y te siguen con la mirada
+    if (HAS_DOM) {
+      const tex = this._eyeTex(), eyes = [];
+      const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.25, emissive: 0x221111, emissiveMap: tex, emissiveIntensity: 0.6 });
+      for (const [x, y, z, s] of [[-38, 3.2, -469], [-30, 2.6, -472.5], [-44, 2.4, -470], [-26.5, 3.4, -475.5], [-35, 3.9, -476]]) {
+        const e = new THREE.Mesh(new THREE.SphereGeometry(0.32 * (s || 1), 24, 16), mat);
+        e.position.set(x, y, z); e.castShadow = false; this.c.group.add(e); eyes.push({ e, y, ph: r() * 6 });
+      }
+      this.c.anim.push((t) => { const cam = G.camera?.position; for (const o of eyes) { o.e.position.y = o.y + Math.sin(t * 0.8 + o.ph) * 0.25; if (cam) o.e.lookAt(cam); } });
+    }
+    // lámparas de lava sobre mesitas bajas y puf para tirarse
+    if (HAS_DOM) {
+      const lava = this._lavaLampMat();
+      for (const [x, z] of [[-41, -467], [-29.5, -469.5], [-36, -476.6], [-46.8, -466]]) {
+        this.cyl('blackTile', x, 0.2, z, 0.35, 0.35, 0.4, 14, { collide: true });
+        this.cyl('gold', x, 0.48, z, 0.09, 0.12, 0.16, 12);
+        const m = this.mesh(new THREE.CylinderGeometry(0.075, 0.11, 0.5, 16), lava, x, 0.81, z); m.castShadow = false;
+        this.cyl('gold', x, 1.1, z, 0.04, 0.075, 0.08, 12);
+        this.light(x, 1.0, z, 0xff50a0, 2.2, 4, { priority: 0.9 });
+      }
+    }
+    for (const [x, z, col] of [[-40, -469.6, 'shroomPink'], [-38.6, -468.2, 'shroomCyan'], [-31, -470.8, 'shroomLime'], [-29.2, -472.4, 'shroomPink'], [-44.5, -472.2, 'shroomCyan'], [-33, -474, 'shroomLime']]) {
+      const g = new THREE.SphereGeometry(0.62, 18, 10); g.scale(1, 0.55, 1);
+      this.c.b.geo(col, g, mat4(x, 0.3, z));
+      this.seat(x, 0.42, z, r() * 6);
+    }
+    // espejo infinito en la pared oeste y espiral hipnótica en la norte
+    if (HAS_DOM) {
+      this.deco('chrome', ps.x0 + 0.08, 2.2, -471, 0.1, 2.5, 3.6);
+      this.mesh(new THREE.PlaneGeometry(3.3, 2.2), this._infinityMat(), ps.x0 + 0.14, 2.2, -471, { yaw: Math.PI / 2 });
+      this.mesh(new THREE.CircleGeometry(1.5, 48), this._spiralMat(), -36, 2.6, ps.z0 + 0.06);
+    }
+    this.neon('volá alto', { font: 'Metal Mania', px: 110, color: '#30e8ff' }, 3.2, 0.8, -36, 4.45, ps.z0 + 0.07);
+    this.light(-41, 3.6, -471, 0x8a3cff, 10, 16, { priority: 1.2, decay: 1.0 });
+    this.light(-30, 3.6, -471, 0xff3cc8, 9, 15, { priority: 1.2, decay: 1.0 });
+    const fog = this.c.fog;
+    if (fog) fog.add(-36, 0.4, -471, 8, { radius: 7, height: 0.8, opacity: 0.05, speed: 0.03 });
+  }
+  _psyMat() {
+    const u = { uT: { value: 0 }, uBeat: { value: 0 } };
+    const m = new THREE.ShaderMaterial({
+      uniforms: u, side: THREE.DoubleSide,
+      vertexShader: 'varying vec3 vW; varying vec3 vN; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; vN = normalize(mat3(modelMatrix) * normal); gl_Position = projectionMatrix * viewMatrix * w; }',
+      fragmentShader: /* glsl */ `
+        uniform float uT, uBeat; varying vec3 vW; varying vec3 vN;
+        vec3 pal(float t){ return 0.5 + 0.5 * cos(6.2831 * (t + vec3(0.0, 0.33, 0.67))); }
+        void main(){
+          vec3 n = abs(vN);
+          vec2 p = n.y > 0.5 ? vW.xz : (n.x > 0.5 ? vW.zy : vW.xy);
+          vec2 q = fract(p / 4.0) - 0.5;
+          float r = length(q), a = atan(q.y, q.x);
+          float k = 6.0, s = 6.2831 / k; a = abs(mod(a, s) - s * 0.5);
+          vec2 kq = r * vec2(cos(a), sin(a));
+          float v = sin(kq.x * 26.0 - uT * 2.0) + sin(kq.y * 30.0 + uT * 1.3) + sin(r * 34.0 - uT * 3.0);
+          float beat = exp(-fract(uBeat) * 3.0);
+          vec3 col = pal(v * 0.12 + uT * 0.05 + r * 0.8 + floor(p.x / 4.0) * 0.13);
+          float sp = sin(a * k + log(r + 0.02) * 9.0 - uT * 3.0);
+          col *= 0.35 + 0.65 * smoothstep(-0.25, 0.25, sp);
+          gl_FragColor = vec4(col * (0.55 + 0.35 * beat), 1.0);
+        }`,
+    });
+    this.c.anim.push((t, dt, B) => { u.uT.value = t % 1000; u.uBeat.value = B.beat % 1024; });
+    return m;
+  }
+  _eyeTex() {
+    const cv = canvas(512, 256), g = cv.getContext('2d');
+    g.fillStyle = '#f2eee6'; g.fillRect(0, 0, 512, 256);
+    g.strokeStyle = 'rgba(190,30,30,0.6)'; g.lineWidth = 1.5;
+    const rr = rng(13);
+    for (let k = 0; k < 40; k++) { let x = 128 + (rr() - 0.5) * 300, y = 128 + (rr() - 0.5) * 220; g.beginPath(); g.moveTo(x, y); for (let s = 0; s < 6; s++) { x += (128 - x) * 0.15 + (rr() - 0.5) * 14; y += (128 - y) * 0.15 + (rr() - 0.5) * 14; g.lineTo(x, y); } g.stroke(); }
+    const ir = g.createRadialGradient(128, 128, 6, 128, 128, 48);
+    ir.addColorStop(0, '#2a1400'); ir.addColorStop(0.35, '#7a3cff'); ir.addColorStop(0.75, '#30e8ff'); ir.addColorStop(1, '#103040');
+    g.fillStyle = ir; g.beginPath(); g.arc(128, 128, 48, 0, 7); g.fill();
+    g.fillStyle = '#050505'; g.beginPath(); g.arc(128, 128, 20, 0, 7); g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.9)'; g.beginPath(); g.arc(116, 116, 7, 0, 7); g.fill();
+    return ctex(cv);
+  }
+  _lavaLampMat() {
+    const u = { uT: { value: 0 } };
+    const m = new THREE.ShaderMaterial({
+      uniforms: u, toneMapped: false,
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: /* glsl */ `
+        uniform float uT; varying vec2 vUv;
+        void main(){
+          float y = vUv.y, x = vUv.x * 6.2831;
+          float b = 0.0;
+          for (int i = 0; i < 4; i++) { float fi = float(i); float c = fract(uT * (0.05 + fi * 0.017) + fi * 0.27); c = 0.5 + 0.45 * sin(c * 6.2831); b += 0.018 / (pow(y - c, 2.0) + 0.012 + 0.01 * sin(x * (1.0 + fi) + uT)); }
+          vec3 liquid = vec3(0.35, 0.05, 0.25), wax = vec3(1.0, 0.35, 0.55);
+          gl_FragColor = vec4(mix(liquid, wax, smoothstep(0.7, 1.1, b)) * 1.6, 1.0);
+        }`,
+    });
+    this.c.anim.push((t) => { u.uT.value = t % 1000; });
+    return m;
+  }
+  _infinityMat() {
+    const u = { uT: { value: 0 } };
+    const m = new THREE.ShaderMaterial({
+      uniforms: u, toneMapped: false,
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: /* glsl */ `
+        uniform float uT; varying vec2 vUv;
+        vec3 pal(float t){ return 0.5 + 0.5 * cos(6.2831 * (t + vec3(0.0, 0.33, 0.67))); }
+        void main(){
+          vec2 p = (vUv - 0.5) * vec2(1.5, 1.0) * 2.0;
+          float m = max(abs(p.x) / 1.5, abs(p.y));
+          float d = log(max(m, 0.002)) / log(0.8) + uT * 0.6;
+          float line = smoothstep(0.12, 0.0, abs(fract(d) - 0.5) - 0.38);
+          float fade = pow(0.88, floor(log(max(m, 0.002)) / log(0.8)));
+          vec3 col = pal(floor(d) * 0.13 + uT * 0.05) * line * fade * 2.4;
+          gl_FragColor = vec4(col + vec3(0.01, 0.005, 0.02), 1.0);
+        }`,
+    });
+    this.c.anim.push((t) => { u.uT.value = t % 1000; });
+    return m;
+  }
+  _spiralMat() {
+    const u = { uT: { value: 0 } };
+    const m = new THREE.ShaderMaterial({
+      uniforms: u,
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: /* glsl */ `
+        uniform float uT; varying vec2 vUv;
+        void main(){
+          vec2 p = vUv - 0.5; float r = length(p), a = atan(p.y, p.x);
+          float s = sin(a * 3.0 + r * 40.0 - uT * 5.0);
+          float v = smoothstep(-0.1, 0.1, s);
+          gl_FragColor = vec4(vec3(v * 0.9 + 0.05), 1.0);
+        }`,
+    });
+    this.c.anim.push((t) => { u.uT.value = t % 1000; });
+    return m;
+  }
+
+  // ---------------------------------------------------------------- laberinto de espejos
+  _maze() {
+    const mz = W.maze, cols = 9, rows = 5, cw = (mz.x1 - mz.x0) / cols, ch = (mz.z1 - mz.z0) / rows, wh = 3.0;
+    // espejos de las paredes: reflejan un cubo que se renderiza a baja resolución y solo con alguien adentro
+    if (HAS_DOM) {
+      this.cubeRT = new THREE.WebGLCubeRenderTarget(128);
+      this.cubeCam = new THREE.CubeCamera(0.1, 30, this.cubeRT);
+      this.cubeCam.position.set((mz.x0 + mz.x1) / 2, 1.6, (mz.z0 + mz.z1) / 2);
+      this.cubeCam.layers.set(MIRROR_LAYER);
+      this.c.group.add(this.cubeCam);
+      defineMat('mazeMirror', new THREE.MeshStandardMaterial({ color: 0xd8e4ee, metalness: 1, roughness: 0.04, envMap: this.cubeRT.texture, envMapIntensity: 1.25, normalMap: this._waveNormal(), normalScale: new THREE.Vector2(0.35, 0.35) }));
+    } else defineMat('mazeMirror', new THREE.MeshStandardMaterial({ color: 0xd8e4ee, metalness: 1, roughness: 0.04 }));
+    // laberinto: búsqueda en profundidad con semilla (siempre el mismo), entrada al norte en el medio, y unos atajos
+    const rr = rng(1979), east = [], south = [];
+    for (let i = 0; i < cols; i++) { east.push(new Array(rows).fill(true)); south.push(new Array(rows).fill(true)); }
+    const seen = new Set(), stack = [[4, 0]]; seen.add('4,0');
+    while (stack.length) {
+      const [i, j] = stack[stack.length - 1];
+      const nb = [[i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]].filter(([a, b]) => a >= 0 && b >= 0 && a < cols && b < rows && !seen.has(a + ',' + b));
+      if (!nb.length) { stack.pop(); continue; }
+      const [a, b] = nb[Math.floor(rr() * nb.length)];
+      if (a !== i) east[Math.min(a, i)][j] = false; else south[i][Math.min(b, j)] = false;
+      seen.add(a + ',' + b); stack.push([a, b]);
+    }
+    for (let k = 0; k < 6; k++) { const i = Math.floor(rr() * (cols - 1)), j = Math.floor(rr() * rows); east[i][j] = false; }
+    const panel = (x, z, len, alongX) => {
+      this.box('mazeMirror', x, wh / 2, z, alongX ? len + 0.1 : 0.1, wh, alongX ? 0.1 : len + 0.1, { noShadow: true });
+      this.deco('neonCyan', x, wh + 0.02, z, alongX ? len : 0.05, 0.04, alongX ? 0.05 : len);
+    };
+    for (let i = 0; i < cols - 1; i++) for (let j = 0; j < rows; j++) if (east[i][j]) panel(mz.x0 + (i + 1) * cw, mz.z0 + (j + 0.5) * ch, ch, false);
+    for (let i = 0; i < cols; i++) for (let j = 0; j < rows - 1; j++) if (south[i][j]) panel(mz.x0 + (i + 0.5) * cw, mz.z0 + (j + 1) * ch, cw, true);
+    // forro espejado en las paredes del borde
+    this.deco('mazeMirror', mz.x0 + 0.04, wh / 2, (mz.z0 + mz.z1) / 2, 0.04, wh, mz.z1 - mz.z0);
+    this.deco('mazeMirror', mz.x1 - 0.04, wh / 2, (mz.z0 + mz.z1) / 2, 0.04, wh, mz.z1 - mz.z0);
+    this.deco('mazeMirror', (mz.x0 - 37.2) / 2, wh / 2, mz.z0 + 0.04, -37.2 - mz.x0, wh, 0.04);
+    this.deco('mazeMirror', (mz.x1 - 34.8) / 2, wh / 2, mz.z0 + 0.04, mz.x1 + 34.8, wh, 0.04);
+    this.deco('mazeMirror', (mz.x0 + mz.x1) / 2, wh / 2, mz.z1 - 0.04, mz.x1 - mz.x0, wh, 0.04);
+    // al fondo, tres espejos deformantes de verdad (te ves con panza, finito u ondulado): solo uno se renderiza a la vez
+    this.funhouse = [];
+    if (HAS_DOM) {
+      [1, 4, 7].forEach((i, k) => {
+        const x = mz.x0 + (i + 0.5) * cw, z = mz.z1 - 0.07;
+        this.deco('gold', x, 1.55, z + 0.01, 2.0, 2.9, 0.04);
+        const m = new Reflector(new THREE.PlaneGeometry(1.8, 2.7), { textureWidth: 512, textureHeight: 768, clipBias: 0.003, color: 0xe8eef4, multisample: 0, shader: FUNHOUSE });
+        m.position.set(x, 1.55, z - 0.02); m.rotation.y = Math.PI;
+        m.material.uniforms.uMode.value = k;
+        m.visible = false;
+        // en primera persona tu cabeza está oculta: en el espejo se tiene que ver
+        const orig = m.onBeforeRender;
+        m.onBeforeRender = (r, s, cam) => { const ch2 = G.me?.char, hv = ch2?.headVisible; if (ch2 && !hv) ch2.setVisibleHead(true); orig.call(m, r, s, cam); if (ch2 && !hv) ch2.setVisibleHead(false); };
+        this.c.group.add(m);
+        this.funhouse.push(m);
+      });
+    }
+    // piso de damero (de feria) y una grilla de paneles de luz en el techo que los espejos multiplican
+    if (HAS_DOM) {
+      const cv = canvas(64, 64), g = cv.getContext('2d');
+      g.fillStyle = '#e8e8ec'; g.fillRect(0, 0, 64, 64); g.fillStyle = '#0b0b10'; g.fillRect(0, 0, 32, 32); g.fillRect(32, 32, 32, 32);
+      const tx = ctex(cv); tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.magFilter = THREE.NearestFilter;
+      const chk = defineMat('checker', new THREE.MeshStandardMaterial({ map: tx, roughness: 0.18, metalness: 0.1 }));
+      chk.userData.tileU = chk.userData.tileV = 1.2;
+      this.deco('checker', (mz.x0 + mz.x1) / 2, 0.045, (mz.z0 + mz.z1) / 2, mz.x1 - mz.x0, 0.01, mz.z1 - mz.z0);
+    }
+    for (let i = 0; i < 6; i++) for (let j = 0; j < 3; j++) this.deco('fluo', mz.x0 + (i + 0.5) * (mz.x1 - mz.x0) / 6, mz.h - 0.02, mz.z0 + (j + 0.5) * (mz.z1 - mz.z0) / 3, 0.9, 0.03, 0.9);
+    this.sign((g, w, h) => {
+      g.fillStyle = '#0a0a10'; g.fillRect(0, 0, w, h); g.fillStyle = '#30e8ff'; g.font = 'bold 54px "Courier New", monospace'; g.textAlign = 'center';
+      g.fillText('← SALIDA', w / 2, 70); g.font = '28px "Courier New", monospace'; g.fillStyle = '#ff3cc8'; g.fillText('(o no)', w / 2, 115);
+    }, 400, 140, 1.1, 0.38, mz.x0 + 0.1, 2.6, -452, Math.PI / 2);
+    this.light(-42, wh + 0.3, -457, 0xdff0ff, 14, 16, { priority: 1.2, decay: 1.0 });
+    this.light(-30, wh + 0.3, -455, 0xdff0ff, 14, 16, { priority: 1.2, decay: 1.0 });
+    this.light(-42, wh, -453, 0xff3cc8, 6, 10, { priority: 1.0, decay: 1.1 });
+    this.light(-30, wh, -461, 0x30e8ff, 6, 10, { priority: 1.0, decay: 1.1 });
+  }
+  _waveNormal() {
+    const cv = canvas(128, 128), g = cv.getContext('2d'), img = g.createImageData(128, 128);
+    for (let y = 0; y < 128; y++) for (let x = 0; x < 128; x++) {
+      const nx = Math.sin(x / 128 * Math.PI * 4) * 0.5 + Math.sin((x + y) / 128 * Math.PI * 2) * 0.25, ny = Math.cos(y / 128 * Math.PI * 2) * 0.35;
+      const i = (y * 128 + x) * 4; img.data[i] = 128 + nx * 120; img.data[i + 1] = 128 + ny * 120; img.data[i + 2] = 230; img.data[i + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    const t = ctex(cv, false); t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    return t;
+  }
+  // con la cámara en el laberinto: el cubo de los espejos se actualiza de a ratos y se prende el espejo deformante más
+  // cercano que se esté mirando (los otros quedan como espejo común)
+  _mirrors(t, camRoom) {
+    const cam = G.camera, inMaze = camRoom === WING_ROOM.maze;
+    // el laberinto es quieto: el cubo se rehace al entrar y después cada 3 s (a la gente la muestran los deformantes)
+    if (!inMaze) this._cubeT = -9;
+    if (this.cubeCam && inMaze && G.renderer && t - (this._cubeT ?? -9) > 3) {
+      this._cubeT = t;
+      // sin el cielo de fondo (el Búnker está bajo tierra: en los espejos se veían nubes)
+      // (la niebla se deja: sacarla recompilaría los materiales)
+      const bg = G.scene.background;
+      G.scene.background = null;
+      this.cubeCam.update(G.renderer, G.scene);
+      G.scene.background = bg;
+    }
+    let best = null, bd = 11;
+    if (inMaze && cam) {
+      const fwd = cam.getWorldDirection(V3);
+      for (const m of this.funhouse) { const d = cam.position.distanceTo(m.position); if (d < bd && V4.subVectors(m.position, cam.position).dot(fwd) > 0) { bd = d; best = m; } }
+    }
+    for (const m of this.funhouse) { m.visible = m === best; if (m === best) m.material.uniforms.uT.value = t % 1000; }
+  }
+  // capas: lo del laberinto y la sala psicodélica se ve en los espejos
+  _mirrorLayers() {
+    const mirror = getMat('mazeMirror');
+    for (const id of ['maze', 'psico']) this.wings.get(id)?.group.traverse((o) => { if (o.material !== mirror && !this.funhouse.includes(o)) o.layers.enable(MIRROR_LAYER); });
+  }
+
   // ---------------------------------------------------------------- cada cuadro (lo llama Club.update cerca del Búnker)
   update(t, dt, B, camRoom) {
     if (camRoom) this.lastRoom = camRoom; // en el marco de una puerta (fuera de toda sala) se mantiene lo de antes
     const see = SEES[this.lastRoom] || [];
+    // la sala psicodélica pega un poco (colores que laten en la pantalla) aunque no hayas tomado nada
+    const psy = this.lastRoom === WING_ROOM.psico ? 0.55 : this.lastRoom === WING_ROOM.maze ? 0.2 : 0;
+    this.psy = (this.psy || 0) + (psy - (this.psy || 0)) * Math.min(1, dt * 1.2);
+    this._mirrors(t, this.lastRoom);
     for (const [id, w] of this.wings) {
       const on = see.includes(id);
       if (w.group.visible !== on) w.group.visible = on;

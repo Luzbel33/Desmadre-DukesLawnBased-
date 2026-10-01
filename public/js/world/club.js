@@ -12,7 +12,7 @@ import { whenAsset, assetModel } from '../game/assets.js';
 import { billTexture } from '../game/equipment.js';
 import { loadAssetsLater } from '../game/assets.js';
 import { BUNKER_MANIFEST } from '../game/asset-manifest.js';
-import { ClubWings, HALL_DOORS } from './club-wings.js';
+import { ClubWings, HALL_DOORS, MIRROR_LAYER } from './club-wings.js';
 import { Smoke } from '../fx/flame.js';
 
 const HAS_DOM = typeof document !== 'undefined';
@@ -167,7 +167,8 @@ export class Club {
     this._smoke();
     this.wings = new ClubWings(this).build();
     const meshes = this.b.finish(this.group);
-    for (const m of meshes) m.userData.club = true;
+    // la estructura (muros, pisos, techos de todo el Búnker) también se ve en los espejos del laberinto
+    for (const m of meshes) { m.userData.club = true; m.layers.enable(MIRROR_LAYER); }
     if (HAS_DOM) {
       this._led();
       this._beams();
@@ -391,7 +392,7 @@ export class Club {
     this.wallX('bunkerBrick', H.x0 - WT, H.x1 + WT, H.z1, h, [[-C.door.w / 2, C.door.w / 2, 0, C.door.h]]);
     // puertas a las alas (club-wings.js): coffeeshop y VIP al norte, el arsenal al este
     this.wallX('bunkerBrick', H.x0 - WT, H.x1 + WT, H.z0 - WT / 2, h, HALL_DOORS.north);
-    this.wallZ('bunkerBrick', H.x0 - WT / 2, H.z1, H.z0, h);
+    this.wallZ('bunkerBrick', H.x0 - WT / 2, H.z1, H.z0, h, HALL_DOORS.west);
     this.wallZ('bunkerBrick', H.x1 + WT / 2, H.z1, H.z0, h, HALL_DOORS.east);
     this.deco('black', 0, h + 0.15, (H.z0 + H.z1) / 2, H.x1 - H.x0 + 0.8, 0.3, H.z1 - H.z0 + 0.8);
     // estructura de reticulado en el techo (de donde cuelgan los cabezales) y columnas de hormigón
@@ -399,8 +400,8 @@ export class Club {
     for (const x of [-12, 0, 12]) this.deco('iron', x, h - 1.1, (H.z0 + H.z1) / 2, 0.18, 0.18, H.z1 - H.z0 - 1);
     for (const [x, z] of [[-12, -452], [12, -452], [-12, -470], [12, -470]]) this.box('bunkerConcrete', x, h / 2, z, 0.8, h, 0.8);
     // zócalo de neón violeta alrededor
-    const ed = HALL_DOORS.east[0];
-    for (const [x, z, sx, sz] of [[0, H.z1 - 0.08, H.x1 - H.x0, 0.05], [H.x0 + 0.08, (H.z0 + H.z1) / 2, 0.05, H.z1 - H.z0], [H.x1 - 0.08, (ed[1] + H.z1) / 2, 0.05, H.z1 - ed[1]], [H.x1 - 0.08, (H.z0 + ed[0]) / 2, 0.05, ed[0] - H.z0]]) this.deco('neonPurple', x, 0.12, z, sx, 0.05, sz);
+    const ed = HALL_DOORS.east[0], wd = HALL_DOORS.west[0];
+    for (const [x, z, sx, sz] of [[0, H.z1 - 0.08, H.x1 - H.x0, 0.05], [H.x0 + 0.08, (wd[1] + H.z1) / 2, 0.05, H.z1 - wd[1]], [H.x0 + 0.08, (H.z0 + wd[0]) / 2, 0.05, wd[0] - H.z0], [H.x1 - 0.08, (ed[1] + H.z1) / 2, 0.05, H.z1 - ed[1]], [H.x1 - 0.08, (H.z0 + ed[0]) / 2, 0.05, ed[0] - H.z0]]) this.deco('neonPurple', x, 0.12, z, sx, 0.05, sz);
     // luces de ambiente: bañadores rojos en los muros y violeta en el techo (laten con la música)
     const wash = [[-22, 3, -450, 0xff1030], [-22, 3, -466, 0x8020ff], [22, 3, -458, 0xff1030], [22, 3, -472, 0x8020ff], [0, 6.2, -448, 0xff2060], [-10, 6.2, -476, 0x3040ff], [10, 6.2, -476, 0xff1030]];
     for (const [x, y, z, c] of wash) this.party.push(this.light(x, y, z, c, 14, 18, { priority: 1.6 }));
