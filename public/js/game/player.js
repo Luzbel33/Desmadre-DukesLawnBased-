@@ -45,6 +45,7 @@ const PART_DMG = [0.9, 1, 1.7, 0.45, 0.35, 0.45, 0.35, 0.55, 0.4, 0.55, 0.4];
 const PLAYER_DMG_K = 0.6;
 // cosa en la mano -> modelo que se ve (equipment.js); 4 = mano libre
 export const CASH_BUNDLES = 10;
+const KICK_SPEED = 6.5; // m/s con que cuenta una patada que toca en su ventana de golpe
 export const ITEM_EQ = { beer: 1, smoke: 2, spray: 3, cash: 5, pistol: 6, grenade: 7, potion: 8, chori: 9, apple: 10, ...Object.fromEntries(Object.entries(CONSUMABLES).map(([k, c]) => [k, c.slot])) };
 // la parte de la que cuelga cada una (un antebrazo ya no se corta si se fue el brazo entero)
 const PARENT_PART = [-1, 0, 1, 1, 3, 1, 5, 0, 7, 0, 9];
@@ -846,7 +847,9 @@ export class LocalPlayer {
           const leg = i >= PART.THIGH_L, head = i === PART.HEAD;
           // la patada pega con el pie (la pantorrilla se mueve desde la rodilla: medía la mitad)
           const mv = leg ? this._footVel : this.rag.partVel(i, V2);
-          const sp = -mv.dot(n); // mi parte yendo hacia él
+          // el pie que toca durante la ventana de la patada pega aunque ya esté terminando de estirarse (si no, a la
+          // distancia normal la patada llegaba frenada y no contaba)
+          const sp = leg ? Math.max(-mv.dot(n), KICK_SPEED) : -mv.dot(n); // mi parte yendo hacia él
           const a = leg ? 'k' : head ? 'h' : null;
           const w = a ? null : this._weaponOf(i);
           if (sp > (a === 'h' ? 1.2 : 2)) this._claimHit(info.id, info.part ?? 0, sp, c.translation(), w, a || (w ? 'w' : 'p'));
@@ -1055,7 +1058,7 @@ export class LocalPlayer {
   _attacking(i) {
     if ((i === PART.FARM_R || i === PART.UARM_R) && this.arm.r.armed > 0) return true;
     if ((i === PART.FARM_L || i === PART.UARM_L) && this.arm.l.armed > 0) return true;
-    if ((i === PART.SHIN_R || i === PART.THIGH_R) && this.action === 'kick' && this.actionT >= .13 && this.actionT <= .26) return true;
+    if ((i === PART.SHIN_R || i === PART.THIGH_R) && this.action === 'kick' && this.actionT >= .12 && this.actionT <= .3) return true;
     if (i === PART.HEAD && this.action === 'headbutt' && this.actionT >= .035 && this.actionT <= .18) return true;
     return false;
   }
@@ -1267,8 +1270,11 @@ export class LocalPlayer {
       }
     }
     // Downed NPCs and severed physical limbs were previously absent from selection.
-    for (const npc of G.allNpcs?.() || []) if (npc.rag?.alive && (npc.down > 0 || npc.dead)) {
-      for (let i = 0; i < 11; i++) if (!npc.char?.detached?.[i] && !(npc.lost & (1 << i))) offer(npc.rag.bodies[i], npc.char.meta.caps?.[i], { kind: 'loose', npc, part: i });
+    // Los NPC parados también se agarran: al agarrarlos se desestabilizan (ragdoll un rato) y se los arrastra igual.
+    // Las bailarinas del caño no (siguen su coreografía).
+    for (const npc of G.allNpcs?.() || []) if (npc.rag?.alive && (npc.down > 0 || npc.dead || (npc.physical && !npc.noCollide && npc.pos.distanceToSquared(hp) < 6))) {
+      const standing = !(npc.down > 0 || npc.dead);
+      for (let i = 0; i < 11; i++) if (!npc.char?.detached?.[i] && !(npc.lost & (1 << i))) offer(npc.rag.bodies[i], npc.char.meta.caps?.[i], { kind: 'loose', npc, part: i, standing });
     }
     const seen = new Set();
     G.phys.world.forEachCollider(collider => {
@@ -1283,6 +1289,8 @@ export class LocalPlayer {
     if (!best) return false;
     const h = this.hands[side];
     if (best.kind === 'loose') {
+      // un NPC parado: pierde el equilibrio (un empujoncito hacia mí) y queda a merced de la mano
+      if (best.standing && best.npc) best.npc.knockout(V6.set(-Math.sin(this.yaw) * 0.8, 0.4, -Math.cos(this.yaw) * 0.8), 3.5);
       const forearm = this.rag.bodies[side === 'l' ? PART.FARM_L : PART.FARM_R];
       const grip = this.meta.gripLocal[side];
       const data = RAPIER.JointData.spring(.04, 950, 75, grip, best.anchor);
@@ -1712,8 +1720,8 @@ export class LocalPlayer {
   kick() {
     if (this.combatBlocked || this.state !== 'active') return;
     this.setAction('kick', 0.5);
-    this.push.x += Math.sin(this.yaw) * 0.8;
-    this.push.y += Math.cos(this.yaw) * 0.8;
+    this.push.x += Math.sin(this.yaw) * 1.3;
+    this.push.y += Math.cos(this.yaw) * 1.3;
   }
   headbutt() {
     if (this.combatBlocked || this.state !== 'active') return;
@@ -1996,9 +2004,10 @@ export class LocalPlayer {
     const old = cap.b.clone().applyQuaternion(previous.q).add(previous.p);
     const velocity = tip.clone().sub(old).multiplyScalar(1 / dt);
     const n = new THREE.Vector3(hit.contact.normal1.x, hit.contact.normal1.y, hit.contact.normal1.z);
-    const speed = -velocity.dot(n);
     const leg = i >= 7, head = i === PART.HEAD;
-    if (speed < (head ? 1.2 : 2) || (leg && velocity.dot(new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw))) < 1.5)) return;
+    // la patada: lo que toca el pie en su ventana cuenta como patada (al final del estirón el pie ya viene frenado)
+    const speed = leg ? Math.max(-velocity.dot(n), KICK_SPEED) : -velocity.dot(n);
+    if (speed < (head ? 1.2 : 2)) return;
     const key = hit.collider.handle * 16 + i, now = performance.now();
     if (now - (this.hitCd.get(key) ?? -1000) < 220) return;
     this.hitCd.set(key, now);

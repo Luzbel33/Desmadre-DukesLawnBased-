@@ -34,9 +34,8 @@ Fuente única de trabajo pendiente.
 
 ## 2. Combate y armas
 
-- [ ] **Patadas rotas:** no conectan bien contra NPC ni jugadores.
-- [ ] **Agarrar con las manos a NPC (y jugadores):** hoy no agarra. Revisar candidatos de agarre y el ragdoll del NPC.
-- [ ] **Modo invisible del Diablo:** que no se vea el nombre arriba de la cabeza.
+- [ ] Probar con dos jugadores: patadas y agarre entre jugadores (contra NPC ya andan) y que el nombre del Diablo
+      invisible no se vea (el código ya lo oculta).
 - [ ] Apuntado real: mano y arma siguiendo la mira, poses coherentes, animaciones y retroceso.
 - [ ] Cuchillos y armas blancas que puedan quedar clavados en jugadores, piso o madera y luego sacarse/agarrarse.
 - [ ] Revisar interacción entre armas clavadas, ragdoll, gore y props de red para que no se dupliquen ni desaparezcan.

@@ -424,6 +424,8 @@ export class Npc {
     if (this.down > 0) {
       // tirado: el cuerpo es el ragdoll
       this.down -= dt;
+      // mientras alguien lo tiene agarrado no se levanta (se le iría la mano con él)
+      if (this.down < 0.6 && this.rag?.bodies.some((b) => b?.grabCount > 0)) this.down = 0.6;
       if (updatePose) ch.applyWorldTransforms(this.rag.read());
       if (this.down <= 0) {
         this.down = 0;

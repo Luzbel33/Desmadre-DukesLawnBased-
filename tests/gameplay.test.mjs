@@ -968,3 +968,19 @@ test('tirar plata hace el gesto pero el fajo no sale volando como objeto (antes 
   assert.deepEqual(events.filter(e => e.type === 'cashthrow').map(e => e.d).at(-1), { side: 'l', all: true });
   G.players = new Map(); ph.world.free();
 });
+
+test('una patada que toca con el pie en su ventana pega aunque el pie llegue frenado (antes no contaba a distancia normal)', async () => {
+  const { p, ph } = await fixture();
+  for (let k = 0; k < 10; k++) frame(p, ph);
+  const hits = [];
+  const bag = { punch: (speed, point, dir, mass) => hits.push({ speed, mass }) };
+  p.action = 'kick'; p.actionT = 0.24;
+  const still = { p: new THREE.Vector3(0, 0.5, 0.6), q: new THREE.Quaternion() };
+  p._limbContact({ part: 10, collider: { handle: 77 }, info: { kind: 'bag', ref: bag }, contact: { normal1: { x: 0, y: 0, z: -1 }, point1: { x: 0, y: 0.5, z: 0.7 } } }, still, still, 1 / 60);
+  assert.equal(hits.length, 1, 'the kick touched the NPC during its strike window but did not count');
+  assert.ok(hits[0].speed >= 6, 'a landed kick must carry kick strength');
+  p.actionT = 0.45; // ya volviendo: no pega
+  p._limbContact({ part: 10, collider: { handle: 78 }, info: { kind: 'bag', ref: bag }, contact: { normal1: { x: 0, y: 0, z: -1 }, point1: { x: 0, y: 0.5, z: 0.7 } } }, still, still, 1 / 60);
+  assert.equal(hits.length, 1);
+  G.players = new Map(); ph.world.free();
+});
