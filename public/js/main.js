@@ -875,6 +875,15 @@ function quickThrow() {
   if (L.startThrow(side)) G.sfx?.trigger('swing', null, 0.45);
 }
 
+// 4 = mano libre. La birra, el faso y el aerosol son del bolsillo (1-3): se guardan, no se tiran al piso (antes cada
+// cambio dejaba uno nuevo tirado y se juntaban cientos). Lo demás (pistola, plata, comida...) se deja en el piso, suave.
+const POCKET = new Set(['beer', 'smoke', 'spray']);
+function freeHand(L, side) {
+  const h = L.hands[side];
+  if (h.item && POCKET.has(h.item)) { h.item = null; h.bites = 0; h.itemGeneration = (h.itemGeneration || 0) + 1; return; }
+  L.release(side, false);
+}
+
 function doThrowRelease(side) {
   const L = state.local;
   if (!L || L.combatBlocked) return;
@@ -1657,7 +1666,7 @@ function updateInput(dt) {
   const items = [null, 'beer', 'smoke', 'spray', null];
   for (let i = 1; i <= 4; i++) {
     if (inp.hit(`Digit${i}`) && !down && !(driving && i === 3)) {
-      if (i === 4) L.release('r', false);
+      if (i === 4) freeHand(L, 'r');
       else L.giveItem(items[i]);
       G.sfx?.trigger('pickup', null, 0.25);
       updateHotbar();

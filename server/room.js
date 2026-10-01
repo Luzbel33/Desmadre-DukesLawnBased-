@@ -14,6 +14,9 @@ import { DEMON_FIRE as FIRE, fireVector, fireShot } from '../public/js/shared/de
 const MAX_PLAYERS = 24;
 const SNAP_MS = 50;
 const MAX_DYNAMIC_PROPS = 260;
+// lo que cada jugador suelta o revolea (birras, puchos, aerosoles, plata...): tope propio y vida corta sin tocar
+const MAX_SPAWNED_PER_PLAYER = 16;
+const SPAWNED_IDLE_MS = 90_000;
 const PROP_RESPAWN_MS = 75_000;
 const COLORS = ['#ff5b5b', '#ffb13b', '#ffe45b', '#7dff6b', '#4de8ff', '#6b8cff', '#c76bff', '#ff6bd5', '#ffffff'];
 
@@ -603,15 +606,17 @@ export class Room {
 
     this.props.set(id, pr);
     this.broadcast({ t: 'pa', pr: [id, type, ...pos.map(r3), ...q.map(r4), pr.o, pr.h], v: msg.v, w: msg.w, x: pr.extra }, p);
-    // tope de props dinámicos
-    let dyn = 0;
-    let oldest = null;
+    // tope de props dinámicos (de todos y de este jugador)
+    let dyn = 0, mine = 0;
+    let oldest = null, oldestMine = null;
     for (const o of this.props.values()) {
       if (!o.dyn) continue;
       dyn++;
       if (!o.h && (!oldest || o.touched < oldest.touched)) oldest = o;
+      if (Math.floor(o.id / 100000) === p.id) { mine++; if (!o.h && (!oldestMine || o.touched < oldestMine.touched)) oldestMine = o; }
     }
-    if (dyn > MAX_DYNAMIC_PROPS && oldest) this._deleteProp(oldest);
+    if (mine > MAX_SPAWNED_PER_PLAYER && oldestMine) this._deleteProp(oldestMine);
+    else if (dyn > MAX_DYNAMIC_PROPS && oldest) this._deleteProp(oldest);
   }
 
   onPropDelete(p, msg) {
@@ -840,7 +845,7 @@ export class Room {
     // props rotos que vuelven a su lugar
     for (const pr of this.props.values()) {
       if (pr.gone && now - pr.goneAt > PROP_RESPAWN_MS) this._respawnProp(pr);
-      else if (pr.dyn && !pr.h && now - pr.touched > 240_000) this._deleteProp(pr);
+      else if (pr.dyn && !pr.h && now - pr.touched > SPAWNED_IDLE_MS) this._deleteProp(pr);
       else if (!pr.dyn && !pr.gone && !pr.h && pr.o === 0 && now - pr.touched > 900_000) {
         const d = Math.hypot(pr.p[0] - pr.spawn.p[0], pr.p[2] - pr.spawn.p[2]);
         if (d > 2) this._respawnProp(pr);

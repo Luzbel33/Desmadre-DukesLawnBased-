@@ -369,6 +369,10 @@ function parseRow(row) {
   };
 }
 
+// lo que suelto/revoleo yo: tope y vida (ver PropManager._cleanMine)
+export const SPAWN_MAX = 12;
+export const SPAWN_LIFE = 60000;
+
 export class PropManager {
   constructor(net, local) {
     this.net = net;
@@ -376,6 +380,8 @@ export class PropManager {
     this.items = new Map();
     this._sendT = 0;
     this._spawnN = 1;
+    this._mine = []; // ids de lo que solté o revoleé yo (birras, faso, aerosol, plata...): ver _cleanMine
+    this._cleanT = 0;
     this.onBreak = null; // (prop, pos, def)
   }
 
@@ -658,7 +664,35 @@ export class PropManager {
       this.markThrown(p);
     }
     this.net.send({ t: 'pn', id, k: type, p: [pos.x, pos.y, pos.z], q: [q.x, q.y, q.z, q.w], v: [vel.x, vel.y, vel.z], ...(extra ? { x: heldState(extra) } : {}) });
+    if (p) { p.handledAt = performance.now(); this._mine.push(id); this._cleanMine(); }
     return p;
+  }
+
+  // Lo que suelto o revoleo se limpia solo: como mucho SPAWN_MAX tirados por jugador (se va el más viejo) y cada uno
+  // desaparece a los SPAWN_LIFE ms de la última vez que alguien lo tuvo en la mano. Lo que agarró otro ya no es mío:
+  // de eso se encarga su dueño (y el servidor, si se va).
+  _cleanMine() {
+    const now = performance.now();
+    const live = [];
+    for (const id of this._mine) {
+      const p = this.items.get(id);
+      if (!p || p.owner !== G.myId) continue;
+      if (p.heldBy) p.handledAt = now;
+      else if (now - p.handledAt > SPAWN_LIFE) { this._drop(p); continue; }
+      live.push(id);
+    }
+    // el más viejo que no esté en una mano
+    while (live.length > SPAWN_MAX) {
+      const i = live.findIndex((id) => !this.items.get(id)?.heldBy);
+      if (i < 0) break;
+      this._drop(this.items.get(live[i]));
+      live.splice(i, 1);
+    }
+    this._mine = live;
+  }
+  _drop(p) {
+    this.net.send({ t: 'pd', id: p.id });
+    this.remove(p.id);
   }
 
 
@@ -843,6 +877,8 @@ export class PropManager {
   }
 
   update(dt) {
+    this._cleanT += dt;
+    if (this._cleanT > 1) { this._cleanT = 0; if (this._mine.length) this._cleanMine(); }
     // objetos chicos lejos no se dibujan (con la bruma no se ven y eran cientos de llamadas de dibujo)
     const cam = G.camera?.position;
     for (const p of this.items.values()) {

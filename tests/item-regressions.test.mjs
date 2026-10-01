@@ -71,3 +71,21 @@ test('G launches the actual item and drops do not require arm movement', async (
   assert.equal(spawned[0].type,'held_potion'); assert.ok(spawned[0].vel.z>12);
   assert.equal(p.hands.l.item,null);
 });
+
+test('dropped and thrown items clean themselves up: per-player cap and idle lifetime', async () => {
+  const { Physics } = await import('../public/js/core/physics.js');
+  const { heldType } = await import('../public/js/shared/held-items.js');
+  const { SPAWN_MAX, SPAWN_LIFE } = await import('../public/js/game/props.js');
+  const ph = new Physics(); await ph.init(); G.phys = ph; G.scene = new THREE.Scene(); G.myId = 2;
+  const packets = [], pm = new PropManager({ send: p => packets.push(p) }, null); G.props = pm;
+  const ids = [];
+  for (let i = 0; i < SPAWN_MAX + 8; i++) ids.push(pm.spawnThrow(heldType(i % 2 ? 'beer' : 'spray'), new THREE.Vector3(i * .3, 1, 0), new THREE.Vector3()).id);
+  assert.equal(pm.items.size, SPAWN_MAX, 'spamming the pocket slots piled up unlimited props');
+  assert.deepEqual(packets.filter(p => p.t === 'pd').map(p => p.id), ids.slice(0, 8), 'the oldest drops must go first and replicas must be told');
+  // el que tengo en la mano no se borra aunque pase el tiempo
+  const held = pm.get(ids.at(-1)); held.heldBy = G.myId;
+  for (const p of pm.items.values()) p.handledAt -= SPAWN_LIFE + 1;
+  pm.update(1.1);
+  assert.deepEqual([...pm.items.keys()], [held.id], 'idle drops must vanish by themselves, the held one must stay');
+  ph.world.free(); G.phys = null; G.props = null;
+});
