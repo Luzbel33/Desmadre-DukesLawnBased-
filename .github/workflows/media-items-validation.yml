@@ -3,7 +3,7 @@ on:
   push:
     branches: [fix/media-items-fire-20261001]
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: media-items-validation
   cancel-in-progress: true
@@ -18,22 +18,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Apply exact isolated candidate
-        run: |
-          python - <<'PY'
-          import base64,lzma,hashlib,pathlib
-          data=lzma.decompress(base64.b85decode(pathlib.Path('tools/media-items-candidate.xz.b85').read_text().strip()))
-          assert hashlib.sha256(data).hexdigest()=='0fc9ebc0b7984e9d05328251f3985cfe8a9351f472c9ad4815971ad7155f88df', 'Candidate integrity mismatch'
-          pathlib.Path('/tmp/candidate.patch').write_bytes(data)
-          PY
-          if git apply --unidiff-zero --reverse --check /tmp/candidate.patch 2>/dev/null; then
-            echo 'Candidate already applied'
-          else
-            git diff --exit-code 3542fa04c9954c460f607379e9ebd070a0edfaae -- public server tests package.json
-            git apply --unidiff-zero --check /tmp/candidate.patch
-            git apply --unidiff-zero /tmp/candidate.patch
-          fi
-          git diff --exit-code 4d33fd0c0fd29a865abf04997bfb07b75f4555c9 -- assets public/assets public/js/char public/js/game/club.js
+      - name: Protected assets and character code are unchanged
+        run: git diff --exit-code 4d33fd0c0fd29a865abf04997bfb07b75f4555c9 -- assets public/assets public/js/char public/js/game/club.js
       - name: Syntax and complete regression suite
         run: |
           npm run check
@@ -49,19 +35,8 @@ jobs:
         run: node tests/media-focus-browser.mjs
       - name: Full game, chat and bidirectional private microphone regressions
         run: node tests/social-browser.mjs
-      - name: Save verified candidate on isolated branch only
-        run: |
-          test "$(git ls-remote origin refs/heads/fix/media-items-fire-20261001 | cut -f1)" = "$GITHUB_SHA"
-          git add package.json public/js/fx/body-fire.js public/js/game/bunker-items.js public/js/game/equipment.js public/js/game/haunt.js public/js/game/held-release.js public/js/game/npc-defense.js public/js/game/npc.js public/js/game/owner.js public/js/game/player.js public/js/game/props.js public/js/game/villagers.js public/js/main.js public/js/media/screens.js public/js/media/volume.js public/js/shared/held-items.js public/js/shared/mapdata.js public/js/world/castle.js public/js/world/furniture.js public/js/world/readable-sign.js server/room.js tests/cinema-defense.test.mjs tests/item-regressions.test.mjs tests/media-focus-browser.mjs
-          git diff --cached --stat
-          if ! git diff --cached --quiet; then
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git commit -m 'fix: visible media, faithful throwable items, NPC defense and cinema activity'
-            git push origin HEAD:refs/heads/fix/media-items-fire-20261001
-          fi
-          git rev-parse HEAD
-          git rev-parse HEAD^{tree}
+      - name: Cinema, real bar seats, frontal combat and body-fire screenshots
+        run: node tests/world-browser.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
