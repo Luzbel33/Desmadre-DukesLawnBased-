@@ -1,0 +1,29 @@
+name: Multiplayer validation
+on:
+  push:
+    branches: [fix/multiplayer-social-20260930]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 30
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Source snapshot for isolated regression testing
+        run: tar -czf /tmp/desmadre-workspace.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desmadre-workspace
+          path: /tmp/desmadre-workspace.tar.gz
+          retention-days: 2
+      - run: npm run check
+      - run: npm test
+      - run: npm run test:network
+      - run: npm run test:fire
