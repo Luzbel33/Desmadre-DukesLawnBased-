@@ -85,7 +85,7 @@ export class BunkerItems {
 
   // ---------------------------------------------------------------- pistola
   shoot(L) {
-    if (G.time < this.shotT) return false;
+    if (!L || L.dead || L.combatBlocked || G.time < this.shotT) return false;
     this.shotT = G.time + 0.3;
     const cam = G.camera;
     const o = cam.position.clone(), d = cam.getWorldDirection(new THREE.Vector3());
@@ -138,9 +138,12 @@ export class BunkerItems {
   }
 
   // ---------------------------------------------------------------- granada
-  throwNade(L) {
+  throwNade(L, side = 'r') {
+    const hand=L.hands[side], generation=hand.itemGeneration || 0;
     setTimeout(() => {
-      const o = L.handPos('r', new THREE.Vector3());
+      if(this.getLocal()!==L || L.dead || L.combatBlocked || hand.item!=='grenade' || (hand.itemGeneration||0)!==generation) return;
+      hand.item=null; hand.itemGeneration=generation+1; L.onEvent?.('release',{side,equipped:true});
+      const o = L.handPos(side, new THREE.Vector3());
       const d = G.camera.getWorldDirection(new THREE.Vector3());
       const v = d.multiplyScalar(12.5).add(V1.set(0, 3.2, 0));
       this.nade(o, v, G.myId);

@@ -4,9 +4,12 @@ import * as THREE from 'three';
 import { G, clamp } from '../core/G.js';
 import { RAPIER, GR, groups } from '../core/physics.js';
 import { assetModel } from './assets.js';
+import { createEquippedModel } from './equipment.js';
+import { HELD_PROP_DEFS, heldState } from '../shared/held-items.js';
 
 // Definiciones físicas por tipo. shape: box(hx,hy,hz) | cyl(r,h) | ball(r) | capsule(r,h). oy: altura del centro.
 export const PROP_DEFS = {
+  ...HELD_PROP_DEFS,
   bottle: { shape: 'cyl', r: 0.037, h: 0.3, oy: 0.15, mass: 0.45, breakDv: 6.5, glass: 0x2f5a2c, kind: 'blunt', grip: [0, 0.22, 0], label: 'botella' },
   can: { shape: 'cyl', r: 0.033, h: 0.12, oy: 0.06, mass: 0.35, kind: 'blunt', grip: [0, 0.06, 0], label: 'lata' },
   chair: { shape: 'box', hx: 0.3, hy: 0.43, hz: 0.3, oy: 0.43, mass: 2.6, breakDv: 14, kind: 'blunt', grip: [0, 0.84, -0.27], label: 'silla' },
@@ -340,7 +343,8 @@ function fallbackMesh(type) {
 }
 
 function visualFor(type) {
-  return assetModel(type) || fallbackMesh(type);
+  const equipped = HELD_PROP_DEFS[type];
+  return equipped ? createEquippedModel(equipped.slot) : assetModel(type) || fallbackMesh(type);
 }
 
 function colliderDesc(d) {
@@ -361,7 +365,7 @@ function parseRow(row) {
     id: row[0], type: row[1],
     pos: new THREE.Vector3(row[2], row[3], row[4]),
     quat: new THREE.Quaternion(row[5], row[6], row[7], row[8]),
-    owner: row[9] || 0, heldBy: row[10] || 0,
+    owner: row[9] || 0, heldBy: row[10] || 0, extra: row[11] ? heldState(row[11]) : null,
   };
 }
 
@@ -396,7 +400,7 @@ export class PropManager {
       );
       const collider = G.phys.world.createCollider(colliderDesc(def), body);
       p = {
-        id: d.id, type: d.type, def, mass: def.mass, group, body, collider,
+        id: d.id, type: d.type, def, mass: def.mass, group, body, collider, extra: d.extra,
         owner: d.owner, heldBy: d.heldBy, dynamic: false,
         target: d.pos.clone(), targetQ: d.quat.clone(), prevTarget: d.pos.clone(), vel: new THREE.Vector3(),
         lastV: new THREE.Vector3(), sleepT: 0, sentSleep: false, claimT: 0,
@@ -644,16 +648,16 @@ export class PropManager {
   }
 
   // Revolear un consumible (birra/aerosol) como objeto nuevo
-  spawnThrow(type, pos, vel) {
+  spawnThrow(type, pos, vel, extra = null) {
     const id = G.myId * 100000 + (this._spawnN++ % 99999);
     const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random(), Math.random() * 6, 0));
-    const row = [id, type, pos.x, pos.y, pos.z, q.x, q.y, q.z, q.w, G.myId, 0];
+    const row = [id, type, pos.x, pos.y, pos.z, q.x, q.y, q.z, q.w, G.myId, 0, extra];
     const p = this.addRow(row, { x: vel.x, y: vel.y, z: vel.z });
     if (p) {
       p.body.setAngvel({ x: (Math.random() - 0.5) * 12, y: (Math.random() - 0.5) * 6, z: (Math.random() - 0.5) * 12 }, true);
       this.markThrown(p);
     }
-    this.net.send({ t: 'pn', id, k: type, p: [pos.x, pos.y, pos.z], q: [q.x, q.y, q.z, q.w], v: [vel.x, vel.y, vel.z] });
+    this.net.send({ t: 'pn', id, k: type, p: [pos.x, pos.y, pos.z], q: [q.x, q.y, q.z, q.w], v: [vel.x, vel.y, vel.z], ...(extra ? { x: heldState(extra) } : {}) });
     return p;
   }
 
@@ -708,16 +712,23 @@ export class PropManager {
     const W = G.phys.world;
     W.contactPairsWith(p.collider, (other) => {
       const info = G.phys.info(other);
-      if (info?.kind !== 'remote') return;
-      if ((p._hitIds || (p._hitIds = new Set())).has(info.id)) return;
+      const remote = info?.kind === 'remote';
+      const npc = (info?.kind === 'bag' || info?.kind === 'npc') && info.ref?.punch ? info.ref : null;
+      if ((!remote && !npc) || (p.mass ?? 1) < .04) return;
+      const key = remote ? info.id : npc;
+      if ((p._hitIds || (p._hitIds = new Set())).has(key)) return;
       let touching = false;
       W.contactPair(p.collider, other, (m) => { if (m.numContacts() > 0) touching = true; });
       if (!touching) return;
       const sp = p.lastV.length();
       if (sp < 4) return;
-      p._hitIds.add(info.id);
-      const t = other.translation();
-      G.me?._claimHit(info.id, info.part ?? 1, Math.min(16, sp), V1.set(t.x, t.y, t.z), p.type, 't');
+      p._hitIds.add(key);
+      const t = other.translation(), point = new THREE.Vector3(t.x, t.y, t.z);
+      if (remote) G.me?._claimHit(info.id, info.part ?? 1, Math.min(16, sp), point, p.type, 't');
+      else {
+        npc.punch(Math.min(16, sp), point, p.lastV.clone().normalize(), p.mass || 1, true, 'blunt');
+        G.sfx?.trigger('hit', point, Math.min(1, sp / 12));
+      }
     });
   }
 

@@ -809,7 +809,7 @@ export class Haunt {
     this.fireBoost = Math.max(0, this.fireBoost - dt / 6);
     const fire = this.castle.fire;
     if (fire && this.world.flames) {
-      const k = 1 + this.fireBoost * 0.9;
+      const k = 1 + this.fireBoost * 0.45; // boosted flames stay below the movie screen
       for (const f of fire.flames) this.world.flames.scale(f.i, f.w * (1 + this.fireBoost * 0.5), f.h * k);
       if (fire.vol >= 0) this.world.fires?.scale(fire.vol, k);
       if (fire.embers) this.world.embers.set(fire.embers, 1 + this.fireBoost * 1.5, 5.5 + this.fireBoost * 3);

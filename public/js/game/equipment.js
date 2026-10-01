@@ -74,7 +74,8 @@ export function createEquippedModel(slot){
     const fill=mesh(new THREE.SphereGeometry(.041,18,12,0,Math.PI*2,Math.PI*.3,Math.PI*.7),liquid,0,0,0);fill.name='liquid';group.add(fill);
     group.add(mesh(new THREE.CylinderGeometry(.013,.016,.05,14),glass,0,.058,0));
     group.add(mesh(new THREE.CylinderGeometry(.012,.011,.022,10),new THREE.MeshStandardMaterial({color:0x8a6238,roughness:.9}),0,.09,0));
-    group.add(mesh(new THREE.TorusGeometry(.017,.003,6,16),new THREE.MeshStandardMaterial({color:0x6a2090,roughness:.6}),0,.066,0)).rotation.x=Math.PI/2;
+    const collar=mesh(new THREE.TorusGeometry(.017,.003,6,16),new THREE.MeshStandardMaterial({color:0x6a2090,roughness:.6}),0,.066,0);
+    collar.rotation.x=Math.PI/2;group.add(collar);
   } else if(slot===9){
     // choripán: pan francés abierto con el chorizo y chimichurri
     const bread=new THREE.MeshStandardMaterial({color:0xc98e4a,roughness:.85});

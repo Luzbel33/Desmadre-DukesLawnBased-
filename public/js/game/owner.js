@@ -8,6 +8,7 @@ import { G, clamp } from '../core/G.js';
 import { FireBreath, setBreathPhysics } from '../fx/breath.js';
 import { FireBalls, SurfaceFires, clearFirePath } from '../fx/demon-fire.js';
 import { DEMON_FIRE as F, fireVector } from '../shared/demon-fire.js';
+import { BodyFireView, touchingWorldFire } from '../fx/body-fire.js';
 
 const V1 = new THREE.Vector3();
 const V2 = new THREE.Vector3();
@@ -35,6 +36,7 @@ export class OwnerPowers {
     this.burning = new Map(); // id ('me' o id remoto) -> segundos que le quedan prendido fuego
     this.slots = new Map(); // id -> { fire, flames[] }
     this.freeSlots = [];
+    this.bodyFire = new BodyFireView(G.scene);
     this.badges = document.getElementById('owner-badges');
     this._badgeKey = '';
   }
@@ -50,7 +52,7 @@ export class OwnerPowers {
     const L = this.getLocal();
     const on = this.active();
     const net = this.getNet();
-    const want = on && !L.dead && inp.key('KeyK');
+    const want = on && !L.dead && !L.combatBlocked && inp.key('KeyK');
     if (want !== this.firing) {
       if (want) this._growl(null);
       this.firing = want;
@@ -63,7 +65,7 @@ export class OwnerPowers {
       if (L?.immortal) L.immortal = false;
       return;
     }
-    if (!L.dead && inp.hit('KeyN') && G.time >= this.ballT) {
+    if (!L.dead && !L.combatBlocked && inp.hit('KeyN') && G.time >= this.ballT) {
       const o=new THREE.Vector3(), d=new THREE.Vector3(); this._pose('me',o,d);
       const shot=String(++this.shotSeq);
       if(this.balls.launch(`${G.myId}:${shot}`,G.myId,o,d,true)) {
@@ -164,12 +166,14 @@ export class OwnerPowers {
   onFire(m) { if (G.players.has(m.id)) this.ignite(m.id, clamp(+m.d || 3, 0.5, 6)); }
 
   ignite(id, secs, by=0) { this.burning.set(id, Math.max(this.burning.get(id) || 0, secs)); if(by)this.burnSource.set(id,by); }
+  extinguish(id) { this.burning.delete(id); this.burnSource.delete(id); this._slotOff(id); }
   remove(id) {
     this.breath.remove(id);this.aims.delete(id);this.burning.delete(id);this.burnSource.delete(id);this.laughEnd.delete(id);
     this._slotOff(id);const slot=this.slots.get(id);
     if(slot){this.freeSlots.push(slot);this.slots.delete(id);}
   }
   reset() {
+    this.bodyFire?.clear();
     for(const id of [...this.slots.keys()])this.remove(id);
     for(const id of [...this.breath.emitters.keys()])this.breath.remove(id);
     this.breath.lastAlive=-1e9;this.burning.clear();this.burnSource.clear();this.aims.clear();this.seenShots.clear();this.laughEnd.clear();
@@ -307,16 +311,17 @@ export class OwnerPowers {
     }
     // prendido fuego: yo pierdo vida mientras dure (salvo inmortal); a todos se les ve el fuego encima
     let mine = this.burning.get('me') || 0;
-    if(L&&!L.dead&&this.contactT<=0) {
+    const checkContact = this.contactT <= 0;
+    if(L&&!L.dead&&checkContact) {
       this.contactT=.3;
       const patch=this.patches.touching(L.char,G.myId).find(s=>clearFirePath(G.phys,s.p.clone().addScaledVector(s.n,.06),L.char.headWorld().add(new THREE.Vector3(0,-.35,0))));
-      let campfire = false;
-      if (G.world?.fires) for (let i = 0; i < L.rag.bodies.length && !campfire; i++) {
-        const b = L.rag.bodies[i], cap = L.meta.caps[i], rot = b.rotation();
-        const part = cap.a.clone().add(cap.b).multiplyScalar(.5).applyQuaternion(new THREE.Quaternion(rot.x, rot.y, rot.z, rot.w)).add(new THREE.Vector3(b.translation().x,b.translation().y,b.translation().z));
-        campfire = G.world.fires.touching(part, cap.r).some(f => clearFirePath(G.phys,new THREE.Vector3(f.x,f.y+f.h*.7,f.z),part));
-      }
+      const campfire = touchingWorldFire(L.char, G.world?.fires, G.phys);
       if(patch || campfire){this.ignite('me',F.burnSeconds,patch?.by || 0);this.getNet()?.send({t:'ev',k:'onfire',d:F.burnSeconds});mine=F.burnSeconds;}
+    }
+    if(checkContact) for(const n of G.allNpcs?.() || []) {
+      if(!n.char || n.dead || n.burnT > 1 || !n.visible) continue;
+      const patch=this.patches.touching(n.char,0).find(s=>clearFirePath(G.phys,s.p.clone().addScaledVector(s.n,.06),n.char.headWorld().add(new THREE.Vector3(0,-.35,0))));
+      if(patch || touchingWorldFire(n.char,G.world?.fires,G.phys)) n.ignite(4,patch?.by || 0);
     }
     if (mine > 0 && L && !L.dead && !L.immortal) {
       L.damage(F.burnDps*dt,this.burnSource.get('me')||0);
@@ -327,8 +332,11 @@ export class OwnerPowers {
       this.burning.set(id, left);
       const ch = id === 'me' ? L?.char : G.players.get(id)?.char;
       if (!ch || (id !== 'me' && G.players.get(id)?.inv)) { this._slotOff(id); continue; }
-      this._slotOn(id, ch, Math.min(1, left / 0.6));
+      // BodyFireView owns the visible flames; avoid saturating world pools.
     }
+    const actors = [...this.burning].map(([id,seconds]) => ({ seconds, char:id==='me'?L?.char:G.players.get(id)?.char, hidden:id!=='me'&&G.players.get(id)?.inv }));
+    for(const n of G.allNpcs?.() || []) if(n.burnT>0) actors.push({seconds:n.burnT,char:n.char,hidden:!n.visible});
+    this.bodyFire?.update(G.time,actors,G.camera,G.scene?.fog?.density || 0);
     this._badges();
   }
 

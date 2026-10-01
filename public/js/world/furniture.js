@@ -1,5 +1,6 @@
 // Muebles y objetos estáticos del mapa (a partir de FURNITURE en mapdata).
 import * as THREE from 'three';
+import { readableSign } from './readable-sign.js';
 import { textTexture } from './textures.js';
 import { placeModel, hasAsset, instanceModel } from '../game/assets.js';
 import { rbox } from '../game/vehicle-models.js';
@@ -574,10 +575,11 @@ const BUILD = {
     lbox(b, f, 'glass', -L / 2 + 0.6, 1.4, 0, 0.8, 0.7, 0.6, { collide: false });
     lbox(b, f, 'yellow', -L / 2 + 0.6, 1.2, 0, 0.7, 0.2, 0.5, { collide: false });
     const t = textTexture('POCHOCLOS', { w: 512, h: 128, size: 90, color: '#ffd23b', bg: '#a01818' });
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.6), new THREE.MeshBasicMaterial({ map: t, toneMapped: false }));
-    const [x, z] = tp(f, 0, -0.36);
-    m.position.set(x, 2.3, z - 0.0);
-    m.rotation.y = f.r + Math.PI;
+    const m = readableSign(t, 2.4, .6);
+    m.name = 'cinema-popcorn-sign';
+    const [x, z] = tp(f, 0, 0);
+    m.position.set(x, 2.3, z);
+    m.rotation.y = f.r;
     scene.add(m);
   },
   dumpster(f, b) {
