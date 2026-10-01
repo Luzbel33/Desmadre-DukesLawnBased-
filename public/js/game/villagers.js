@@ -260,15 +260,18 @@ export class Villagers {
   }
   _digger(n) {
     // la pala (del castillo: c_spade) en la mano; cava, tira la tierra, se seca la frente
-    whenAsset('c_spade', () => { const m = assetModel('c_spade'); if (m && !n.prop) { m.scale.setScalar(0.9); m.userData.noCull = true; this.scene.add(m); n.prop = m; } });
+    whenAsset('c_spade', () => { const m = assetModel('c_spade'); if (m && !n.prop) { m.scale.setScalar(0.9); m.userData.noCull = true; m.userData.shovel = true; m.userData.grip = 0.95; this.scene.add(m); n.prop = m; } });
     return (npc, dt) => {
       npc.speed = 0; npc.baseYaw = Math.PI;
       const d = npc.data;
       d.t = (d.t || 0) + dt;
-      const cyc = d.t % 9;
-      if (cyc < 6) {
-        if (!npc.action) { npc.action = 'swing'; npc.actionT = 0; npc.actionEnd = 0.9; d.hit = false; }
-        if (npc.action === 'swing' && !d.hit && npc.actionT > 0.45) { d.hit = true; G.fx?.puff(V1.set(npc.pos.x, 0.1, npc.pos.z - 0.9), V2.set(0, 1, 0.3), 0.5, 0x3a2a1a); }
+      const cyc = d.t % 11;
+      if (cyc < 8.8) {
+        // cava con las dos manos (character.js 'dig'): clava, hace palanca y tira la tierra al costado
+        if (!npc.action) { npc.action = 'dig'; npc.actionT = 0; npc.actionEnd = 2.2; d.hit = 0; }
+        const fw = V2.set(Math.sin(npc.yaw), 0, Math.cos(npc.yaw));
+        if (npc.action === 'dig' && d.hit === 0 && npc.actionT > 0.45) { d.hit = 1; G.fx?.puff(V1.set(npc.pos.x + fw.x * 0.75, 0.08, npc.pos.z + fw.z * 0.75), V2.set(0, 1, 0), 0.35, 0x3a2a1a); }
+        if (npc.action === 'dig' && d.hit === 1 && npc.actionT > 1.35) { d.hit = 2; const side = V2.set(-Math.cos(npc.yaw), 0.6, Math.sin(npc.yaw)); G.fx?.puff(V1.set(npc.pos.x - side.x * 0.6 + fw.x * 0.4, 0.6, npc.pos.z - side.z * 0.6 + fw.z * 0.4), side.negate().setY(0.4), 0.7, 0x3a2a1a); }
       } else if (cyc < 6.1 && !npc.emote) { npc.emote = 'facepalm'; npc.emoteT = 0; if (this._near(npc, 8) && Math.random() < 0.5) npc.say(pick(['Otro más para el pozo.', 'Esta es para vos, si seguís mirando.', 'La tierra está blanda hoy.']), 2.6); }
       if (npc.emote && npc.emoteT > 2.2) npc.emote = null;
       npc.lookAt = this._near(npc, 4);

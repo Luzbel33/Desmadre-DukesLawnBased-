@@ -719,6 +719,7 @@ export class HumanCharacter {
     if (st.held === 'two') gl = 0.95;
     if (act === 'punchR' || act === 'guard' || act === 'swing' || act === 'swing2') gr = 1;
     if (act === 'punchL' || act === 'guard') gl = 1;
+    if (act === 'dig') { gr = 1; gl = 1; } // la pala: las dos manos cerradas en el mango
     if (st.drive) { gr = 0.85; gl = 0.85; }
     this.grip.r += (gr - this.grip.r) * Math.min(1, dt * 14);
     this.grip.l += (gl - this.grip.l) * Math.min(1, dt * 14);

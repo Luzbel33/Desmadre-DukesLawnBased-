@@ -24,8 +24,7 @@ Fuente única de trabajo pendiente.
 
 ### Comportamiento / física
 
-- [ ] **Sepulturero:** la pala está mal (al revés, con una mano, parece que apuñala el piso). Animación propia de cavar
-      con las dos manos. Revisar que no quede ningún NPC con animaciones rotas o mal hechas.
+- [ ] Revisar que no quede ningún NPC con animaciones rotas o mal hechas (el sepulturero ya cava con las dos manos).
 - [ ] Colisiones de cuerpo completo: brazos activos, cabeza y piernas contra jugadores, NPC, vehículos y objetos.
 - [ ] Ragdolls y miembros cortados como **props de red autoritativos**, agarrables/revoleables y sincronizados para todos los clientes.
 - [ ] Movimiento secundario del cuerpo más natural/pesado, estilo GTA V / Half Sword, sin romper el controlador actual.

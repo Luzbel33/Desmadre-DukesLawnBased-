@@ -15,6 +15,11 @@ import { startNpcDefense, stepNpcDefense } from './npc-defense.js';
 
 const V1 = new THREE.Vector3();
 const V2 = new THREE.Vector3();
+const V3 = new THREE.Vector3();
+const V4 = new THREE.Vector3();
+const V5 = new THREE.Vector3();
+const V6 = new THREE.Vector3();
+const M4 = new THREE.Matrix4();
 // Movimiento con choques: los NPC que caminan (guardias, el que corre prendido fuego, el que pasea) no atraviesan
 // paredes, autos ni jugadores. Un solo controlador de Rapier para todos (se usa de a uno).
 // Grupos de la consulta: el miembro VEHICLE hace que la cápsula del jugador (que solo mira WORLD|VEHICLE) cuente.
@@ -466,10 +471,8 @@ export class Npc {
         const sw = Math.min(1, this.speed || 0);
         this.prop.position.y -= this.propHang * 0.94;
         this.prop.rotation.set(Math.sin(G.time * 5.3) * 0.07 * sw, this.yaw, Math.sin(G.time * 4.1 + 1) * 0.08 * sw, 'YXZ');
-      } else {
-        // la pala cuelga de la mano con la hoja para abajo (el modelo viene parado, con el mango arriba)
-        this.prop.rotation.set(Math.PI - (this.action === 'swing' ? 0.9 - Math.sin(this.actionT * 5) * 0.6 : 0.35), this.yaw, 0, 'YXZ');
-      }
+      } else if (this.prop.userData.shovel) this._placeShovel(ch);
+      else this.prop.rotation.set(Math.PI - 0.35, this.yaw, 0, 'YXZ');
       this.prop.visible = renderVisible && !this.down;
     }
     this._lampStep(!!this.prop?.visible);
@@ -508,6 +511,34 @@ export class Npc {
     if (this.blocked && this.burnT > 0) this.data.panic = 0; // chocó corriendo prendido fuego: otra dirección
     const hk = this.heightK * ((this.char?.meta?.height || 1.8) / 1.8);
     this.pawnBody.setNextKinematicTranslation({ x: this.pos.x, y: this.pos.y + 0.91 * hk, z: this.pos.z });
+  }
+
+  // La pala (el modelo viene parado: la punta de la hoja en el origen, el mango arriba en +Y, la hoja plana mirando a Z).
+  // Cavando: el mango pasa por las dos manos, la izquierda en la empuñadura y la hoja hacia adelante. Si no, clavada
+  // en la tierra a su derecha.
+  _placeShovel(ch) {
+    const P = this.prop, fwd = V3.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+    const up = V4;
+    if (this.action === 'dig' && ch.handL) {
+      // la inclinación la marca la fase (igual que la pose 'dig' de character.js): clavada casi vertical con la hoja
+      // adelante, palanca, levantada casi horizontal girando al costado para tirar la tierra, y vuelta
+      const ph = this.actionT % 2.2, sm = (x) => x * x * (3 - 2 * x), s = (a, b) => Math.min(1, Math.max(0, (ph - a) / (b - a)));
+      const lever = sm(s(0.6, 1.0)) * (1 - sm(s(1.6, 2.1))), toss = sm(s(1.0, 1.3)) * (1 - sm(s(1.45, 1.9)));
+      const tilt = 0.38 + lever * 0.55 + toss * 0.45, yaw = this.yaw + toss * 0.75;
+      up.set(-Math.sin(yaw) * Math.sin(tilt), Math.cos(tilt), -Math.cos(yaw) * Math.sin(tilt));
+      fwd.set(Math.sin(yaw), 0, Math.cos(yaw));
+      P.position.copy(ch.handL.getWorldPosition(V6)).addScaledVector(up, -(P.userData.grip || 0.95));
+    } else {
+      up.set(-fwd.x * 0.15, 1, -fwd.z * 0.15).normalize();
+      const right = V5.set(-fwd.z, 0, fwd.x).multiplyScalar(-1);
+      P.position.copy(this.pos).addScaledVector(right, 0.5).addScaledVector(fwd, 0.25);
+      P.position.y = this.pos.y - 0.14;
+    }
+    // base: Y = mango, Z = la cara de la hoja hacia adelante (perpendicular al mango)
+    const z = V6.copy(fwd).addScaledVector(up, -fwd.dot(up)).normalize();
+    const x = V5.crossVectors(up, z).normalize();
+    M4.makeBasis(x, up, z);
+    P.quaternion.setFromRotationMatrix(M4);
   }
 
   // la luz y la llama del farol (si tiene): siguen al farol; apagadas si no se ve o está tirado

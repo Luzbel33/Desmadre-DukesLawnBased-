@@ -863,6 +863,23 @@ export class Character {
         J.shoulderL[0] = -0.4 * up;
         break;
       }
+      case 'dig': {
+        // cavar con pala, las dos manos en el mango (la izquierda arriba, en la empuñadura): clavar con el pie (0-0.6),
+        // palanca (0.6-1.0), levantar y tirar la tierra al costado (1.0-1.6) y volver. La pala la ubica el NPC entre
+        // las dos manos (npc.js), así nunca queda al revés ni en una sola mano.
+        const ph = at % 2.2, sm = (x) => x * x * (3 - 2 * x), s = (a, b) => clamp((ph - a) / (b - a), 0, 1);
+        const push = sm(s(0, 0.4)) * (1 - sm(s(0.5, 0.75)));
+        const lever = sm(s(0.6, 1.0)) * (1 - sm(s(1.6, 2.1)));
+        const toss = sm(s(1.0, 1.3)) * (1 - sm(s(1.45, 1.9)));
+        // la izquierda en la empuñadura (cerca de la panza); la derecha más abajo y adelante, sobre el mango
+        J.spine[0] = 0.42 + push * 0.1 - lever * 0.12 - toss * 0.2; J.spine[1] = toss * 0.55; J.neck[0] = 0.2 - lever * 0.1;
+        J.shoulderL[0] = -0.25 + lever * 0.15 - toss * 0.45; J.shoulderL[2] = -0.38; J.elbowL[0] = -1.25 - lever * 0.2 + toss * 0.25;
+        J.shoulderR[0] = -0.75 - lever * 0.3 - toss * 0.35; J.shoulderR[2] = 0.22; J.elbowR[0] = -0.25 - lever * 0.35 - toss * 0.2;
+        J.hipR[0] = -0.75 * push; J.kneeR[0] = 1.0 * push; // el pie sobre la hoja
+        J.hipL[0] = -0.2; J.kneeL[0] = 0.3 + lever * 0.15;
+        hipsY -= 0.05 + lever * 0.05;
+        break;
+      }
       case 'swing':
       case 'swing2': {
         // levantar (0-0.35), golpe (0.35-0.55), volver
