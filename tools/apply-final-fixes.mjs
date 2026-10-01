@@ -2,6 +2,7 @@ import fs from 'node:fs';
 function edit(file,before,after){const raw=fs.readFileSync(file,'utf8'),eol=raw.includes('\r\n')?'\r\n':'\n',src=raw.replace(/\r\n/g,'\n');if(src.includes(after))return;if(src.split(before).length!==2)throw new Error('Missing final patch '+file+': '+before.slice(0,100));fs.writeFileSync(file,src.replace(before,()=>after).replace(/\n/g,eol));}
 edit('public/js/ui/social.js','.chat-roster{display:flex;', '.chat-roster[hidden]{display:none!important}\n.chat-roster{display:flex;');
 edit('public/js/ui/social.js','#chat-log{max-height:170px;', '#chat-log{display:block;max-height:170px;');
+edit('public/js/ui/social.js', "slider.type = 'range'; slider.id", "slider.type = 'range'; slider.disabled = true; slider.id");
 edit('public/js/game/player.js','RAPIER.JointData.spring(0.05, 1100, 85,','RAPIER.JointData.spring(0.05, 1800, 90,');
 edit('tests/social-browser.mjs', "  assert.equal(await page.locator('#m-mask option').count(), 6);", `  assert.equal(await page.locator('#m-mask option').count(), 6);
   // Only CI drawing resolution is reduced; game and network logic stay unchanged.
@@ -22,8 +23,9 @@ if (!src.includes('// Full-world smoke runs after isolated UI and microphone che
   const marker = "  assert.deepEqual(pageErrors, [], 'Unexpected browser runtime errors');";
   if (!src.includes(marker)) throw new Error('Missing browser completion assertion');
   src = src.replace(marker, '// Full-world smoke runs after isolated UI and microphone checks.\n' + boot + '\n' + marker);
-  fs.writeFileSync(browserFile, src);
 }
+src = src.replaceAll('{ timeout: 90000 }', '{ timeout: 90000, polling: 100 }').replaceAll('{ timeout: 30000 }', '{ timeout: 30000, polling: 100 }');
+fs.writeFileSync(browserFile, src);
 const tests = 'tests/gameplay.test.mjs';
 const suffix = `
 
