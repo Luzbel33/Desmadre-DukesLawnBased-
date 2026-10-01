@@ -318,6 +318,18 @@ export class Room {
         break;
       case 'chat': this.onChat(p, msg); break;
       case 'ev':
+        if (msg.k === 'bodybump') {
+          const target = this.players.get(msg.to), a = p.st?.p, b = target?.st?.p;
+          if (!target?.ready || target === p || !Array.isArray(a) || !Array.isArray(b) || ![...a, ...b].every(Number.isFinite) || now - (p.lastBodyBump || 0) < 800) break;
+          if (Math.hypot(a[0] - b[0], a[2] - b[2]) > 2 || Math.abs(a[1] - b[1]) > 1.3) break;
+          if (!Array.isArray(msg.v) || msg.v.length !== 3 || !msg.v.every(Number.isFinite)) break;
+          const speed = Math.hypot(msg.v[0], msg.v[2]);
+          if (speed < 4.2 || speed > 20) break;
+          const scale = Math.min(1, 9 / speed);
+          p.lastBodyBump = now;
+          this.send(target, { t: 'ev', k: 'bodybump', id: p.id, to: target.id, v: [msg.v[0] * scale, 0, msg.v[2] * scale] });
+          break;
+        }
         // quemar a alguien con el fuego de la boca: solo el dueño
         if (msg.k === 'burn' && (!p.owner || p.look.model !== 'diablo')) break;
         if(msg.k==='burn') {

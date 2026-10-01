@@ -149,9 +149,12 @@ export class VoiceChat {
     if (peer) return peer;
     const pc = new RTCPeerConnection({ iceServers: ICE });
     peer = { id, pc, sender: null, pending: [], remoteSet: false, level: 0, muted: false, audio: null, nodes: null, restarts: 0 };
-    const tr = pc.addTransceiver('audio', { direction: 'sendrecv' });
-    peer.sender = tr.sender;
-    this._attachTrack(peer);
+    // Only the offerer creates a transceiver. The answerer must reuse the one
+    // created by setRemoteDescription, otherwise its microphone has no negotiated m-line.
+    if (initiator) {
+      const tr = pc.addTransceiver('audio', { direction: 'sendrecv' });
+      peer.sender = tr.sender;
+    }
     pc.onicecandidate = (e) => { if (e.candidate) this.net.send({ t: 'rtc', to: id, d: { c: e.candidate.toJSON() } }); };
     pc.ontrack = (e) => this._attachRemote(peer, e.streams[0] || new MediaStream([e.track]));
     pc.onconnectionstatechange = () => {
@@ -170,6 +173,7 @@ export class VoiceChat {
 
   async _offer(peer) {
     try {
+      await this._attachTrack(peer);
       const offer = await peer.pc.createOffer();
       await peer.pc.setLocalDescription(offer);
       this.net.send({ t: 'rtc', to: peer.id, d: { sdp: peer.pc.localDescription.toJSON() } });
@@ -183,6 +187,14 @@ export class VoiceChat {
       if (!peer) peer = this._peer(from, false);
       try {
         await peer.pc.setRemoteDescription(d.sdp);
+        if (d.sdp.type === 'offer') {
+          const tr = peer.pc.getTransceivers?.().find(t => t.mid !== null && t.receiver.track.kind === 'audio');
+          if (tr) {
+            tr.direction = 'sendrecv';
+            peer.sender = tr.sender;
+            await this._attachTrack(peer);
+          }
+        }
         peer.remoteSet = true;
         for (const c of peer.pending) { try { await peer.pc.addIceCandidate(c); } catch { /* */ } }
         peer.pending.length = 0;

@@ -200,17 +200,23 @@ export class Villagers {
     this._giveLantern(n);
     return (npc, dt) => {
       const d = npc.data;
-      // pegado a su puesto; el segundo camina un poco a lo largo de la muralla y vuelve
-      if (patrol) {
-        d.t = (d.t || 0) + dt;
-        const k = Math.sin(d.t * 0.12);
-        const tx = home.x + Math.max(0, k) * 9;
-        const dx = tx - npc.pos.x;
-        npc.speed = Math.abs(dx) > 0.05 ? 1.1 : 0;
-        npc.pos.x += clamp(dx, -dt * 1.1, dt * 1.1);
-        if (npc.speed) npc.baseYaw = dx > 0 ? Math.PI / 2 : -Math.PI / 2; else npc.baseYaw = 0;
-      } else { npc.speed = 0; npc.baseYaw = 0; }
+      // Pursuit and patrol are mutually exclusive; never apply two movement steps.
       if (d.aggro > G.time) { this._brawl(npc, dt); return; }
+      const step = Math.min(.1, Math.max(0, dt));
+      const target = patrol && (d.patrolOut ?? true) ? home.x + 9 : home.x;
+      const dx = target - npc.pos.x, dz = home.z - npc.pos.z, distance = Math.hypot(dx, dz);
+      if (d.patrolWait > 0) { d.patrolWait -= step; npc.speed = 0; }
+      else if (distance < .08) {
+        npc.speed = 0;
+        if (patrol) { d.patrolOut = !(d.patrolOut ?? true); d.patrolWait = 1.2; }
+      } else {
+        const travel = Math.min(distance, step * 1.1);
+        npc.pos.x += dx / distance * travel; npc.pos.z += dz / distance * travel;
+        npc.speed = dt > 0 ? travel / dt : 0;
+        npc.baseYaw = Math.atan2(dx, dz);
+        d.stuckFor = npc.blocked ? (d.stuckFor || 0) + step : 0;
+        if (patrol && d.stuckFor > .7) { d.patrolOut = !(d.patrolOut ?? true); d.patrolWait = .6; d.stuckFor = 0; }
+      }
       const p = this._near(npc, 3.2);
       npc.lookAt = p;
       if (p && (d.warnT ?? 0) < G.time) { d.warnT = G.time + 20; npc.say(pick(['Circulen.', 'Nada de armas en el castillo. Bueno, algunas.', 'El castillo cierra... nunca.', 'Cuidado con la bruja.']), 2.6); }

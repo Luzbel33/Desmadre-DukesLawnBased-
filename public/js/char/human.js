@@ -972,6 +972,16 @@ export class HumanCharacter {
     const bs = sk.boundingSphere || (sk.boundingSphere = new THREE.Sphere());
     bs.center.copy(V1);
     bs.radius = (1.45 * (this.meta.height || 1.8) / 1.8) / Math.max(1e-6, sk.matrixWorld.getMaxScaleOnAxis()) * Math.max(1e-6, this.root.matrixWorld.getMaxScaleOnAxis());
+    // A ragdoll can extend well beyond its pelvis sphere. Include every current bone.
+    const inverse = M1.copy(sk.matrixWorld).invert();
+    const padding = .45 * Math.max(1e-6, this.root.matrixWorld.getMaxScaleOnAxis()) / Math.max(1e-6, sk.matrixWorld.getMaxScaleOnAxis());
+    for (const joint of this.joints) {
+      if (!joint) continue;
+      joint.updateWorldMatrix(true, false);
+      V1.setFromMatrixPosition(joint.matrixWorld).applyMatrix4(inverse);
+      const radius = V1.distanceTo(bs.center) + padding;
+      if (Number.isFinite(radius)) bs.radius = Math.max(bs.radius, radius);
+    }
     sk.frustumCulled = true;
   }
 

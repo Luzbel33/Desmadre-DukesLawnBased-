@@ -8,7 +8,7 @@ function installStyles() {
   const style = node('style'); style.id = 'social-styles';
   style.textContent = `
 #chat{width:min(520px,calc(100vw - 32px));max-width:none}
-#chat-log{max-height:170px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+#chat-log{display:block;max-height:170px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
 #chat.open{background:rgba(13,15,20,.96);border:1px solid rgba(255,255,255,.25);border-radius:10px;padding:12px;max-height:calc(100dvh - 125px);overflow-y:auto;pointer-events:auto}
 #chat.open #chat-log{height:clamp(120px,32vh,330px);max-height:330px;padding:5px 2px}
 #chat .msg{overflow-wrap:anywhere;margin:5px 0;white-space:pre-wrap}
@@ -22,6 +22,7 @@ function installStyles() {
 #chat.open .chat-controls{display:grid}.chat-modes{display:flex;gap:10px;flex-wrap:wrap}
 .chat-modes label{display:grid;gap:4px;font-size:11px;flex:1;min-width:120px}
 .chat-modes select{min-height:32px;max-width:100%;font:inherit;color:inherit;background:#252832;border:1px solid #666;border-radius:5px;padding:5px}
+.chat-roster[hidden]{display:none!important}
 .chat-roster{display:flex;gap:6px;flex-wrap:wrap;max-height:110px;overflow-y:auto}
 .chat-roster label{display:flex;align-items:center;gap:5px;padding:5px 8px;border:1px solid #626775;border-radius:5px;font-size:12px;cursor:pointer}
 .chat-roster input{width:auto!important;display:inline-block!important}.chat-roster label:has(input:checked){border-color:#e4bd62;background:#483c26}
@@ -160,7 +161,7 @@ export function enhanceMedia({ getState, getNow, send, getScreen }) {
   installStyles();
   if (document.getElementById('media-seek')) return;
   const row = node('div', '', 'media-progress'), elapsed = node('span', '0:00'), slider = node('input'), duration = node('span', '0:00');
-  slider.type = 'range'; slider.id = 'media-seek'; slider.min = '0'; slider.max = '1'; slider.step = '1'; slider.setAttribute('aria-label', 'Posición del video para la sala');
+  slider.type = 'range'; slider.disabled = true; slider.id = 'media-seek'; slider.min = '0'; slider.max = '1'; slider.step = '1'; slider.setAttribute('aria-label', 'Posición del video para la sala');
   row.append(elapsed, slider, duration); document.getElementById('media-view').after(row);
   const time = value => { const n = Math.max(0, Math.floor(value || 0)); return Math.floor(n / 60) + ':' + String(n % 60).padStart(2, '0'); };
   let dragging = false, dragScreen = '', dragPlayId = '';

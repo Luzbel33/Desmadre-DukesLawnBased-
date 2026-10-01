@@ -1013,6 +1013,9 @@ function handleEvent(m) {
     case 'gbrk': // el que tenía agarrado se zafó
       if (m.to === G.myId && state.local) { state.local.gripLost(m.id, m.side === 'l' ? 'l' : 'r'); updateHotbar(); }
       break;
+    case 'bodybump':
+      if (m.to === G.myId) state.local?.receiveBodyBump(m);
+      break;
     case 'hc': // "te pegué": el atacante avisa; el golpeado valida y decide el daño
       if (m.to === G.myId) state.local?.hitClaim(m);
       break;

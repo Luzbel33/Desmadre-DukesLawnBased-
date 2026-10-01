@@ -16,6 +16,7 @@ import { RAPIER, GR, groups } from '../core/physics.js';
 import { HumanCharacter } from '../char/human.js';
 import { PoseRig } from '../char/rig.js';
 import { PoseContact } from './pose-contact.js';
+import { gripCandidate } from './grip-target.js';
 import { Ragdoll, PART } from './ragdoll.js';
 import { HitReact, ROLL } from './react.js';
 import { EquipmentView } from './equipment.js';
@@ -910,7 +911,13 @@ export class LocalPlayer {
       if (!rp.standing) continue;
       // corriendo te lo llevás puesto: tropezón (y el otro se queja)
       const bpp = rp.bodyPos || rp.pos;
-      if (mySp > 5.2 && this.state === 'active' && Math.hypot(this.pos.x - bpp.x, this.pos.z - bpp.z) < 0.72 && (this._tripT || 0) < G.time) this._trip(bpp, null);
+      const contactD = Math.hypot(this.pos.x - bpp.x, this.pos.z - bpp.z);
+      const closing = contactD > .001 ? ((bpp.x - this.pos.x) * this.velocity.x + (bpp.z - this.pos.z) * this.velocity.y) / contactD : 0;
+      if (mySp > 5.2 && closing > 4.2 && this.state === 'active' && contactD < Math.max(.72, this.capsuleRadius + (rp.capsuleRadius || CAPSULE_RADIUS) + .12) && Math.abs(this.pos.y - rp.pos.y) < 1.1 && (this._bodyContactT || 0) < G.time) {
+        this._bodyContactT = G.time + 1;
+        G.net?.send({ t: 'ev', k: 'bodybump', to: rp.id, v: [this.velocity.x, 0, this.velocity.y] });
+        if ((this._tripT || 0) < G.time) this._trip(bpp, null);
+      }
       // donde está SU CUERPO dibujado (ahí está su cápsula), no la última posición que llegó por la red
       const bp = rp.bodyPos || rp.pos;
       let dx = this.pos.x - bp.x, dz = this.pos.z - bp.z;
@@ -934,6 +941,21 @@ export class LocalPlayer {
   }
 
   // NPCs parados: no se atraviesan, empujan si te llevan puesto, y si vas corriendo tropezás (y los tumbás)
+  receiveBodyBump(m) {
+    if (!m || this.dead || !['active', 'stun', 'getup'].includes(this.state) || (this._receivedBumpT || 0) > G.time) return false;
+    const other = G.players.get(m.id), at = other?.bodyPos || other?.pos;
+    if (!at || !Array.isArray(m.v) || m.v.length !== 3 || !m.v.every(Number.isFinite)) return false;
+    const dx = this.pos.x - at.x, dz = this.pos.z - at.z, distance = Math.hypot(dx, dz);
+    const speed = Math.min(9, Math.hypot(m.v[0], m.v[2]));
+    if (distance > 1.8 || Math.abs(this.pos.y - at.y) > 1.2 || speed < 4.2 || dx * m.v[0] + dz * m.v[2] < -.1) return false;
+    this._receivedBumpT = G.time + 1;
+    const direction = new THREE.Vector3(m.v[0], 0, m.v[2]).normalize();
+    // Ordinary walking remains harmless; sprinting actually displaces the struck body.
+    if (speed > 6.4) this.knockout(.9, m.id, direction.multiplyScalar(Math.min(4.5, speed * .5)).setY(.65));
+    else this.stun(.45, direction.multiplyScalar(2.4));
+    return true;
+  }
+
   _crowdNpcs(dt, sep, ns) {
     const mySp = Math.hypot(this.velocity.x, this.velocity.y);
     for (const n of G.allNpcs?.() || []) {
@@ -1220,26 +1242,54 @@ export class LocalPlayer {
     const hp = this.handPos(side, new THREE.Vector3());
     const cam = G.camera;
     const dir = cam.getWorldDirection(new THREE.Vector3());
-    // 1) partes de otros jugadores cerca de la mano o apuntadas
+    // Reach is physical, not limited by the third-person camera's distance.
+    const shoulder = this.rig.shoulderWorld(side, new THREE.Vector3());
+    const reach = this._armLen(side) + .6;
+    const visible = (a, b) => {
+      const delta = b.clone().sub(a), length = delta.length();
+      if (length < .05) return true;
+      delta.multiplyScalar(1 / length);
+      return !G.phys.raycast(a.x, a.y, a.z, delta.x, delta.y, delta.z, Math.max(0, length - .05));
+    };
     let best = null;
+    const offer = (body, cap, extra) => {
+      const hit = gripCandidate(body, cap, hp, shoulder, cam.position, dir, reach, visible);
+      if (hit && (!best || hit.score < best.score)) best = { ...extra, body, ...hit };
+    };
     for (const rp of G.players.values()) {
       if (!rp.proxy?.alive) continue;
       for (let i = 0; i < 11; i++) {
-        const t = rp.proxy.bodies[i].translation();
-        V1.set(t.x, t.y, t.z);
-        const dh = V1.distanceTo(hp);
-        const rel = V2.copy(V1).sub(cam.position);
-        const along = rel.dot(dir);
-        const perp = rel.addScaledVector(dir, -along).length();
-        const score = Math.min(dh, along > 0 && along < 2.1 ? perp + 0.15 : 9);
-        if (score < 0.42 && (!best || score < best.score)) best = { kind: 'player', rp, part: i, score };
+        if (rp.char.detached?.[i] || (rp.sv & (1 << i))) continue;
+        offer(rp.proxy.bodies[i], rp.char.meta.caps?.[i], { kind: 'player', rp, part: i });
       }
     }
+    // Downed NPCs and severed physical limbs were previously absent from selection.
+    for (const npc of G.allNpcs?.() || []) if (npc.rag?.alive && (npc.down > 0 || npc.dead)) {
+      for (let i = 0; i < 11; i++) if (!npc.char?.detached?.[i] && !(npc.lost & (1 << i))) offer(npc.rag.bodies[i], npc.char.meta.caps?.[i], { kind: 'loose', npc, part: i });
+    }
+    const seen = new Set();
+    G.phys.world.forEachCollider(collider => {
+      if (G.phys.info(collider)?.kind !== 'gib') return;
+      const body = collider.parent();
+      if (!body || seen.has(body.handle)) return;
+      seen.add(body.handle); offer(body, null, { kind: 'loose' });
+    });
     // 2) objetos
     const pr = G.props?.findGrabbable(hp, cam.position, dir, side);
     if (pr && (!best || pr.score < best.score)) best = { kind: 'prop', prop: pr.prop, score: pr.score };
     if (!best) return false;
     const h = this.hands[side];
+    if (best.kind === 'loose') {
+      const forearm = this.rag.bodies[side === 'l' ? PART.FARM_L : PART.FARM_R];
+      const grip = this.meta.gripLocal[side];
+      const data = RAPIER.JointData.spring(.04, 950, 75, grip, best.anchor);
+      h.joint = G.phys.world.createImpulseJoint(data, forearm, best.body, true);
+      h.joint.setContactsEnabled?.(false);
+      h.loose = { body: best.body, npc: best.npc, part: best.part, rag: best.npc?.rag };
+      h.anchor = best.anchor;
+      best.body.grabCount = (best.body.grabCount || 0) + 1;
+      return true;
+    }
     if (best.kind === 'prop') {
       // firme en la mano (sin resorte: el arma no cuelga ni se bambolea). Si ya está en la otra mano,
       // ahora va con las dos (la que lo agarró primero manda y esta se pone en el mango).
@@ -1264,7 +1314,7 @@ export class LocalPlayer {
     const pt = pb.translation(), prr = pb.rotation();
     M1.compose(V1.set(pt.x, pt.y, pt.z), Q1.set(prr.x, prr.y, prr.z, prr.w), V2.set(1, 1, 1)).invert();
     // el punto: donde está la mano, pero pegado a la superficie de la parte (no adentro ni en el aire)
-    const a2 = hp.clone().applyMatrix4(M1);
+    const a2 = best.anchor ? best.anchor.clone() : hp.clone().applyMatrix4(M1);
     const cap = rp.char.meta.caps?.[best.part];
     if (cap) {
       const ab = V3.copy(cap.b).sub(cap.a), t = clamp(V4.copy(a2).sub(cap.a).dot(ab) / Math.max(1e-6, ab.lengthSq()), 0, 1);
@@ -1283,7 +1333,7 @@ export class LocalPlayer {
   _gripAnchor(h, out) {
     const rp = G.players.get(h.player);
     const b = rp?.proxy?.alive ? rp.proxy.bodies[h.part] : null;
-    if (!b || !h.anchor) return null;
+    if (!b || !h.anchor || rp.char.detached?.[h.part] || (rp.sv & (1 << h.part))) return null;
     const t = b.translation(), r = b.rotation();
     return out.copy(h.anchor).applyQuaternion(GQ.set(r.x, r.y, r.z, r.w)).add(GS.set(t.x, t.y, t.z));
   }
@@ -1304,6 +1354,16 @@ export class LocalPlayer {
       return true;
     }
     if (!h.joint) return false;
+    if (h.loose) {
+      const b = h.loose.body;
+      b.grabCount = Math.max(0, (b.grabCount || 1) - 1);
+      if (b.gibItem) b.gibItem.t = Math.min(b.gibItem.t, 1);
+      if (throwIt && b.isValid()) {
+        const velocity = this.handVelocity(side).clampLength(0, 10);
+        b.setLinvel(velocity, true);
+      }
+      h.loose = null;
+    }
     if (h.joint !== HOLD_JOINT && h.joint !== PLAYER_GRIP) { try { G.phys.world.removeImpulseJoint(h.joint, true); } catch { /* */ } }
     h.joint = null;
     h.anchor = null;
@@ -1404,6 +1464,11 @@ export class LocalPlayer {
       const rp = G.players.get(g.id);
       if (!rp?.proxy?.alive) { this._dropGrip(key); continue; }
       handWorld(rp.proxy, rp.char.meta, g.side, g.hand);
+      const heldBody = this.rag.bodies[g.part];
+      const bodyPoint = heldBody?.translation();
+      if (!bodyPoint || this.char.detached?.[g.part] || g.hand.distanceTo(new THREE.Vector3().copy(bodyPoint)) > brk + .7) {
+        this._dropGrip(key); this.onEvent?.('gripbreak', { to: g.id, side: g.side }); continue;
+      }
       // tirado: me arrastra la física (resorte entre su mano y mi parte)
       this._gripJoint(g, rp, this.physMode === 'rag');
       if (!up) continue;
@@ -1474,6 +1539,14 @@ export class LocalPlayer {
   _gripTug(dt) {
     for (const side of ['l', 'r']) {
       const h = this.hands[side];
+      if (h.loose) {
+        const b = h.loose.body, npc = h.loose.npc;
+        if (!b.isValid() || (npc && (npc.rag !== h.loose.rag || !(npc.down > 0 || npc.dead)))) { this.release(side, false); continue; }
+        if (npc && !npc.dead) npc.down = Math.max(npc.down, .3);
+        const anchor = new THREE.Vector3().copy(h.anchor).applyQuaternion(new THREE.Quaternion().copy(b.rotation())).add(new THREE.Vector3().copy(b.translation()));
+        if (anchor.distanceTo(this.handPos(side, new THREE.Vector3())) > 2.2) this.release(side, false);
+        continue;
+      }
       if (h.joint !== PLAYER_GRIP) continue;
       const anc = this._gripAnchor(h, GA);
       if (!anc) { this.release(side, false); continue; }
