@@ -271,6 +271,13 @@ export class ClubWings {
       const items = [['Faso', 'clásico'], ['Blunt', 'gordo y lento'], ['Habano', 'de capo'], ['Pipa', 'con tabaco'], ['Bong', 'para valientes'], ['Brownie', 'pega tarde']];
       items.forEach(([a, b], i) => { const y = 130 + i * 46; g.fillStyle = ['#7dff6a', '#ffe066', '#ff7b5c'][i % 3]; g.fillText('• ' + a, 50, y); g.fillStyle = '#c8c4b0'; g.fillText(b, 330, y); g.fillText('gratis', w - 170, y); });
     }, 1024, 420, 4.4, 1.8, (x0 + x1) / 2, 3.25, zN + 0.03);
+    // el tocadiscos en la punta del mostrador, con su cajón de vinilos (suena dub: audio/clubmix.js)
+    this.cyl('black', x0 + 0.55, 1.15, zc, 0.17, 0.17, 0.02, 20);
+    this.deco('woodDark', x0 + 0.55, 1.12, zc, 0.46, 0.04, 0.38);
+    this.cyl('chrome', x0 + 0.55, 1.17, zc, 0.012, 0.012, 0.03, 6);
+    this.deco('chrome', x0 + 0.7, 1.17, zc + 0.08, 0.02, 0.02, 0.2, { yaw: 0.5 });
+    this.box('woodDark', x0 + 1.25, 1.27, zc, 0.36, 0.3, 0.36);
+    for (let k = 0; k < 7; k++) this.deco(['red', 'gold', 'green', 'black'][k % 4], x0 + 1.12 + k * 0.035, 1.47, zc, 0.012, 0.3, 0.31);
     // máquina de café y la gente que atiende
     this.model('b_coffeecart', -15.6, 0, zN + 0.62);
     this.anchors.budtender = new THREE.Vector3(-24, 0, zN + 0.95);
@@ -681,6 +688,27 @@ export class ClubWings {
     this.light(34, 2.6, -486, 0xff70b0, 10, 12, { priority: 1.1, decay: 1.1 });
     this.light(18, 3.4, -482, 0xffc090, 8, 12, { priority: 1.0, decay: 1.1 });
     this.anchors.vipDoor = new THREE.Vector3(15.8, 0, -480.2);
+    // la cabina del DJ contra el muro norte, entre los dos reservados, con sus bafles (suena deep house: audio/clubmix.js)
+    this._djBooth(24, 0, vp.z0 + 1.45, 'neonPink');
+    for (const x of [21.6, 26.4]) this._speaker(x, 0, vp.z0 + 0.5, 1.9);
+    this.anchors.vipDj = new THREE.Vector3(24, 0, vp.z0 + 0.66);
+    this.light(24, 2.3, vp.z0 + 1.9, 0xff40c0, 5, 6, { priority: 1.2 });
+  }
+  // cabina de DJ mirando al sur (+z): mueble, dos bandejas, mixer con lucecitas y la tira de neón al frente
+  _djBooth(x, y, z, neon = 'neonPink') {
+    this.box('leatherBlack', x, y + 0.5, z, 2.4, 1.0, 0.8);
+    this.deco(neon, x, y + 0.5, z + 0.41, 2.4, 0.04, 0.02);
+    for (const s of [-1, 1]) { this.cyl('black', x + s * 0.65, y + 1.02, z, 0.17, 0.17, 0.03, 20); this.deco('darkgray', x + s * 0.65, y + 1.01, z, 0.42, 0.02, 0.42); }
+    this.deco('darkgray', x, y + 1.03, z, 0.4, 0.05, 0.32);
+    this.deco('neonGreen', x, y + 1.06, z, 0.3, 0.01, 0.16);
+  }
+  // bafle de pie mirando al sur: woofer abajo, tweeter arriba
+  _speaker(x, y, z, h = 2.2) {
+    this.box('black', x, y + h / 2, z, 0.9, h, 0.7);
+    for (const [yy, rr] of [[h * 0.3, 0.32], [h * 0.75, 0.16]]) {
+      this.cyl('darkgray', x, y + yy, z + 0.35, rr, rr, 0.04, 20, { rx: Math.PI / 2 });
+      this.cyl('black', x, y + yy, z + 0.37, rr * 0.4, rr * 0.4, 0.05, 14, { rx: Math.PI / 2 });
+    }
   }
 
   // ---------------------------------------------------------------- el Arsenal (búnker militar)

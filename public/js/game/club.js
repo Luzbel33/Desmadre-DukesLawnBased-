@@ -32,6 +32,27 @@ const DOORMAN_HI = ['¿Y vos quién sos?', 'Acá no entra cualquiera, mostro.', 
 const DOORMAN_OK = ['Pasá, rey. Portate mal.', 'Adelante. Lo que pasa en el Búnker queda en el Búnker.', 'Bienvenido al infierno, papu.', 'Todo tuyo. Cuidado con la jaula.'];
 const DOORMAN_NO = ['¿Qué te pasa, gil? Tomatela.', 'Esa no es. Andá a la cripta a pensar.', 'Contraseña incorrecta. Te anoto en la lista negra.', 'Casi. No. Para nada. Rajá.'];
 
+// qué música se oye en cada sala: { estilo: [volumen, qué tan limpio] }. La de una sala vecina llega ahogada y más
+// fuerte cuanto más cerca de la puerta que las une estés
+const MUSIC_DOORS = { cafe: [-14.5, -478], vip: [14.5, -478], psico: [-24, -471], arsenal: [24, -475], hellW: [-12, -492], hellE: [12, -492] };
+function roomMusic(room, p, blastOpen) {
+  const d = (k, r = 9) => clamp(1 - Math.hypot(p.x - MUSIC_DOORS[k][0], p.z - MUSIC_DOORS[k][1]) / r, 0, 1);
+  switch (room) {
+    case 901: return { techno: [0.3, 0.05] };
+    case 902: return { techno: [0.5, 0.08] };
+    case 903: return { techno: [0.8, blastOpen > 0.3 ? 0.6 : 0.18] };
+    case 904: return { techno: [1, 1], dub: [0.4 * d('cafe'), 0.1], deep: [0.4 * d('vip'), 0.1], psy: [0.4 * d('psico'), 0.1] };
+    case 1001: return { dub: [1, 1], techno: [0.12 + 0.35 * d('cafe'), 0.08], hell: [0.08 + 0.35 * d('hellW'), 0.06] };
+    case 1002: return { dub: [0.65, 0.2], techno: [0.08, 0.04] };
+    case 1101: return { hell: [1, 1], dub: [0.35 * d('hellW'), 0.08], deep: [0.35 * d('hellE'), 0.08] };
+    case 1201: return { deep: [1, 1], techno: [0.12 + 0.35 * d('vip'), 0.08], hell: [0.08 + 0.35 * d('hellE'), 0.06] };
+    case 1301: return { techno: [0.25 + 0.35 * d('arsenal'), 0.07] };
+    case 1401: return { psy: [1, 1], techno: [0.12 + 0.35 * d('psico'), 0.08], maze: [0.15, 0.2] };
+    case 1402: return { maze: [1, 1], psy: [0.3, 0.08] };
+  }
+  return {};
+}
+
 // cuánto más abajo que la raíz queda lo más bajo de las canillas (pies, o rodillas si está arrodillada), según la
 // pose del cuadro anterior; parada derecha da FOOT_SINK. Sirve para apoyarla en el piso en cualquier pose
 const FOOT_SINK = -0.048, VF = new THREE.Vector3();
@@ -412,7 +433,7 @@ export class ClubGame {
     const Gc = this.club.gogo || [];
     [['raven', 'Raven'], ['emo', 'La Emo']].forEach(([m, name], i) => { if (Gc[i]) add({ name, look: { model: m }, pos: Gc[i].clone(), role: cage(Gc[i], i * 3) }); });
     // el DJ
-    if (A.dj) add({ name: 'DJ Calavera', look: { model: 'dj' }, pos: A.dj.clone(), yaw: 0, role: (n, dt) => { n.emote = 'dance1'; n.lookAt = near(n, 8); } });
+    if (A.dj) add({ name: 'DJ Calavera', look: { model: 'dj' }, pos: A.dj.clone(), yaw: 0, role: this._djRole() });
     // el bartender (atiende: ver use 'bar')
     if (A.bartender) this.bartender = add({ name: 'El Bartender', look: { model: 'bartender' }, pos: A.bartender.clone(), yaw: Math.PI / 2, role: (n, dt) => {
       n.lookAt = near(n, 7);
@@ -498,6 +519,13 @@ export class ClubGame {
       n.pos.y = d.y;
     };
   }
+  // DJ: pasa música al compás (char/pole-dance.js djPose) y mira a los que se acercan
+  _djRole(r = 8, off = 0) {
+    return (n) => {
+      n.emote = 'dj'; n.emoteT = (this.beat?.beat ?? G.time * BPM / 60) + off;
+      n.lookAt = this._near(n, r);
+    };
+  }
   // la gente de la pista: cada uno en la suya, se mueve un poco y cambia de baile
   _dancerRole(home, spread = 3) {
     return (n, dt) => {
@@ -546,7 +574,8 @@ export class ClubGame {
     // más bailarinas en los caños (los mismos modelos de las del club, sin tocarlos): la VIP y la isla del Infierno
     [['lilith', 'Jezabel'], ['venus', 'Morgana'], ['coneja', 'Bambi']].forEach(([m, name], i) => { const c = A.vipPoles?.[i]; if (c) add('vip', { name, look: { model: m }, pos: c.clone(), role: this._poleRole(c, i * 1.7 + 0.4) }); });
     [['raven', 'Nyx'], ['emo', 'Belladona'], ['lilith', 'Lucrecia']].forEach(([m, name], i) => { const c = A.hellPoles?.[i]; if (c) add('hell', { name, look: { model: m }, pos: c.clone(), role: this._poleRole(c, i * 2.3 + 1.1) }); });
-    if (A.hellDj) add('hell', { name: 'DJ Belcebú', look: { model: 'dj' }, pos: A.hellDj.clone(), yaw: 0, role: (n) => { n.emote = 'dance2'; n.lookAt = this._near(n, 9); } });
+    if (A.hellDj) add('hell', { name: 'DJ Belcebú', look: { model: 'dj' }, pos: A.hellDj.clone(), yaw: 0, role: this._djRole(9) });
+    if (A.vipDj) add('vip', { name: 'DJ Satén', look: { model: 'v_punk' }, pos: A.vipDj.clone(), yaw: 0, role: this._djRole(8, 4) });
     // la pista del Infierno
     if (A.hellFloor) {
       const crowd = [['metalero', 'El Pelado Metal', -3.5, -2], ['raver', 'Rayo', 3, -3.5], ['v_punk', 'La Punk', -1.5, 3.5], ['v_hincha', 'El Hincha', 4, 2.5], ['v_corredora', 'La Corredora', -4.5, 3]];
@@ -953,22 +982,22 @@ export class ClubGame {
     // los de las alas solo con su sala a la vista (club-wings.js): ocultos no se animan
     for (const n of this.npcs) n.update(dt, cam, this.club.visible && n.scene.visible);
     if (this.club.visible) this._lavaStep(dt);
-    // la música: a pleno en el club; ahogada en la antesala y el ascensor; nada afuera. Se calla con un video puesto
+    // la música: cada sala con la suya (audio/clubmix.js) y la de al lado ahogada, más fuerte cerca de la puerta;
+    // en la antesala y el ascensor, la del club ahogada; nada afuera. El techno se calla con un video puesto
     const p = cam?.position;
-    let want = 0, muffle = 1;
+    let mix = {};
     if (p && this.club.visible) {
       const room = this.club.roomOf(p.x, p.y, p.z);
-      if (room === 904) want = 1;
-      else if (room === 903) { want = 0.8; muffle = this.club.doors.blast.open > 0.3 ? 0.6 : 0.18; }
-      else if (room === 902) { want = 0.5; muffle = 0.08; }
-      else if (room === 901) { want = 0.3; muffle = 0.05; }
+      if (room) this._musicRoom = room; // en el marco de una puerta (fuera de toda sala) sigue lo de antes
+      mix = roomMusic(this._musicRoom, p, this.club.doors.blast.open);
     }
     const scr = G.media?.screens?.get?.('bunker')?.control?.state?.cur;
-    if (scr && !scr.paused) want = 0;
-    this.musicLevel = want;
+    if (scr && !scr.paused) delete mix.techno;
+    this.musicLevel = mix.techno?.[0] || 0;
     if (G.sfx) {
       if (!this.mix && G.sfx.ctx) this.mix = new ClubMix(G.sfx);
-      this.mix?.update(dt, nowMs, { want: want * 0.85, muffle, lift: this.inLift && this.lift.phase === 'ride' ? 1 : this.inLift ? 0.6 : 0 });
+      for (const k in mix) mix[k] = [mix[k][0] * 0.85, mix[k][1]];
+      this.mix?.update(dt, nowMs, { mix, lift: this.inLift && this.lift.phase === 'ride' ? 1 : this.inLift ? 0.6 : 0 });
     }
     // los que bailan encima de la pista la prenden debajo de sus pies
     const feet = [];

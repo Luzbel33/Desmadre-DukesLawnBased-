@@ -278,3 +278,25 @@ export function gogoPose(J, beat, addY) {
   for (const n of JN) { const j = J[n] || (J[n] = [0, 0, 0]); j[0] = P[n][0]; j[1] = P[n][1]; j[2] = P[n][2]; }
   addY(P.y);
 }
+
+// ---------------------------------------------------------------- DJ: detrás de las bandejas, al compás
+// cabecea en cada tiempo y rebota las rodillas; la izquierda en la bandeja (mueve perillas); la derecha va del
+// auricular a la mezcla y, en el final de cada frase, puño arriba
+const TMP_D = blank();
+export function djPose(J, beat, addY) {
+  const P = TMP_D, b = ((beat % 16) + 16) % 16, pulse = Math.pow(0.5 + 0.5 * Math.cos(TAU * beat), 3);
+  for (const n of JN) { P[n][0] = 0; P[n][1] = 0; P[n][2] = 0; }
+  const phone = env(b, 0, 1, 6.5, 7.5), pump = env(b, 12, 12.6, 15.2, 16);
+  P.spine[0] = 0.2; P.spine[1] = 0.1 * Math.sin(TAU * beat / 4);
+  P.neck[0] = 0.05 + 0.24 * pulse; P.neck[1] = -0.15 * phone;
+  P.hipL[0] = P.hipR[0] = -0.12 - 0.07 * pulse; P.kneeL[0] = P.kneeR[0] = 0.2 + 0.14 * pulse;
+  P.hipL[2] = -0.06; P.hipR[2] = 0.06;
+  P.shoulderL[0] = -0.8 + 0.06 * Math.sin(TAU * beat / 2); P.shoulderL[1] = 0.25 * Math.sin(TAU * beat / 8); P.shoulderL[2] = 0.12; P.elbowL[0] = -1.05;
+  // derecha: mezcla -> auricular -> puño
+  const mixR = [-0.8, -0.2, -0.12], earR = [-0.35, 0, -1.3], upR = [-2.75 + 0.3 * pulse, 0, -0.2];
+  for (let i = 0; i < 3; i++) P.shoulderR[i] = lerp(lerp(mixR[i], earR[i], phone), upR[i], pump);
+  P.elbowR[0] = lerp(lerp(-1.05, -2.4, phone), -0.35 - 0.5 * pulse, pump);
+  P.y = -0.02 - 0.03 * pulse;
+  for (const n of JN) { const j = J[n] || (J[n] = [0, 0, 0]); j[0] = P[n][0]; j[1] = P[n][1]; j[2] = P[n][2]; }
+  addY(P.y);
+}
