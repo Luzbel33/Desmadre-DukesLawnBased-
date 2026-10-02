@@ -219,6 +219,7 @@ export class Castle {
     this._keepInterior();
     this._crypt();
     this._keepStairs();
+    this._courtyard();
     this._pavilion();
     this._yards();
     this._well();
@@ -244,6 +245,29 @@ export class Castle {
     this.deco('mud', (CX1 - WT + KX1) / 2, 0.018, yz, (CX1 - WT) - KX1, 0.036, yd, { noShadow: true, mask: false });
     // camino de lajas desde la explanada hasta el portón
     this.deco('flagstone', 0, 0.035, -66.35, 5.2, 0.07, 16.3, { noShadow: true, mask: false });
+  }
+
+  // Patio: eje de llegada legible y dos bancos de espera junto al torreón.
+  // Sólo materiales ya cargados y geometría fusionada; el centro queda libre.
+  _courtyard() {
+    const floor = { noShadow: true, mask: false };
+    // Lajas sobre el adoquín (3 cm): llegan al primer escalón, sin nuevo collider.
+    this.deco('flagstone', 0, 0.055, -89.25, 5.2, 0.03, 8.9, floor);
+    for (const x of [-2.78, 2.78]) {
+      this.deco('keepStone', x, 0.055, -89.25, 0.22, 0.03, 8.9, floor);
+    }
+    // Descansillo transversal: une visualmente los braseros existentes.
+    this.deco('flagstone', 0, 0.055, -94.65, 12.6, 0.03, 1.9, floor);
+    for (const x of [-11, 11]) {
+      // Banco de piedra a escala humana: asiento a 50 cm, profundidad 62 cm.
+      // Apoyos desde la cara del adoquín; 2.69 m libres hasta la fachada.
+      for (const dx of [-1.02, 1.02]) {
+        this.box('castleStone', x + dx, 0.21, -100, 0.42, 0.34, 0.52, { mask: false });
+      }
+      this.box('keepStone', x, 0.44, -100, 3, 0.12, 0.62, { mask: false });
+      // Los asientos usan el mismo contrato que los bancos existentes.
+      for (const dx of [-0.75, 0.75]) this.seats.push({ x: x + dx, y: 0.5, z: -100, yaw: 0 });
+    }
   }
 
   // ---------------------------------------------------------------- murallas y torres de las esquinas
@@ -827,7 +851,7 @@ export class Castle {
     const w = this.world;
     this.fire3d(x, y - 0.12, z, 0.34 * big, 0.34 * big, .85 * big, { wind: 1, intensity:.8 });
     w.embers?.add(x, y + 0.2, z, 14, { radius: 0.25, height: 2.6, strength: 0.8 });
-    this.light(x, y + 0.9, z, 0xff7a2e, 6 * big, 12, { flicker: true, priority: 1.4 });
+    this.light(x, y + 0.9, z, 0xff9b52, 8 * big, 14, { flicker: true, priority: 1.4 });
   }
 
   // ---------------------------------------------------------------- galpón del fogón (zona tranquila)
