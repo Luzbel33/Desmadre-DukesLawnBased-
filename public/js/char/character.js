@@ -1,7 +1,7 @@
 // Personaje por partes con gore en capas (piel/ropa -> carne -> hueso/órganos), cara y animación procedural.
 import * as THREE from 'three';
 import { G, clamp, lerp, rng } from '../core/G.js';
-import { polePose, gogoPose, djPose } from './pole-dance.js';
+import { polePose, gogoPose, djPose, clubPose, trancePose } from './pole-dance.js';
 
 export const P = {
   PELVIS: 0, TORSO: 1, HEAD: 2, UARM_L: 3, FARM_L: 4, UARM_R: 5, FARM_R: 6, THIGH_L: 7, SHIN_L: 8, THIGH_R: 9, SHIN_R: 10,
@@ -1048,6 +1048,8 @@ export class Character {
       case 'pole': polePose(J, et, addY); break;
       case 'gogo': gogoPose(J, et, addY); break;
       case 'dj': djPose(J, et, addY); break;
+      case 'club': clubPose(J, et, addY); break;
+      case 'trance': trancePose(J, et, addY); break;
       case 'dance2': { // brazos arriba, saltito
         const b = Math.sin(et * 8);
         J.shoulderL[2] = 2.6 + b * 0.2; J.shoulderR[2] = -2.6 - b * 0.2;

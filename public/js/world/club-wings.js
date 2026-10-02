@@ -688,6 +688,28 @@ export class ClubWings {
     this.light(34, 2.6, -486, 0xff70b0, 10, 12, { priority: 1.1, decay: 1.1 });
     this.light(18, 3.4, -482, 0xffc090, 8, 12, { priority: 1.0, decay: 1.1 });
     this.anchors.vipDoor = new THREE.Vector3(15.8, 0, -480.2);
+    // torre de copas de champán en el medio (entre los tres caños), con su botella arriba y una luz dorada
+    {
+      const tx = 24, tz = -489.9;
+      this.cyl('blackTile', tx, 0.4, tz, 0.55, 0.62, 0.8, 24, { collide: true });
+      this.deco('gold', tx, 0.81, tz, 1.0, 0.02, 1.0, { yaw: Math.PI / 4 });
+      let y = 0.82;
+      for (const [n, rr] of [[8, 0.36], [6, 0.26], [4, 0.16], [1, 0]]) {
+        for (let k = 0; k < n; k++) { const a = k / n * Math.PI * 2; this.cyl('glass', tx + Math.cos(a) * rr, y + 0.06, tz + Math.sin(a) * rr, 0.055, 0.02, 0.12, 8); }
+        y += 0.13;
+      }
+      this.cyl('darkGlass', tx, y + 0.12, tz, 0.045, 0.05, 0.26, 10);
+      this.cyl('gold', tx, y + 0.28, tz, 0.02, 0.025, 0.06, 8);
+      this.light(tx, 2.2, tz, 0xffc060, 4, 5, { priority: 1.2 });
+    }
+    // cordón de terciopelo en la entrada, con los parantes cromados
+    for (let k = 0; k < 4; k++) {
+      const x = 16.9 + k * 1.1;
+      this.cyl('chrome', x, 0.48, -481.2, 0.035, 0.035, 0.96, 8, { collide: true });
+      this.cyl('chrome', x, 0.03, -481.2, 0.16, 0.16, 0.04, 14);
+      this.cyl('gold', x, 0.99, -481.2, 0.05, 0.05, 0.05, 10);
+      if (k < 3) this.cyl('leatherRed', x + 0.55, 0.86, -481.2, 0.03, 0.03, 1.05, 8, { rz: Math.PI / 2 });
+    }
     // la cabina del DJ contra el muro norte, entre los dos reservados, con sus bafles (suena deep house: audio/clubmix.js)
     this._djBooth(24, 0, vp.z0 + 1.45, 'neonPink');
     for (const x of [21.6, 26.4]) this._speaker(x, 0, vp.z0 + 0.5, 1.9);

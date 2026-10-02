@@ -16,7 +16,7 @@ Fuente única de trabajo pendiente.
 
 ## 0. Tanda 02/10 — PRIORITARIO (pedido de Luz)
 
-- [ ] Más objetos en el Búnker y más NPC en las pistas de baile.
+- [ ] Seguir amueblando el Búnker (el club todavía tiene zonas oscuras y vacías; arsenal y alas chicas).
 - [ ] Laberinto: pasar a un laberinto normal más elaborado, con sustos (jumpscares) y un tesoro con premio al azar
       (objetos únicos).
 - [ ] Sala psicodélica más grande y con más variedad: visuales, ilusiones, cuadros de arte psicodélico libre.

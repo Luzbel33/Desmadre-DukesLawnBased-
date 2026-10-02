@@ -300,3 +300,70 @@ export function djPose(J, beat, addY) {
   for (const n of JN) { const j = J[n] || (J[n] = [0, 0, 0]); j[0] = P[n][0]; j[1] = P[n][1]; j[2] = P[n][2]; }
   addY(P.y);
 }
+
+// ---------------------------------------------------------------- la gente de la pista
+// "club": rebote con los brazos que acompañan, puño arriba, manos arriba de lado a lado y paso al costado con
+// hombros; dos compases cada uno, encadenados como el resto. "trance": la sala psicodélica, lento, los brazos que
+// flotan como algas y la cabeza que rueda
+function bounce(P, beat, k = 1) {
+  const pulse = Math.pow(0.5 + 0.5 * Math.cos(TAU * beat), 2);
+  P.hipL[0] += -0.1 - 0.12 * pulse * k; P.hipR[0] += -0.1 - 0.12 * pulse * k;
+  P.kneeL[0] += 0.18 + 0.22 * pulse * k; P.kneeR[0] += 0.18 + 0.22 * pulse * k;
+  P.neck[0] += 0.12 * pulse * k; P.y += -0.03 - 0.05 * pulse * k;
+  return pulse;
+}
+const CLUB = [
+  { len: 8, pose(b, beat) { // rebote, los brazos van y vienen
+    const P = blank(), h = Math.sin(TAU * beat / 2);
+    bounce(P, beat);
+    P.shoulderL = [-0.35 + 0.35 * h, 0, 0.18]; P.shoulderR = [-0.35 - 0.35 * h, 0, -0.18];
+    P.elbowL = [-1.35, 0, 0]; P.elbowR = [-1.35, 0, 0]; P.spine[1] = 0.14 * h; P.spine[0] = 0.08;
+    return P;
+  } },
+  { len: 8, pose(b, beat) { // puño arriba en cada tiempo (cuatro con cada mano)
+    const P = blank(), pulse = bounce(P, beat), right = b < 4, up = 0.6 + 0.4 * pulse;
+    const arm = [-2.5 * up - 0.2, 0, 0], rest = [-0.4, 0, 0];
+    P.shoulderR = right ? [arm[0], 0, -0.25] : [rest[0], 0, -0.2]; P.elbowR = [right ? -0.3 - 0.6 * (1 - pulse) : -1.4, 0, 0];
+    P.shoulderL = right ? [rest[0], 0, 0.2] : [arm[0], 0, 0.25]; P.elbowL = [right ? -1.4 : -0.3 - 0.6 * (1 - pulse), 0, 0];
+    P.spine[2] = (right ? -1 : 1) * 0.08;
+    return P;
+  } },
+  { len: 8, pose(b, beat) { // manos arriba, de lado a lado
+    const P = blank(), w = Math.sin(TAU * beat / 4);
+    bounce(P, beat, 0.6);
+    P.shoulderL = [-0.3, 0, 2.55 + 0.25 * w]; P.shoulderR = [-0.3, 0, -2.55 + 0.25 * w];
+    P.elbowL = [-0.35, 0, 0]; P.elbowR = [-0.35, 0, 0]; P.spine[2] = 0.12 * w; P.neck[2] = 0.1 * w;
+    roll(P, 0.05 * w);
+    return P;
+  } },
+  { len: 8, pose(b, beat) { // paso al costado y hombros
+    const P = blank(), st = Math.sin(TAU * beat / 2), sh = Math.sin(TAU * beat * 2);
+    bounce(P, beat, 0.7);
+    roll(P, 0.1 * st); P.hips[1] = 0.1 * st;
+    P.shoulderL = [-0.5 + 0.12 * sh, 0, 0.25]; P.shoulderR = [-0.5 - 0.12 * sh, 0, -0.25];
+    P.elbowL = [-1.6, 0, 0]; P.elbowR = [-1.6, 0, 0]; P.spine[2] = -0.06 * st;
+    return P;
+  } },
+];
+export function clubPose(J, beat, addY) {
+  const t = ((beat % 32) + 32) % 32, i = Math.floor(t / 8), b = t - i * 8, m = CLUB[i];
+  let P = m.pose(b, beat);
+  if (b < XF) { const pm = CLUB[(i + 3) % 4]; P = mix(pm.pose(pm.len, beat), P, ease(b / XF), TMP_B); }
+  for (const n of JN) { const j = J[n] || (J[n] = [0, 0, 0]); j[0] = P[n][0]; j[1] = P[n][1]; j[2] = P[n][2]; }
+  addY(P.y);
+}
+const TMP_T = blank();
+export function trancePose(J, beat, addY) {
+  const P = TMP_T, a = TAU * beat / 8, c = TAU * beat / 16;
+  for (const n of JN) { P[n][0] = 0; P[n][1] = 0; P[n][2] = 0; }
+  P.y = 0;
+  bounce(P, beat, 0.35);
+  P.shoulderL = [-0.6 + 0.5 * Math.sin(a), 0.3 * Math.sin(c), 1.0 + 0.8 * Math.sin(a + 1.1)];
+  P.shoulderR = [-0.6 + 0.5 * Math.sin(a + 2.2), -0.3 * Math.sin(c + 1), -1.0 - 0.8 * Math.sin(a + 3.3)];
+  P.elbowL = [-0.6 - 0.5 * (0.5 + 0.5 * Math.sin(a + 2)), 0, 0]; P.elbowR = [-0.6 - 0.5 * (0.5 + 0.5 * Math.sin(a + 4.2)), 0, 0];
+  P.spine = [0.05 + 0.08 * Math.sin(c), 0.15 * Math.sin(c + 0.5), 0.12 * Math.sin(a)];
+  P.neck = [0.15 * Math.sin(a + 0.7), 0.2 * Math.sin(c), 0.18 * Math.cos(a + 0.7)];
+  roll(P, 0.06 * Math.sin(a));
+  for (const n of JN) { const j = J[n] || (J[n] = [0, 0, 0]); j[0] = P[n][0]; j[1] = P[n][1]; j[2] = P[n][2]; }
+  addY(P.y);
+}

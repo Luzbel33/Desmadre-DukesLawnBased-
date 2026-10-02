@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import { G, clamp } from '../core/G.js';
 import { CLUB, CASTLE, INTERACT } from '../shared/mapdata.js';
 import { Npc, prepareNpcCulling } from './npc.js';
+import { MODELS } from '../char/human.js';
 import { clubBeat, BPM } from '../world/club.js';
 import { polePlace } from '../char/pole-dance.js';
 import { getMat } from '../world/builder.js';
@@ -442,7 +443,8 @@ export class ClubGame {
     } });
     // la gente de la pista: cada uno en la suya
     const dancer = (home) => this._dancerRole(home);
-    for (const [m, name, x, z] of [['metalero', 'El Metalero', -3, -459], ['raver', 'El Raver', 3.5, -464], ['gordo', 'El Gordo', 0.5, -457.5]]) {
+    for (const [m, name, x, z] of [['metalero', 'El Metalero', -3, -459], ['raver', 'El Raver', 3.5, -464], ['gordo', 'El Gordo', 0.5, -457.5],
+      ['v_punk', 'Mecha', -5.5, -465], ['v_hincha', 'El Tano', 5.5, -459], ['v_corredora', 'Flor', -1.5, -466], ['v_vecino', 'Beto', 2.2, -461], ['v_aldeana', 'Sole', -4.8, -461.5]]) {
       add({ name, look: { model: m }, pos: new THREE.Vector3(x, 0.05, z), role: dancer(new THREE.Vector3(x, 0.05, z)) });
     }
     // la jaula de peleas: El Toro contra El Chacal (cuerpos físicos: se tumban, festejan, y si les pegás, te buscan)
@@ -526,18 +528,38 @@ export class ClubGame {
       n.lookAt = this._near(n, r);
     };
   }
-  // la gente de la pista: cada uno en la suya, se mueve un poco y cambia de baile
-  _dancerRole(home, spread = 3) {
+  // la gente de la pista: baila al compás (char/pole-dance.js: ellas como gogó, ellos de pista; en la psicodélica,
+  // 'trance'), cada uno en otra parte de la rutina. Cada tanto camina a otro lugar cerca (sin bailar mientras camina)
+  _dancerRole(home, spread = 3, style = null) {
     return (n, dt) => {
-      n.data.t = (n.data.t || 0) - dt;
-      if (n.data.t <= 0) {
-        n.data.t = 6 + Math.random() * 6;
-        n.emote = ['dance1', 'dance2', 'dance3', 'clap', 'dance1'][Math.floor(Math.random() * 5)]; n.emoteT = 0;
-        n.data.to = home.clone().add(V1.set((Math.random() - 0.5) * spread, 0, (Math.random() - 0.5) * spread));
-        n.baseYaw = Math.random() * Math.PI * 2;
+      const d = n.data;
+      if (d.off === undefined) { let h = 0; for (const ch of n.name) h = (h * 31 + ch.charCodeAt(0)) | 0; d.off = (Math.abs(h) % 8) * 4; d.t = 2 + Math.random() * 10; d.yaw = Math.random() * Math.PI * 2; }
+      d.t -= dt;
+      if (d.t <= 0) { d.t = 10 + Math.random() * 12; d.to = home.clone().add(V1.set((Math.random() - 0.5) * spread, 0, (Math.random() - 0.5) * spread)); d.yaw = Math.random() * Math.PI * 2; }
+      let walking = false;
+      if (d.to) {
+        const v = V2.subVectors(d.to, n.pos); v.y = 0; const l = v.length();
+        if (l > 0.08) { n.pos.addScaledVector(v, Math.min(1, dt * 0.7 / l)); n.baseYaw = Math.atan2(v.x, v.z); walking = true; } else d.to = null;
       }
-      if (n.data.to) { const d = V2.subVectors(n.data.to, n.pos); d.y = 0; const l = d.length(); if (l > 0.05) n.pos.addScaledVector(d, Math.min(1, dt * 0.4 / l)); }
+      if (!walking) n.baseYaw = d.yaw;
+      n.emote = walking ? null : style || (MODELS[n.look.model]?.gender === 'f' ? 'gogo' : 'club');
+      n.emoteT = (this.beat?.beat ?? G.time * BPM / 60) + d.off;
       n.lookAt = this._near(n, 4);
+    };
+  }
+  // cliente del VIP: mira a la bailarina de su caño, se mueve al compás y cada tanto le tira billetes
+  _vipClientRole(pole) {
+    return (n, dt) => {
+      const d = n.data;
+      n.baseYaw = Math.atan2(pole.x - n.pos.x, pole.z - n.pos.z);
+      n.emote = 'club'; n.emoteT = (this.beat?.beat ?? G.time * BPM / 60) + 8;
+      d.cash = (d.cash ?? 3 + Math.random() * 6) - dt;
+      if (d.cash <= 0 && n.scene.visible && n.char) {
+        d.cash = 7 + Math.random() * 8;
+        const o = V1.set(n.pos.x, n.pos.y + 1.35, n.pos.z), to = V2.set(pole.x - o.x, pole.y + 1.3 - o.y, pole.z - o.z).normalize();
+        G.items?.cash(o.clone(), to.clone(), 1 + Math.floor(Math.random() * 3));
+        n.action = 'throw'; n.actionT = 0; n.actionEnd = 0.5;
+      }
     };
   }
   // sentado en un sillón: cada tanto pita (con su humito) o toma
@@ -575,6 +597,9 @@ export class ClubGame {
     [['lilith', 'Jezabel'], ['venus', 'Morgana'], ['coneja', 'Bambi']].forEach(([m, name], i) => { const c = A.vipPoles?.[i]; if (c) add('vip', { name, look: { model: m }, pos: c.clone(), role: this._poleRole(c, i * 1.7 + 0.4) }); });
     [['raven', 'Nyx'], ['emo', 'Belladona'], ['lilith', 'Lucrecia']].forEach(([m, name], i) => { const c = A.hellPoles?.[i]; if (c) add('hell', { name, look: { model: m }, pos: c.clone(), role: this._poleRole(c, i * 2.3 + 1.1) }); });
     if (A.hellDj) add('hell', { name: 'DJ Belcebú', look: { model: 'dj' }, pos: A.hellDj.clone(), yaw: 0, role: this._djRole(9) });
+    // clientes del VIP: miran a las chicas, se mueven y les tiran billetes
+    if (A.vipPoles?.[0]) add('vip', { name: 'Don Billetera', look: { model: 'v_vecino' }, pos: new THREE.Vector3(19.7, 0, -485.2), role: this._vipClientRole(A.vipPoles[0]) });
+    if (A.vipPoles?.[1]) add('vip', { name: 'El Jeque', look: { model: 'v_hincha' }, pos: new THREE.Vector3(28.3, 0, -485.2), role: this._vipClientRole(A.vipPoles[1]) });
     if (A.vipDj) add('vip', { name: 'DJ Satén', look: { model: 'v_punk' }, pos: A.vipDj.clone(), yaw: 0, role: this._djRole(8, 4) });
     // la pista del Infierno
     if (A.hellFloor) {

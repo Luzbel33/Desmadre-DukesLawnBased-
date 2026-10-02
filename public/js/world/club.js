@@ -161,6 +161,7 @@ export class Club {
     this._cage();
     this._throne();
     this._lounge();
+    this._tables();
     this._dungeon();
     this._control();
     this._stash();
@@ -560,6 +561,27 @@ export class Club {
     }
     this.anchors.drugTable = new THREE.Vector3(-8.5, 0.45, H.z1 - 2.0);
     this.light(-11.8, 3, H.z1 - 2, 0xff2060, 3, 8, { priority: 1.3 });
+  }
+
+  // mesas altas con banquetas alrededor de la pista: tragos, un balde de champán y una vela; se sientan jugadores
+  _tables() {
+    const spots = [[-13.4, -454.5], [-13.4, -466.5], [-4.8, -450.4], [4.8, -450.4]];
+    spots.forEach(([x, z], i) => {
+      this.cyl('blackTile', x, 0.03, z, 0.32, 0.36, 0.06, 16);
+      this.cyl('chrome', x, 0.53, z, 0.05, 0.05, 1.0, 10, { collide: true });
+      this.cyl('blackTile', x, 1.05, z, 0.42, 0.42, 0.04, 24);
+      this.deco('neonPink', x, 1.02, z, 0.62, 0.012, 0.012, { yaw: i });
+      this.cyl('chrome', x + 0.12, 1.16, z - 0.05, 0.07, 0.055, 0.18, 12);
+      this.cyl('darkGlass', x + 0.12, 1.25, z - 0.05, 0.03, 0.035, 0.26, 8);
+      for (const [dx, dz, c] of [[-0.18, 0.1, 'glass'], [-0.05, 0.2, 'red'], [0.2, 0.16, 'glass']]) this.cyl(c, x + dx, 1.11, z + dz, 0.03, 0.025, 0.09, 8);
+      this.cyl('wax', x - 0.15, 1.1, z - 0.18, 0.025, 0.025, 0.06, 8);
+      for (let k = 0; k < 3; k++) {
+        const a = i * 0.7 + k * Math.PI * 2 / 3, sx = x + Math.sin(a) * 0.72, sz = z + Math.cos(a) * 0.72;
+        this.cyl('chrome', sx, 0.38, sz, 0.035, 0.045, 0.76, 8);
+        this.cyl('leatherRed', sx, 0.8, sz, 0.2, 0.18, 0.08, 16);
+        this.seat(sx, 0.86, sz, a + Math.PI, { stool: true });
+      }
+    });
   }
 
   _dungeon() {
