@@ -106,6 +106,10 @@ const IntoxShader = {
     uSmoke: { value: 0 },
     uPill: { value: 0 },
     uSpeed: { value: 0 },
+    uAcid: { value: 0 },
+    uKeta: { value: 0 },
+    uDmt: { value: 0 },
+    uShroom: { value: 0 },
     uRes: { value: new THREE.Vector2(1, 1) },
   },
   vertexShader: /* glsl */ `
@@ -115,7 +119,7 @@ const IntoxShader = {
   fragmentShader: /* glsl */ `
     uniform sampler2D tDiffuse;
     uniform sampler2D tPrev;
-    uniform float uTime, uDrunk, uHigh, uHurt, uLowBlood, uBlack, uSmoke, uPill, uSpeed;
+    uniform float uTime, uDrunk, uHigh, uHurt, uLowBlood, uBlack, uSmoke, uPill, uSpeed, uAcid, uKeta, uDmt, uShroom;
     uniform vec2 uRes;
     varying vec2 vUv;
     vec3 hue(vec3 c, float a) {
@@ -129,17 +133,38 @@ const IntoxShader = {
       float h = clamp(uHigh, 0.0, 1.5);
       // ondulación de borracho
       uv += d * 0.011 * vec2(sin(uTime * 1.3 + uv.y * 5.0), cos(uTime * 1.05 + uv.x * 4.0));
-      // ondas psicodélicas
-      uv += h * 0.006 * vec2(sin(uTime * 2.1 + uv.y * 24.0), sin(uTime * 1.8 + uv.x * 21.0));
-      // caleidoscopio suave cuando está muy fumado
-      if (h > 0.85) {
+      float ac = clamp(uAcid, 0.0, 1.5), kt = clamp(uKeta, 0.0, 1.5), dm = clamp(uDmt, 0.0, 1.5), sh = clamp(uShroom, 0.0, 1.5);
+      // faso: apenas un vaivén lento (pesado, no psicodélico)
+      uv += h * 0.0014 * vec2(sin(uTime * 0.55 + uv.y * 2.0), cos(uTime * 0.47 + uv.x * 2.0));
+      // ácido: ondas y, si es mucho, caleidoscopio
+      uv += ac * 0.007 * vec2(sin(uTime * 2.1 + uv.y * 24.0), sin(uTime * 1.8 + uv.x * 21.0));
+      if (ac > 0.6) {
         vec2 c = uv - 0.5;
         float r = length(c);
         float a = atan(c.y, c.x);
         float seg = 3.14159 / 4.0;
         float a2 = abs(mod(a + uTime * 0.05, seg * 2.0) - seg);
         vec2 kal = vec2(cos(a2), sin(a2)) * r + 0.5;
-        uv = mix(uv, kal, clamp((h - 0.85) * 1.2, 0.0, 0.45));
+        uv = mix(uv, kal, clamp((ac - 0.6) * 0.9, 0.0, 0.45));
+      }
+      // hongos: las paredes respiran y se derriten para abajo
+      if (sh > 0.01) {
+        vec2 c = uv - 0.5;
+        uv = 0.5 + c * (1.0 - sh * 0.02 * sin(uTime * 1.3));
+        uv += sh * vec2(0.006 * sin(uv.y * 6.0 + uTime * 0.9), 0.005 * sin(uv.x * 9.0 + uTime * 0.7) + 0.004 * sin(uv.x * 31.0 + uTime * 1.6));
+      }
+      // keta: el mundo se aleja (zoom out lento y deriva)
+      if (kt > 0.01) {
+        vec2 c = uv - 0.5;
+        uv = 0.5 + c * (1.0 + kt * 0.12) + kt * 0.02 * vec2(sin(uTime * 0.21), cos(uTime * 0.17));
+      }
+      // DMT: caleidoscopio de seis que gira
+      if (dm > 0.01) {
+        vec2 c = uv - 0.5;
+        float r = length(c), a = atan(c.y, c.x) + uTime * 0.25;
+        float seg = 3.14159 / 6.0;
+        float a2 = abs(mod(a, seg * 2.0) - seg);
+        uv = mix(uv, vec2(cos(a2), sin(a2)) * r * (1.0 + 0.1 * sin(uTime * 2.0 + r * 12.0)) + 0.5, clamp(dm * 0.75, 0.0, 0.8));
       }
       // pastilla: el mundo respira (zoom que late) y se ondula en anillos
       float pl = clamp(uPill, 0.0, 1.5);
@@ -164,17 +189,55 @@ const IntoxShader = {
         for (int i = 1; i < 5; i++) acc += texture2D(tDiffuse, uv - dir * float(i)).rgb;
         col = mix(col, acc / 5.0, clamp(d, 0.0, 1.0) * 0.6);
       }
-      // aberración cromática (fumado)
+      // faso: colores un poco más vivos y cálidos, todo suave y una estela mínima
       if (h > 0.05) {
-        float ca = 0.004 + h * 0.006;
-        col.r = mix(col.r, texture2D(tDiffuse, uv + vec2(ca, 0.0)).r, clamp(h * 1.5, 0.0, 1.0));
-        col.b = mix(col.b, texture2D(tDiffuse, uv - vec2(ca, 0.0)).b, clamp(h * 1.5, 0.0, 1.0));
         float lum = dot(col, vec3(0.299, 0.587, 0.114));
-        col = mix(vec3(lum), col, 1.0 + h * 0.9);
-        col = hue(col, h * 0.9 * sin(uTime * 0.35));
-        // estelas (se mezcla con el frame anterior)
+        col = mix(vec3(lum), col, 1.0 + h * 0.3);
+        col *= mix(vec3(1.0), vec3(1.05, 1.02, 0.94), clamp(h, 0.0, 1.0));
+        vec3 soft = (texture2D(tDiffuse, uv + vec2(0.0015, 0.0)).rgb + texture2D(tDiffuse, uv - vec2(0.0015, 0.0)).rgb + texture2D(tDiffuse, uv + vec2(0.0, 0.0015)).rgb + texture2D(tDiffuse, uv - vec2(0.0, 0.0015)).rgb) * 0.25;
+        col = mix(col, soft, clamp(h * 0.3, 0.0, 0.35));
         vec3 prev = texture2D(tPrev, vUv).rgb;
-        col = mix(col, max(col, prev), clamp(h * 0.55, 0.0, 0.7));
+        col = mix(col, max(col, prev), clamp(h * 0.12, 0.0, 0.18));
+      }
+      // ácido: aberración cromática, saturación a full, colores que giran y estelas
+      if (ac > 0.05) {
+        float ca = 0.004 + ac * 0.006;
+        col.r = mix(col.r, texture2D(tDiffuse, uv + vec2(ca, 0.0)).r, clamp(ac * 1.5, 0.0, 1.0));
+        col.b = mix(col.b, texture2D(tDiffuse, uv - vec2(ca, 0.0)).b, clamp(ac * 1.5, 0.0, 1.0));
+        float lum = dot(col, vec3(0.299, 0.587, 0.114));
+        col = mix(vec3(lum), col, 1.0 + ac * 1.1);
+        col = hue(col, ac * 1.4 * sin(uTime * 0.35));
+        vec3 prev = texture2D(tPrev, vUv).rgb;
+        col = mix(col, max(col, prev), clamp(ac * 0.6, 0.0, 0.75));
+      }
+      // hongos: verdes y violetas más intensos, bordes que brillan un poco
+      if (sh > 0.05) {
+        float lum = dot(col, vec3(0.299, 0.587, 0.114));
+        col = mix(vec3(lum), col, 1.0 + sh * 0.6);
+        col = hue(col, sh * 0.35 * sin(uTime * 0.2 + vUv.y * 3.0));
+        vec3 e = abs(texture2D(tDiffuse, uv + vec2(0.002, 0.0)).rgb - texture2D(tDiffuse, uv - vec2(0.002, 0.0)).rgb);
+        col += vec3(0.3, 1.0, 0.6) * dot(e, vec3(0.5)) * sh * 0.8;
+      }
+      // keta: fantasmas largos, sin color y un túnel oscuro
+      if (kt > 0.05) {
+        vec3 prev = texture2D(tPrev, vUv).rgb;
+        col = mix(col, prev, clamp(kt * 0.7, 0.0, 0.82));
+        vec3 ghost = texture2D(tDiffuse, uv + kt * 0.03 * vec2(sin(uTime * 0.3), cos(uTime * 0.23))).rgb;
+        col = mix(col, (col + ghost) * 0.5, clamp(kt, 0.0, 1.0) * 0.6);
+        float lum = dot(col, vec3(0.299, 0.587, 0.114));
+        col = mix(col, vec3(lum) * vec3(0.9, 0.95, 1.05), clamp(kt * 0.7, 0.0, 0.8));
+        vec2 qq = vUv - 0.5;
+        col *= 1.0 - smoothstep(0.08, 0.5, length(qq)) * clamp(kt, 0.0, 1.0) * 0.85;
+      }
+      // DMT: mandala de luz encima de todo y destellos blancos
+      if (dm > 0.05) {
+        vec2 c = vUv - 0.5; c.x *= uRes.x / max(uRes.y, 1.0);
+        float r = length(c), a = atan(c.y, c.x);
+        float pat = sin(a * 12.0 + uTime * 1.5) * sin(r * 40.0 - uTime * 4.0) + sin(a * 6.0 - uTime) * cos(r * 25.0 + uTime * 2.0);
+        vec3 lines = hue(vec3(1.0, 0.3, 0.8), uTime * 1.2 + r * 6.0 + a) * smoothstep(0.6, 1.0, abs(pat));
+        col = col * (1.0 + dm * 0.5) + lines * clamp(dm, 0.0, 1.0) * 0.9;
+        col = hue(col, dm * uTime * 0.6);
+        col += vec3(1.0) * clamp(dm - 0.9, 0.0, 0.6) * pow(0.5 + 0.5 * sin(uTime * 1.3), 8.0);
       }
       // pastilla: arcoíris que gira, estrobo suave y bordes de colores
       if (pl > 0.01) {
@@ -237,7 +300,7 @@ class IntoxPass extends Pass {
     renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
     this.fsQuad.render(renderer);
     // guardar este frame para las estelas
-    if (this.uniforms.uHigh.value > 0.05) {
+    if (this.uniforms.uHigh.value > 0.05 || this.uniforms.uAcid.value > 0.05 || this.uniforms.uKeta.value > 0.05) {
       this.copyMat.map = this.renderToScreen ? readBuffer.texture : writeBuffer.texture;
       renderer.setRenderTarget(this.prev);
       this.copyQuad.render(renderer);
@@ -356,7 +419,7 @@ export class Post {
     this.composer.renderer.info.autoReset = false;
     this.composer.renderer.info.reset();
     const u = this.u;
-    const active = u.uDrunk.value > 0.01 || u.uHigh.value > 0.01 || u.uPill.value > 0.01 || u.uSpeed.value > 0.01 || u.uHurt.value > 0.01 || u.uLowBlood.value > 0.01 || u.uBlack.value > 0.001 || u.uSmoke.value > 0.01;
+    const active = u.uDrunk.value > 0.01 || u.uHigh.value > 0.01 || u.uAcid.value > 0.01 || u.uKeta.value > 0.01 || u.uDmt.value > 0.01 || u.uShroom.value > 0.01 || u.uPill.value > 0.01 || u.uSpeed.value > 0.01 || u.uHurt.value > 0.01 || u.uLowBlood.value > 0.01 || u.uBlack.value > 0.001 || u.uSmoke.value > 0.01;
     this.intox.enabled = active;
     this.composer.render(dt);
   }

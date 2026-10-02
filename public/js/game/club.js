@@ -8,7 +8,7 @@
 //    Diablo, X abre el ritual (el servidor lo valida) y te llevás al otro a los que elijas de los que están ahí,
 //    entre fuego, risas y humo.
 //  - El trono: el que se sienta sale en la pantalla de atrás, en vivo, con su nombre escrito en sangre y fuego.
-import { BAR_MENU, CAFE_MENU, SLOT_KIND } from '../shared/consumables.js';
+import { BAR_MENU, CAFE_MENU, DRUG_MENU, SLOT_KIND } from '../shared/consumables.js';
 import * as THREE from 'three';
 import { G, clamp } from '../core/G.js';
 import { CLUB, CASTLE, INTERACT } from '../shared/mapdata.js';
@@ -89,6 +89,11 @@ export class ClubGame {
       case 'drug': this._drug(L, it.drug); break;
       case 'bar': this._order(BAR_MENU, this.bartender, ['Tomá, invita la casa.', 'Esa te va a pegar.', 'Del infierno, como todo acá.']); break;
       case 'cafe': this._order(CAFE_MENU, this.budtender, ['Disfrutalo, amor.', 'Despacito que pega.', 'Ese es de la huerta.']); break;
+      case 'shaman': {
+        const lines = ['Abrí la mente, hijo.', 'Esto no lo vas a olvidar.', 'Respirá... y soltá.', 'El universo te está mirando.'];
+        if (!this.pick?.(DRUG_MENU, (m) => { const P = this.getLocal(); if (P) { this._drug(P, m.drug); this.shaman?.say(lines[Math.floor(Math.random() * lines.length)], 2.6); } })) this._drug(L, 'acid');
+        break;
+      }
       case 'monitors': this.notify('📺 Las cámaras de seguridad todavía no están conectadas.'); break;
       case 'bell': { const m = { e: 'bell', on: this.truceUntil > G.time ? 0 : 1 }; this._bellApply(m); this._send(m); break; }
       case 'ritual': this._openRitual(); break;
@@ -118,8 +123,21 @@ export class ClubGame {
       L.high = Math.min(1.6, L.high + 0.15);
       G.sfx?.trigger('gulp', null, 0.6);
       this.big('🌈', 'Todo late con la música', 1800);
+    } else if (kind === 'acid') {
+      L.acid = Math.min(1.5, (L.acid || 0) + 0.9);
+      L.setAction?.('eat', 0.8);
+      this.big('🌈', 'Se derriten los colores', 1800);
+    } else if (kind === 'keta') {
+      L.keta = Math.min(1.5, (L.keta || 0) + 0.9);
+      G.sfx?.trigger('cough', null, 0.35, { rate: 1.8 });
+      this.big('🌀', 'Todo se va lejos...', 1800);
+    } else if (kind === 'dmt') {
+      L.dmt = 1.4;
+      G.sfx?.trigger('cough', null, 0.7);
+      this.shake?.(0.4);
+      this.big('💠', 'Te fuiste a otra dimensión', 2200);
     } else {
-      L.high = Math.min(1.6, L.high + 0.85);
+      L.shroom = Math.min(1.5, (L.shroom || 0) + 0.85);
       L.setAction?.('eat', 1.2);
       G.sfx?.trigger('munch', null, 0.6);
       this.big('🍄', 'Uh... las paredes respiran', 1800);
@@ -527,6 +545,7 @@ export class ClubGame {
     const people = [['v_vecino', 'El Rasta', 15], ['v_parrillero', 'El Tano', 16], ['v_abuela', 'La Abuela Porro', 17], ['gordo', 'Don Billetes', 12], ['v_tabernero', 'El Colorado', 11]];
     (A.npcSeats || []).forEach((s, i) => { const p = people[i]; if (p) add(s.wing, { name: p[1], look: { model: p[0] }, pos: new THREE.Vector3(s.x, s.y - 0.46, s.z), yaw: s.yaw, role: this._loungeRole(p[2], s) }); });
     // la sala de cultivo y el arsenal
+    if (A.shaman) this.shaman = add('psico', { name: 'La Chamana', look: { model: 'v_bruja' }, pos: A.shaman.clone(), yaw: 0, role: this._keeperRole(['¿Venís a ver más allá?', 'Tengo lo que buscás, viajero.', 'Las puertas de la percepción están abiertas.'], 4.5) });
     if (A.gardener) add('grow', { name: 'El Jardinero', look: { model: 'v_granjero' }, pos: A.gardener.clone(), yaw: Math.PI, role: this._keeperRole(['Despacito con las nenas, que están floreciendo.', 'Cortá uno, nomás. Bueno, dos.', 'Las riego con las lágrimas de los que pierden al póker.'], 4.5) });
     if (A.sarge) add('arsenal', { name: 'El Sargento', look: { model: 'v_guardia' }, pos: A.sarge.clone(), yaw: -Math.PI / 2, role: this._keeperRole(['¡Firmes, recluta!', 'Se agarra una y se usa con cabeza.', 'Acá no se fuma. Andá al coffeeshop, hippie.', 'Si le tirás a una bailarina, te fusilo.'], 6) });
   }

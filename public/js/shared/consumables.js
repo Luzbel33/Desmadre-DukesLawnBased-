@@ -20,4 +20,9 @@ export const consumable = (item) => (Object.hasOwn(CONSUMABLES, item) ? CONSUMAB
 export const SLOT_KIND = Object.fromEntries(Object.values(CONSUMABLES).map((c) => [c.slot, c.kind]));
 // los menús (ruedita) de la barra y del coffeeshop
 export const BAR_MENU = [{ item: 'beer', icon: '🍺', label: 'Birra' }, ...['fernet', 'whisky', 'sangre', 'absenta'].map((item) => ({ item, icon: CONSUMABLES[item].icon, label: CONSUMABLES[item].label }))];
+// lo de La Chamana (sala psicodélica): se toma en el momento (game/club.js _drug), cada una con su viaje en pantalla
+export const DRUG_MENU = [
+  { drug: 'acid', icon: '🌈', label: 'Ácido' }, { drug: 'shroom', icon: '🍄', label: 'Hongos' }, { drug: 'dmt', icon: '💠', label: 'DMT' },
+  { drug: 'keta', icon: '🌀', label: 'Keta' }, { drug: 'pill', icon: '💊', label: 'Éxtasis' }, { drug: 'line', icon: '❄️', label: 'Merca' },
+];
 export const CAFE_MENU = [{ item: 'smoke', icon: '🌿', label: 'Faso' }, ...['blunt', 'cigar', 'pipe', 'bong', 'brownie'].map((item) => ({ item, icon: CONSUMABLES[item].icon, label: CONSUMABLES[item].label }))];

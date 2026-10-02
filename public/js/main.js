@@ -1979,6 +1979,10 @@ function updatePost() {
   u.uHigh.value = state.local.high;
   u.uPill.value = Math.max(state.local.pill || 0, G.world?.club?.wings?.psy || 0); // la sala psicodélica también pega
   u.uSpeed.value = state.local.speedHigh || 0;
+  u.uAcid.value = state.local.acid || 0;
+  u.uKeta.value = state.local.keta || 0;
+  u.uDmt.value = state.local.dmt || 0;
+  u.uShroom.value = state.local.shroom || 0;
   u.uHurt.value = state.hurt;
   u.uLowBlood.value = clamp((40 - state.local.blood) / 40, 0, 1);
   u.uBlack.value = state.local.dead ? clamp(state.local.deadT / 2, 0, 0.85) : 0;

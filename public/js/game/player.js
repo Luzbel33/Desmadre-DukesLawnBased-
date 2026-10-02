@@ -531,6 +531,7 @@ export class LocalPlayer {
     this.balance = 100;
     this.drunk *= 0.4;
     this.high *= 0.4;
+    this.acid = 0; this.keta = 0; this.dmt = 0; this.shroom = 0; this.pill = 0;
     this.action = null;
     this.emote = null;
     this.state = 'active';
@@ -2212,7 +2213,7 @@ export class LocalPlayer {
       // la cápsula se achica de verdad (pasás por abajo de las cosas); al pararte, solo si hay lugar arriba
       this._crouch(this.crouching || mo.slideT > 0 || mo.dive === 2 || mo.dive === 3);
       if (this.crouched && !mo.slideT && !mo.dive) this.crouching = true; // bajo un techo sigue agachado aunque sueltes C
-      const targetSpeed = (walk && !this.crouching ? 1.75 : run && !this.guard && !legGone && !this.crouching ? 6.8 : 3.9) * (this.crouching ? 0.5 : 1) * (1 + 0.35 * clamp(this.speedHigh || 0, 0, 1)) * (1 - clamp(this.drunk, 0, 1) * 0.2) * slow * load * limp;
+      const targetSpeed = (walk && !this.crouching ? 1.75 : run && !this.guard && !legGone && !this.crouching ? 6.8 : 3.9) * (this.crouching ? 0.5 : 1) * (1 + 0.35 * clamp(this.speedHigh || 0, 0, 1)) * (1 - clamp(this.drunk, 0, 1) * 0.2) * (1 - 0.45 * clamp(this.keta || 0, 0, 1)) * slow * load * limp;
       const blend = 1 - Math.exp(-(length ? 14 : 20) * dt);
       this.velocity.x += (dx * targetSpeed - this.velocity.x) * blend;
       this.velocity.y += (dz * targetSpeed - this.velocity.y) * blend;
@@ -2523,6 +2524,11 @@ export class LocalPlayer {
     // el Búnker: la pastilla (colores) y la línea (velocidad) se van en unos 40 s
     this.pill = Math.max(0, (this.pill || 0) - dt * 0.025);
     this.speedHigh = Math.max(0, (this.speedHigh || 0) - dt * 0.03);
+    // ácido (largo), hongos (largo y suave), keta (un rato, te pone lento) y DMT (corto y fortísimo)
+    this.acid = Math.max(0, (this.acid || 0) - dt * 0.012);
+    this.shroom = Math.max(0, (this.shroom || 0) - dt * 0.01);
+    this.keta = Math.max(0, (this.keta || 0) - dt * 0.03);
+    this.dmt = Math.max(0, (this.dmt || 0) - dt * 0.08);
     this.headYaw = clamp(angleDiff(this.yaw, this.viewYaw), -1.35, 1.35);
     // animación objetivo
     const rigAction = ['drink-arm', 'headbutt', 'eat'].includes(this.action) ? null : this.action;

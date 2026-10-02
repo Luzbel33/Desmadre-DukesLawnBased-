@@ -939,6 +939,13 @@ export class ClubWings {
       this.mesh(new THREE.CircleGeometry(1.5, 48), this._spiralMat(), -36, 2.6, ps.z0 + 0.06);
     }
     this.neon('volá alto', { font: 'Metal Mania', px: 110, color: '#30e8ff' }, 3.2, 0.8, -36, 4.45, ps.z0 + 0.07);
+    // La Chamana: atiende en un puesto con telas, velas y frascos (sus cosas pegan distinto: game/club.js _drug)
+    this.anchors.shaman = new THREE.Vector3(-30.5, 0, ps.z0 + 1.35);
+    this.box('blackWood', -30.5, 0.45, ps.z0 + 2.2, 2.4, 0.9, 0.7);
+    this.deco('velvet', -30.5, 0.92, ps.z0 + 2.2, 2.5, 0.03, 0.8);
+    for (let k = 0; k < 6; k++) { this.cyl('bongGlass', -31.5 + k * 0.4, 1.04, ps.z0 + 2.2, 0.05, 0.05, 0.18, 10); this.cyl(['shroomPink', 'shroomCyan', 'shroomLime'][k % 3], -31.5 + k * 0.4, 0.99, ps.z0 + 2.2, 0.042, 0.042, 0.07, 8); }
+    for (let k = 0; k < 4; k++) { const cx = -31.9 + k * 0.9; this.cyl('wax', cx, 1.0, ps.z0 + 2.45, 0.025, 0.03, 0.14, 8); this.world().flames?.add(cx, 1.09, ps.z0 + 2.45, 0.02, 0.05); }
+    this.c.use('club_shaman', [-30.5, 1.0, ps.z0 + 2.7], 2.2, 'Hablar con La Chamana', { e: 'shaman' });
     this.light(-41, 3.6, -471, 0x8a3cff, 10, 16, { priority: 1.2, decay: 1.0 });
     this.light(-30, 3.6, -471, 0xff3cc8, 9, 15, { priority: 1.2, decay: 1.0 });
     const fog = this.c.fog;
