@@ -25,6 +25,64 @@ import { VEHICLES } from '../public/js/shared/mapdata.js';
 import { cutRect } from '../public/js/shared/raster.js';
 import { Culler } from '../public/js/world/culler.js';
 import { prepareScene } from '../public/js/core/startup.js';
+import { Haunt } from '../public/js/game/haunt.js';
+import { CASTLE, INTERACT } from '../public/js/shared/mapdata.js';
+
+test('pasadizo: el cráneo interior usa la misma apertura y avisa a los demás', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const old = { time: G.time, net: G.net, sfx: G.sfx }, length = INTERACT.length;
+  const sent = [];
+  let blocked = true;
+  const haunt = Object.assign(Object.create(Haunt.prototype), {
+    scene: new THREE.Scene(), cool: {}, castle: {},
+    doors: { secret: { target: 0, collider: { setEnabled: v => { blocked = v; } } } },
+  });
+  try {
+    G.time = 100; G.sfx = null; G.net = { send: m => sent.push(m) };
+    haunt._buildInteract();
+    const inside = INTERACT.find(it => it.id === 'h_lever2');
+    assert.ok(inside.p[2] < -115 && inside.p[1] > CASTLE.keep.floor);
+    haunt.use(inside);
+    assert.equal(haunt.doors.secret.target, 1);
+    assert.equal(blocked, false);
+    assert.equal(sent[0].e, 'lever');
+    assert.equal(sent[0].k, 'haunt');
+    t.mock.timers.tick(26000);
+    t.mock.timers.tick(2600);
+    assert.equal(haunt.doors.secret.target, 0);
+    assert.equal(blocked, true);
+    G.time += 30;
+    haunt.use(inside);
+    assert.equal(blocked, false, 'se puede salir después del cierre automático');
+  } finally {
+    Object.assign(G, old); INTERACT.length = length;
+  }
+});
+
+test('pasadizo: reabrir durante el cierre cancela el bloqueo anterior, también por red', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const oldSfx = G.sfx;
+  let blocked = true;
+  const haunt = Object.assign(Object.create(Haunt.prototype), {
+    castle: { anchors: {} },
+    doors: { secret: { target: 0, collider: { setEnabled: v => { blocked = v; } } } },
+  });
+  try {
+    G.sfx = null;
+    haunt.play('lever');
+    t.mock.timers.tick(26000);
+    assert.equal(haunt.doors.secret.target, 0);
+    t.mock.timers.tick(1000);
+    haunt.remote({ e: 'lever' });
+    t.mock.timers.tick(1600);
+    assert.equal(haunt.doors.secret.target, 1);
+    assert.equal(blocked, false, 'el cierre viejo no debe crear una pared invisible');
+    t.mock.timers.tick(24400);
+    assert.equal(haunt.doors.secret.target, 0);
+    t.mock.timers.tick(2600);
+    assert.equal(blocked, true, 'el nuevo ciclo sí cierra el paso');
+  } finally { G.sfx = oldSfx; }
+});
 
 TEX.grass = () => new THREE.Texture();
 

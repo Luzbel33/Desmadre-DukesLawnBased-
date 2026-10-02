@@ -371,6 +371,8 @@ export class Haunt {
   _buildInteract() {
     const list = [
       { id: 'h_lever', ev: 'lever', p: [18.2, F0 + 1, -113.9], r: 1.5, label: 'Tirar del candelabro' },
+      // del lado del pasadizo: el cráneo de carnero de la pared abre el estante (si no, te quedabas encerrado)
+      { id: 'h_lever2', ev: 'lever', p: [18.3, F0 + 1, -116.1], r: 1.25, label: 'Bajar el cráneo · abrir estantería' },
       { id: 'h_bell', ev: 'bell', p: [4.5, F0 + 1, -113.6], r: 1.6, label: 'Tirar de la soga de la campana' },
       { id: 'h_clock', ev: 'clock', p: [6.9, F0 + 1, -112.6], r: 1.4, label: 'Darle cuerda al reloj' },
       { id: 'h_chest', ev: 'chest', p: [17.8, F0 + 1, -124.1], r: 1.5, label: 'Abrir el cofre del Conde' },
@@ -385,6 +387,38 @@ export class Haunt {
     rope.position.set(4.5, F0 + 1.1 + 5.7, -113.6);
     this.scene.add(rope);
     this.bellRope = rope;
+    this._ramSkull();
+  }
+
+  // el cráneo de carnero colgado del lado de adentro del pasadizo (junto al estante): se baja como una palanca
+  _ramSkull() {
+    if (!HAS_DOM) return;
+    const bone = getMat('bone'), wood = getMat('oldWood'), dark = getMat('black');
+    const plaque = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.58, 0.05), wood);
+    plaque.position.set(18.3, F0 + 1.75, -115.33);
+    this.scene.add(plaque);
+    // el cráneo gira sobre su nuca (pegada a la tabla): mira hacia adentro del cuarto (-z)
+    const pivot = new THREE.Group();
+    pivot.position.set(18.3, F0 + 1.83, -115.36);
+    this.scene.add(pivot);
+    const add = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); pivot.add(m); return m; };
+    const head = new THREE.SphereGeometry(0.1, 16, 12); head.scale(1, 0.95, 1.15);
+    add(head, bone, 0, 0, -0.1);
+    add(new THREE.CylinderGeometry(0.035, 0.07, 0.2, 10), bone, 0, -0.06, -0.24, Math.PI / 2 + 0.45);
+    for (const s of [-1, 1]) {
+      add(new THREE.SphereGeometry(0.026, 8, 6), dark, s * 0.05, 0.02, -0.19);
+      // cuerno enrulado: segmentos que se afinan y giran hacia atrás y abajo
+      let x = s * 0.07, y = 0.06, z = -0.08, a = 0;
+      for (let k = 0; k < 9; k++) {
+        const rr = 0.04 * (1 - k / 11), len = 0.07;
+        a += 0.62;
+        const nx = x + s * Math.cos(a) * len * 0.55, ny = y + Math.sin(a) * len, nz = z + Math.cos(a) * len * 0.6;
+        const seg = add(new THREE.CylinderGeometry(rr * 0.85, rr, len * 1.1, 8), bone, (x + nx) / 2, (y + ny) / 2, (z + nz) / 2);
+        seg.quaternion.setFromUnitVectors(V2.set(0, 1, 0), V1.set(nx - x, ny - y, nz - z).normalize());
+        x = nx; y = ny; z = nz;
+      }
+    }
+    this.ramSkull = { pivot, t: -99 };
   }
 
   // luces frías en algunas ventanas: el relámpago entra por ahí
@@ -537,16 +571,19 @@ export class Haunt {
         setTimeout(() => g.hide(), 1800);
         break;
       }
-      case 'lever': { // el candelabro: el estante gira y abre el pasadizo
+      case 'lever': { // el candelabro (o el cráneo de adentro): el estante gira y abre el pasadizo
+        if (this.ramSkull) this.ramSkull.t = G.time;
         const d = this.doors.secret;
         d.target = 1; d.speed = 0.55;
         d.collider?.setEnabled(false);
         sfx?.trigger('stone-grind', V1.set(16.5, F0 + 1.2, -114.7), 0.9, { full: 3, max: 26 });
         clearTimeout(this._secretT);
+        // Si se reabre mientras está cerrando, el bloqueo pendiente queda anulado.
+        clearTimeout(this._secretCloseT);
         this._secretT = setTimeout(() => {
           d.target = 0; d.speed = 0.45;
           sfx?.trigger('stone-grind', V1.set(16.5, F0 + 1.2, -114.7), 0.75, { full: 3, max: 26 });
-          setTimeout(() => d.collider?.setEnabled(true), 2600);
+          this._secretCloseT = setTimeout(() => d.collider?.setEnabled(true), 2600);
         }, 26000);
         break;
       }
@@ -751,6 +788,9 @@ export class Haunt {
     const t = G.time;
     const me = G.me?.pos;
     const storm = this.world.storm;
+    // el cráneo de carnero baja como una palanca y vuelve a su lugar
+    const rs = this.ramSkull;
+    if (rs) { const k = clamp((t - rs.t) / 1.3, 0, 1); rs.pivot.rotation.x = Math.sin(k * Math.PI) * 0.75; }
     // disparadores por zona del jugador local
     if (me && G.inGame) {
       for (const [id, box] of Object.entries(ZONES)) {
