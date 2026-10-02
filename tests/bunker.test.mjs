@@ -29,3 +29,31 @@ test('las puertas del club caen dentro de la sala a la que llevan', () => {
   assert.deepEqual(west, ['psico']);
   for (const [a, b, y0, y1] of [...HALL_DOORS.north, ...HALL_DOORS.east, ...HALL_DOORS.west]) { assert.ok(Math.abs(b - a) >= 2.2, 'puerta muy angosta'); assert.ok(y0 === 0 && y1 >= 2.5, 'puerta muy baja'); }
 });
+
+test('el baile de caño y el de jaula son continuos: sin saltos de pose ni de lugar, tampoco al volver a empezar', async () => {
+  const { polePose, polePlace, gogoPose } = await import('../public/js/char/pole-dance.js');
+  const step = 126 / 60 / 60; // un cuadro a 60 fps, en tiempos
+  const read = (fn, b) => { const J = {}; let y = 0; fn(J, b, (v) => { y = v; }); return { J, y }; };
+  for (const fn of [polePose, gogoPose]) {
+    let prev = null;
+    for (let b = 1000; b < 1160; b += step) {
+      const cur = read(fn, b);
+      for (const n in cur.J) for (const v of cur.J[n]) assert.ok(Number.isFinite(v), `${n} no es un número en ${b}`);
+      if (prev) {
+        for (const n in cur.J) for (let i = 0; i < 3; i++) assert.ok(Math.abs(cur.J[n][i] - prev.J[n][i]) < 0.2, `${fn.name}: ${n} salta en el tiempo ${b.toFixed(2)}`);
+        assert.ok(Math.abs(cur.y - prev.y) < 0.03, `${fn.name}: la altura salta en ${b.toFixed(2)}`);
+      }
+      prev = cur;
+    }
+  }
+  let p = null;
+  for (let b = 1000; b < 1160; b += step) {
+    const c = polePlace(b);
+    if (p) {
+      assert.ok(Math.abs(c.ang - p.ang) < 0.08, `da un salto alrededor del caño en ${b.toFixed(2)}`);
+      assert.ok(Math.abs(Math.atan2(Math.sin(c.face - p.face), Math.cos(c.face - p.face))) < 0.08, `gira de golpe en ${b.toFixed(2)}`);
+      assert.ok(Math.abs(c.up - p.up) < 0.02 && Math.abs(c.pl - p.pl) < 0.1 && Math.abs(c.pr - p.pr) < 0.1, `cambia de agarre de golpe en ${b.toFixed(2)}`);
+    }
+    p = c;
+  }
+});

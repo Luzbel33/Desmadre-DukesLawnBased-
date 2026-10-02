@@ -8,6 +8,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { G, clamp, rng } from '../core/G.js';
 import { Character, JOINT_NAMES, PARENT, P } from './character.js';
 import { makeDevil } from './devil.js';
+import { polePlace } from './pole-dance.js';
 
 export const MODELS = {
   eric: { file: 'assets/chars/eric.glb', label: 'Eric', gender: 'm' },
@@ -721,6 +722,15 @@ export class HumanCharacter {
     if (act === 'punchL' || act === 'guard') gl = 1;
     if (act === 'dig') { gr = 1; gl = 1; } // la pala: las dos manos cerradas en el mango
     if (st.drive) { gr = 0.85; gl = 0.85; }
+    // en el caño: la mano que agarra se cierra alrededor (los dedos rodean un tubo vertical, el pulgar arriba)
+    if (st.emote === 'pole') {
+      const h = polePlace(st.emoteT || 0, this._pole || (this._pole = {}));
+      gl = 0.28 + 0.67 * h.l; gr = 0.28 + 0.67 * h.rh;
+      for (const [side, on] of [['l', h.l > 0.5], ['r', h.rh > 0.5]]) {
+        this.gripOn[side] = on; this.gripRadius[side] = on ? 0.045 : 0; this.gripAxis[side].set(0, 1, 0);
+      }
+      this._poleGrip = true;
+    } else if (this._poleGrip) { this._poleGrip = false; this.gripOn.l = this.gripOn.r = false; this.gripRadius.l = this.gripRadius.r = 0; }
     this.grip.r += (gr - this.grip.r) * Math.min(1, dt * 14);
     this.grip.l += (gl - this.grip.l) * Math.min(1, dt * 14);
     this._walkLegs = true;

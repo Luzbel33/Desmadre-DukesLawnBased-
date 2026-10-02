@@ -13,7 +13,8 @@ import * as THREE from 'three';
 import { G, clamp } from '../core/G.js';
 import { CLUB, CASTLE, INTERACT } from '../shared/mapdata.js';
 import { Npc, prepareNpcCulling } from './npc.js';
-import { clubBeat } from '../world/club.js';
+import { clubBeat, BPM } from '../world/club.js';
+import { polePlace } from '../char/pole-dance.js';
 import { getMat } from '../world/builder.js';
 import { ClubMix } from '../audio/clubmix.js';
 
@@ -30,6 +31,20 @@ const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-
 const DOORMAN_HI = ['¿Y vos quién sos?', 'Acá no entra cualquiera, mostro.', 'Sin contraseña no hay fiesta.', 'Ni lo sueñes, flaco.', 'La lista está cerrada. Bah, no hay lista.'];
 const DOORMAN_OK = ['Pasá, rey. Portate mal.', 'Adelante. Lo que pasa en el Búnker queda en el Búnker.', 'Bienvenido al infierno, papu.', 'Todo tuyo. Cuidado con la jaula.'];
 const DOORMAN_NO = ['¿Qué te pasa, gil? Tomatela.', 'Esa no es. Andá a la cripta a pensar.', 'Contraseña incorrecta. Te anoto en la lista negra.', 'Casi. No. Para nada. Rajá.'];
+
+// cuánto más abajo que la raíz queda lo más bajo de las canillas (pies, o rodillas si está arrodillada), según la
+// pose del cuadro anterior; parada derecha da FOOT_SINK. Sirve para apoyarla en el piso en cualquier pose
+const FOOT_SINK = -0.048, VF = new THREE.Vector3();
+function feetOffset(ch) {
+  const caps = ch?.meta?.caps;
+  if (!caps || !ch.joints) return null;
+  let lo = Infinity;
+  for (const i of [8, 10]) {
+    const c = caps[i], m = ch.joints[i].matrixWorld;
+    lo = Math.min(lo, VF.copy(c.a).applyMatrix4(m).y - c.r, VF.copy(c.b).applyMatrix4(m).y - c.r);
+  }
+  return lo - ch.root.position.y;
+}
 
 export class ClubGame {
   constructor({ world, getLocal, getNet, notify, big, teleport, fade, openUI, closeUI, shake, puff, isOwner, onItems, pick }) {
@@ -384,15 +399,15 @@ export class ClubGame {
         if (!n.emote && n.data.t < 0) { n.data.t = 6 + Math.random() * 6; n.emote = Math.random() < 0.5 ? 'flex' : null; n.emoteT = 0; setTimeout(() => { if (n.emote === 'flex') n.emote = null; }, 2500); }
       },
     });
-    const pole = (c, phase) => this._poleRole(c, phase);
     const P = this.club.poles;
-    [['lilith', 'Lilith'], ['coneja', 'La Coneja'], ['venus', 'Venus']].forEach(([m, name], i) => { if (P[i]) add({ name, look: { model: m }, pos: P[i].clone(), role: pole(P[i], i * 2.1) }); });
-    // gogós en las jaulas colgantes
+    [['lilith', 'Lilith'], ['coneja', 'La Coneja'], ['venus', 'Venus']].forEach(([m, name], i) => { if (P[i]) add({ name, look: { model: m }, pos: P[i].clone(), role: this._poleRole(P[i], i) }); });
+    // gogós en las jaulas colgantes: su rutina al compás (char/pole-dance.js), girando despacio para que la vean todos
     const cage = (c, phase) => (n, dt) => {
-      n.pos.copy(c);
-      n.baseYaw = G.time * 0.25 + phase;
-      n.data.t = (n.data.t || 0) - dt;
-      if (n.data.t <= 0) { n.data.t = 4 + Math.random() * 4; n.emote = ['dance2', 'dance3', 'dance1'][Math.floor(Math.random() * 3)]; n.emoteT = 0; }
+      const fo = feetOffset(n.char), want = fo === null ? c.y : c.y + FOOT_SINK - fo;
+      n.data.y = (n.data.y ?? want) + (want - (n.data.y ?? want)) * Math.min(1, dt * 10);
+      n.pos.set(c.x, n.data.y, c.z);
+      n.baseYaw = G.time * 0.15 + phase;
+      n.emote = 'gogo'; n.emoteT = (this.beat?.beat ?? G.time * BPM / 60) + phase * 4;
     };
     const Gc = this.club.gogo || [];
     [['raven', 'Raven'], ['emo', 'La Emo']].forEach(([m, name], i) => { if (Gc[i]) add({ name, look: { model: m }, pos: Gc[i].clone(), role: cage(Gc[i], i * 3) }); });
@@ -446,41 +461,41 @@ export class ClubGame {
 
   // ---------------------------------------------------------------- roles que se repiten
   _near(n, r) { const L = this.getLocal(); return L && Math.hypot(L.pos.x - n.pos.x, L.pos.z - n.pos.z) < r ? L.pos : null; }
-  // bailarinas del caño: una coreografía de verdad (giros colgadas del caño, ondas de frente, apoyadas de espaldas,
-  // trepadas, de cabeza y un poco de baile suelto). Cada una arranca en otra parte y a otro ritmo.
-  _poleRole(c, phase) {
-    const MOVES = [['pole_wave', 8], ['pole_spin', 5], ['dance1', 5], ['pole_lean', 8], ['pole_spin', 6], ['pole_climb', 7], ['pole_invert', 6], ['pole_spin', 4]];
-    const T = new THREE.Vector3();
+  // bailarinas del caño: la rutina entera al compás del club (char/pole-dance.js: paseo, ondas, giro en silla,
+  // bajada de espaldas, gancho, de rodillas...), cada una en otra parte de la rutina pero todas sobre el mismo bombo.
+  // El cuerpo se ubica para que el puño que agarra quede justo en el caño (se mide el puño del cuadro anterior).
+  _poleRole(c, i) {
+    const T = new THREE.Vector3(), H = new THREE.Vector3(), place = {}, off = i * 22;
     return (n, dt) => {
-      const d = n.data;
-      if (d.mi === undefined) { d.mi = Math.floor(phase * 7) % MOVES.length; d.mt = 0; d.th = phase * 2.1; d.y = 0; n.noCollide = true; }
-      d.mt += dt;
-      if (d.mt > MOVES[d.mi][1]) { d.mi = (d.mi + 1) % MOVES.length; d.mt = 0; d.th0 = d.th; }
-      const mv = MOVES[d.mi][0], mt = d.mt, end = MOVES[d.mi][1];
-      if (n.emote !== mv) { n.emote = mv; n.emoteT = 0; }
-      let r = 0.42, yaw, up = 0;
-      if (mv === 'pole_spin') {
-        d.th -= dt * (1.7 + Math.sin(mt * 1.3 + phase) * 0.5); // gira de frente (el caño a su derecha)
-        r = 0.34; yaw = d.th - Math.PI / 2;
-      } else if (mv === 'pole_wave' || mv === 'pole_climb' || mv === 'pole_invert') {
-        if (mv !== 'pole_wave') d.th -= dt * 0.45;
-        r = mv === 'pole_wave' ? 0.38 : 0.27;
-        yaw = Math.atan2(-Math.sin(d.th), -Math.cos(d.th)); // mirando al caño
-        if (mv === 'pole_climb') up = Math.min(1.15, mt * 0.55) * Math.min(1, (end - mt) / 1.2);
-        if (mv === 'pole_invert') up = 1.15 * Math.min(1, mt * 1.5) * Math.min(1, (end - mt) / 0.9);
-      } else if (mv === 'pole_lean') {
-        r = 0.26; yaw = Math.atan2(Math.sin(d.th), Math.cos(d.th)); // de espaldas al caño
-      } else {
-        d.th -= dt * 0.25; r = 0.5; yaw = Math.atan2(Math.sin(d.th), Math.cos(d.th)) + Math.sin(mt) * 0.4;
+      const d = n.data, beat = (this.beat?.beat ?? G.time * BPM / 60) + off;
+      polePlace(beat, place);
+      n.noCollide = true; n.lookAt = null;
+      n.emote = 'pole'; n.emoteT = beat;
+      const yaw = place.ang + Math.PI + place.face;
+      n.yaw = n.baseYaw = yaw;
+      // sin agarrar: a su distancia del caño; agarrando: donde el puño cae en el caño
+      T.set(c.x + Math.sin(place.ang) * place.r, 0, c.z + Math.cos(place.ang) * place.r);
+      const ch = n.char, w = place.pl + place.pr;
+      d.pf = ch ? (d.pf || 0) + 1 : 0;
+      if (ch?.fistWorld && w > 0.05 && d.pf > 8) {
+        const ry = ch.root.rotation.y, cr = Math.cos(ry), sr = Math.sin(ry), cy = Math.cos(yaw), sy = Math.sin(yaw);
+        let lx = 0, lz = 0;
+        for (const [side, k] of [['l', place.pl], ['r', place.pr]]) {
+          if (k <= 0) continue;
+          ch.fistWorld(side, H);
+          const dx = H.x - ch.root.position.x, dz = H.z - ch.root.position.z;
+          lx += (dx * cr - dz * sr) * k / w; lz += (dx * sr + dz * cr) * k / w;
+        }
+        const g = Math.min(1, w);
+        T.x += (c.x - (lx * cy + lz * sy) - T.x) * g; T.z += (c.z - (-lx * sy + lz * cy) - T.z) * g;
       }
-      T.set(c.x + Math.sin(d.th) * r, c.y, c.z + Math.cos(d.th) * r);
-      const k = 1 - Math.exp(-dt * 7);
+      const k = d.pf > 8 ? 1 - Math.exp(-dt * 14) : 1;
       n.pos.x += (T.x - n.pos.x) * k; n.pos.z += (T.z - n.pos.z) * k;
-      d.y += (up - d.y) * Math.min(1, dt * 4);
-      n.pos.y = c.y + d.y;
-      n.baseYaw = yaw;
-      if (mv === 'pole_spin' || mv === 'pole_climb' || mv === 'pole_invert') { n.yaw = yaw; n.lookAt = null; }
-      else n.lookAt = this._near(n, 6);
+      // altura: en el piso, los pies (o las rodillas) apoyados en la tarima; colgada del caño, lo que diga la rutina
+      const air = clamp(place.up / 0.06, 0, 1), fo = d.pf > 8 ? feetOffset(ch) : null;
+      const want = fo === null ? c.y + place.up : c.y + place.up * air + (FOOT_SINK - fo) * (1 - air);
+      d.y = (d.y ?? want) + (want - (d.y ?? want)) * Math.min(1, dt * 10);
+      n.pos.y = d.y;
     };
   }
   // la gente de la pista: cada uno en la suya, se mueve un poco y cambia de baile

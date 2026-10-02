@@ -17,7 +17,6 @@ Fuente única de trabajo pendiente.
 ## 0. Tanda 02/10 — PRIORITARIO (pedido de Luz)
 
 - [ ] Música en todo el Búnker (hoy solo suena en el club): más cabinas/pantallas de DJ con música en las salas.
-- [ ] Baile de caño con sentido, sensual y prolijo (hoy se ve random y mal): transiciones suaves, al ritmo, sin poses raras.
 - [ ] Más objetos en el Búnker y más NPC en las pistas de baile.
 - [ ] Laberinto: pasar a un laberinto normal más elaborado, con sustos (jumpscares) y un tesoro con premio al azar
       (objetos únicos).
