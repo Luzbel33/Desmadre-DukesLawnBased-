@@ -956,7 +956,7 @@ test('tirar plata hace el gesto pero el fajo no sale volando como objeto (antes 
   const events = []; p.onEvent = (type, d) => events.push({ type, d });
   for (let k = 0; k < 10; k++) frame(p, ph);
   p.giveItem('cash');
-  assert.equal(p.hands.r.fajos, 10);
+  assert.equal(p.hands.r.bills, 250, 'diez fajos de 25 billetes');
   assert.equal(p.tap('r'), 'cash');
   for (let k = 0; k < 45; k++) frame(p, ph);
   assert.equal(events.filter(e => e.type === 'throwrelease').length, 0, 'the throw gesture released the whole bundle');

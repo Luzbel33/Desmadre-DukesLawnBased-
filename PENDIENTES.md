@@ -18,13 +18,11 @@ Fuente única de trabajo pendiente.
 
 - [ ] Música en todo el Búnker (hoy solo suena en el club): más cabinas/pantallas de DJ con música en las salas.
 - [ ] Baile de caño con sentido, sensual y prolijo (hoy se ve random y mal): transiciones suaves, al ritmo, sin poses raras.
-- [ ] La bruja de las pociones: poder elegir el tipo de poción (hoy solo una).
 - [ ] Más objetos en el Búnker y más NPC en las pistas de baile.
 - [ ] Laberinto: pasar a un laberinto normal más elaborado, con sustos (jumpscares) y un tesoro con premio al azar
       (objetos únicos).
 - [ ] Sala psicodélica más grande y con más variedad: visuales, ilusiones, cuadros de arte psicodélico libre.
 - [ ] Sonidos de fumar (inhalar, exhalar, tos) y de tomar (trago, "ahh" refrescante, a veces eructo).
-- [ ] Billetes: una opción tira DE A UNO, la otra tira todos o varios seguidos (hoy siempre la misma cantidad).
 - [ ] Reemplazar las rampas por un circuito de carreras con autos de carrera, partes tipo Guts and Glory con
       obstáculos mortales, y MOTOS.
 - [ ] Menú de admin (mejor forma de activarlo que el nombre SmokePyro): spawnear cualquier objeto, limpiar/borrar

@@ -45,6 +45,7 @@ const PART_DMG = [0.9, 1, 1.7, 0.45, 0.35, 0.45, 0.35, 0.55, 0.4, 0.55, 0.4];
 const PLAYER_DMG_K = 0.6;
 // cosa en la mano -> modelo que se ve (equipment.js); 4 = mano libre
 export const CASH_BUNDLES = 10;
+export const CASH_PER_BUNDLE = 25; // billetes por fajo
 const KICK_SPEED = 6.5; // m/s con que cuenta una patada que toca en su ventana de golpe
 export const ITEM_EQ = { beer: 1, smoke: 2, spray: 3, cash: 5, pistol: 6, grenade: 7, potion: 8, chori: 9, apple: 10, ...Object.fromEntries(Object.entries(CONSUMABLES).map(([k, c]) => [k, c.slot])) };
 // la parte de la que cuelga cada una (un antebrazo ya no se corta si se fue el brazo entero)
@@ -1582,7 +1583,7 @@ export class LocalPlayer {
     if (h.joint) this.release(side, false);
     h.item = item;
     h.bites = 0;
-    h.fajos = item === 'cash' ? CASH_BUNDLES : 0; // la plata: fajos que te quedan (click izq. uno, der. todos)
+    h.bills = item === 'cash' ? CASH_BUNDLES * CASH_PER_BUNDLE : 0; // la plata: billetes que te quedan (10 fajos)
     h.itemGeneration = (h.itemGeneration || 0) + 1;
   }
 
@@ -2251,7 +2252,7 @@ export class LocalPlayer {
       this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
       if (active && this.coyote > 0 && this.jumpBuffer > 0 && st === 'active' && !mo.dive) {
         mo.slideT = 0;
-        this.vy = 5.6; this.grounded = false; this.coyote = 0; this.jumpBuffer = 0;
+        this.vy = (this.jumpBoostT > 0 ? 9.4 : 5.6); this.grounded = false; this.coyote = 0; this.jumpBuffer = 0; // poción de salto: más alto
       }
       this.vy = Math.max(-22, this.vy - 15.5 * dt);
       // peso: el cuerpo se inclina al acelerar/frenar y hacia adentro al girar
@@ -2295,7 +2296,7 @@ export class LocalPlayer {
         // corriendo se amortigua con las piernas y sigue (antes se doblaba entero y parecía un tropezón)
         if (!wasGrounded && this.fallPeak < -2.5) this.landV += Math.min(6.5, -this.fallPeak * 0.9) * (this.speed > 4.5 ? 0.45 : 1);
         // caída fuerte: aturde o desmaya
-        if (!wasGrounded && this.fallPeak < -11) {
+        if (!wasGrounded && this.fallPeak < (this.jumpBoostT > 0 ? -15 : -11)) {
           const sev = (-this.fallPeak - 11) / 5;
           this.damage(sev * 25);
           if (!this.dead) this._vocal(sev > 0.6 ? 'scream' : 'hurt');
@@ -2529,6 +2530,7 @@ export class LocalPlayer {
     this.shroom = Math.max(0, (this.shroom || 0) - dt * 0.01);
     this.keta = Math.max(0, (this.keta || 0) - dt * 0.03);
     this.dmt = Math.max(0, (this.dmt || 0) - dt * 0.08);
+    this.jumpBoostT = Math.max(0, (this.jumpBoostT || 0) - dt);
     this.headYaw = clamp(angleDiff(this.yaw, this.viewYaw), -1.35, 1.35);
     // animación objetivo
     const rigAction = ['drink-arm', 'headbutt', 'eat'].includes(this.action) ? null : this.action;

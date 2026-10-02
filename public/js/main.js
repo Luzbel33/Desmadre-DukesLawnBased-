@@ -16,7 +16,7 @@ import { setMaxAniso } from './world/textures.js';
 import { installFarShadowChunk } from './world/shadows.js';
 import { Post } from './fx/post.js';
 import { FX, Decals } from './fx/particles.js';
-import { LocalPlayer, RemotePlayer, predictHit, CASH_BUNDLES } from './game/player.js';
+import { LocalPlayer, RemotePlayer, predictHit, CASH_BUNDLES, CASH_PER_BUNDLE } from './game/player.js';
 import { VehicleManager } from './game/entities.js';
 import { PropManager, defOf } from './game/props.js';
 import { releaseEquipped } from './game/held-release.js';
@@ -547,7 +547,7 @@ function updatePrompt() {
     if (it === 'beer') H.hint('beer', 'Click', 'Tomar');
     else if (it === 'smoke') H.hint('smoke', 'Click', 'Pitar');
     else if (it === 'spray') H.hint('spray', 'Click', `Pintar (sostenido) · ${keys.label('palette')} colores`);
-    else if (it === 'cash') H.hint('cash', 'Click', `Tirar un fajo · click der.: agarrar y tirar todo (${L.hands.r.fajos ?? CASH_BUNDLES})`);
+    else if (it === 'cash') H.hint('cash', 'Click', `Un billete (mantené: seguidos) · click der.: un fajo entero (mantené: fajos) · $${((L.hands.r.bills ?? CASH_BUNDLES * CASH_PER_BUNDLE) * 100).toLocaleString('es-AR')}`);
     else if (it === 'pistol') H.hint('pistol', 'Click', 'Disparar');
     else if (it === 'grenade') H.hint('grenade', 'Click', 'Revolear la granada (explota a los 3 s)');
     else if (it === 'potion') H.hint('potion', 'Click', 'Tomarse la poción (vaya uno a saber qué hace)');
@@ -980,6 +980,10 @@ function consume(L, hand, item, generation, stillHeld) {
       G.fx?.sparks(m, d, 14); G.fx?.puff(m, d, 1.2, 0xff6a20);
       bigMessage('🔥', 'Te quema hasta el alma', 1400);
     }
+    if (fx.heal) P.heal(fx.heal, { blood: 40, stopBleed: true });
+    if (fx.speed) P.speedHigh = Math.max(P.speedHigh || 0, fx.speed);
+    if (fx.jump) P.jumpBoostT = Math.max(P.jumpBoostT || 0, fx.jump);
+    if (fx.msg) bigMessage(fx.msg[0], fx.msg[1], 1800);
     if (fx.later) setTimeout(() => { const Q = state.local; if (!Q) return; Q.high = clamp(Q.high + fx.later.high, 0, 1.6); bigMessage('🍫', 'El brownie pegó', 1800); }, fx.later.s * 1000);
     hand.bites = (hand.bites || 0) + 1;
     if (hand.bites >= C.uses) { hand.item = null; hand.bites = 0; hand.itemGeneration = generation + 1; updateHotbar(); }
@@ -993,10 +997,12 @@ function throwCashFrom(side, all) {
   const L = state.local;
   const cs = L?.hands.r.item === 'cash' ? 'r' : L?.hands.l.item === 'cash' ? 'l' : null;
   if (!cs) return;
-  const h = L.hands[cs], left = h.fajos ?? CASH_BUNDLES, n = all ? left : 1;
+  // 'all' (la mano libre) = un fajo entero; si no, un billete
+  const h = L.hands[cs], left = h.bills ?? CASH_BUNDLES * CASH_PER_BUNDLE, n = Math.min(left, all ? CASH_PER_BUNDLE : 1);
+  if (n <= 0) return;
   G.items?.throwCash(L, n, side);
-  h.fajos = left - n;
-  if (h.fajos <= 0) { h.item = null; h.fajos = 0; h.itemGeneration = (h.itemGeneration || 0) + 1; G.hud?.notify('💸 Te quedaste seco. Hay más dólares al lado del trono.', 2200); }
+  h.bills = left - n;
+  if (h.bills <= 0) { h.item = null; h.bills = 0; h.itemGeneration = (h.itemGeneration || 0) + 1; G.hud?.notify('💸 Te quedaste seco. Hay más dólares al lado del trono.', 2200); }
   updateHotbar();
 }
 
@@ -1072,7 +1078,7 @@ function handleEvent(m) {
       G.club?.remote(m);
       break;
     case 'cash': // otro tiró billetes
-      if (Array.isArray(m.o) && Array.isArray(m.d)) G.items?.cash(new THREE.Vector3().fromArray(m.o), new THREE.Vector3().fromArray(m.d), clamp(+m.n || 1, 1, 20));
+      if (Array.isArray(m.o) && Array.isArray(m.d)) G.items?.cash(new THREE.Vector3().fromArray(m.o), new THREE.Vector3().fromArray(m.d), clamp(+m.n || 1, 1, 30));
       break;
     case 'shot': // otro disparó (el daño llega aparte, como un golpe: 'hc')
       G.items?.remoteShot(m);
@@ -1739,8 +1745,17 @@ function updateInput(dt) {
   // brazos: click corto = usar / piña; sostenido = controlar el brazo con el mouse (parado o sentado)
   const now = performance.now();
   state.press = state.press || { l: 0, r: 0 };
+  // con plata en la mano, sostener el click tira seguido: billetes de a uno (mano de la plata) o fajos (la otra)
+  const cashSide = L.hands.r.item === 'cash' ? 'r' : L.hands.l.item === 'cash' ? 'l' : null;
+  const cashStream = (side) => cashSide && !driving && !down && (side === cashSide || (!L.hands[side].item && !L.hands[side].prop && !L.hands[side].joint));
   for (const [btn, side] of [[0, 'r'], [2, 'l']]) {
     if (down || L.combatBlocked) { L.armControl(side, false); state.press[side] = -1e9; continue; }
+    if (inp.btnHit(btn)) state.press[side] = now;
+    if (cashStream(side) && inp.btn(btn) && now - state.press[side] > 170) {
+      state.cashT = (state.cashT ?? 0) - dt;
+      if (state.cashT <= 0) { state.cashT = side === cashSide ? 0.1 : 0.42; throwCashFrom(side, side !== cashSide); updateHotbar(); }
+      continue;
+    }
     if (side === 'r' && painting) { L.armControl('r', inp.btn(0) && !driving); continue; }
     if (inp.btnHit(btn)) state.press[side] = now;
     if (bothHeld) { L.armControl(side, false); state.press[side] = -1e9; continue; } // la guardia no dispara piñas al soltar

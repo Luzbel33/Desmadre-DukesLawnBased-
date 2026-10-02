@@ -26,7 +26,13 @@ export const SHOPS = {
   },
   potions: {
     title: 'Pociones de la Bruja Morgana', vendor: 'bruja',
-    items: [{ id: 'potion', icon: '🧪', name: 'Poción misteriosa', desc: 'Nadie sabe qué hace. Ni ella.' }],
+    items: [
+      { id: 'pocion_vida', icon: '❤️', name: 'Poción de vida', desc: 'Roja. Te cura casi todo.' },
+      { id: 'pocion_liebre', icon: '🐇', name: 'Poción de liebre', desc: 'Verde agua. Corrés el doble un rato.' },
+      { id: 'pocion_salto', icon: '🦘', name: 'Poción de salto', desc: 'Azul. Saltás como un canguro.' },
+      { id: 'pocion_colores', icon: '🌈', name: 'Poción de colores', desc: 'Rosa. Todo brilla.' },
+      { id: 'potion', icon: '🧪', name: 'Poción misteriosa', desc: 'Nadie sabe qué hace. Ni ella.' },
+    ],
     hello: ['Acercate, corazón... ¿una pocioncita?', 'Tengo lo que necesitás. Y lo que no.', '¡Fresquitas, recién hervidas!'],
     sold: ['Tomala de un trago. No mires el fondo.', 'Si te salen escamas, no es culpa mía.', 'Je je je... salud.'],
   },

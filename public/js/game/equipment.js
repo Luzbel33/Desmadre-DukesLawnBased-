@@ -67,9 +67,10 @@ export function createEquippedModel(slot){
     const lever=mesh(new THREE.BoxGeometry(.012,.06,.006),metal,.018,.05,0);lever.rotation.z=-.25;group.add(lever);
     const ring=mesh(new THREE.TorusGeometry(.012,.002,6,16),metal,-.018,.078,0);ring.rotation.y=Math.PI/2;group.add(ring);
   }
-  if(slot===8){
-    // poción de la bruja: frasco redondo de vidrio con líquido que brilla, corcho y etiqueta de papel
-    const liquid=new THREE.MeshStandardMaterial({color:0x2aff70,emissive:0x19ff5a,emissiveIntensity:1.4,roughness:.2,transparent:true,opacity:.9});
+  if(slot===8||(slot>=20&&slot<=23)){
+    // poción de la bruja: frasco redondo de vidrio con líquido que brilla, corcho y etiqueta de papel (el color dice cuál es)
+    const lc=[0x2aff70,0xff2a3a,0x2affb0,0x3a8cff,0xff3ad8][slot===8?0:slot-19];
+    const liquid=new THREE.MeshStandardMaterial({color:lc,emissive:lc,emissiveIntensity:1.2,roughness:.2,transparent:true,opacity:.9});
     const glass=new THREE.MeshPhysicalMaterial({color:0xcfe8dc,roughness:.05,metalness:0,transparent:true,opacity:.35,clearcoat:1,depthWrite:false});
     const ball=mesh(new THREE.SphereGeometry(.045,20,14),glass,0,.0,0);group.add(ball);
     const fill=mesh(new THREE.SphereGeometry(.041,18,12,0,Math.PI*2,Math.PI*.3,Math.PI*.7),liquid,0,0,0);fill.name='liquid';group.add(fill);

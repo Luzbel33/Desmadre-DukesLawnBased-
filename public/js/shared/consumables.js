@@ -15,6 +15,11 @@ export const CONSUMABLES = {
   pipe: { slot: 17, kind: 'smoke', uses: 4, label: 'Pipa', icon: '💨', fx: { high: 0.06 }, puff: 1.2 },
   bong: { slot: 18, kind: 'smoke', uses: 2, label: 'Bong', icon: '🫧', fx: { high: 0.42, cough: 1, shake: 0.4 }, puff: 3 },
   brownie: { slot: 19, kind: 'eat', uses: 2, label: 'Brownie', icon: '🍫', fx: { later: { high: 0.32, s: 9 } } },
+  // ---------------------------------------------------------------- las pociones de la Bruja Morgana (se toman de un trago)
+  pocion_vida: { slot: 20, kind: 'drink', uses: 1, label: 'Poción de vida', icon: '❤️', color: 0xff2a3a, fx: { heal: 60, msg: ['+ VIDA', 'Sabe a remedio de la abuela'] } },
+  pocion_liebre: { slot: 21, kind: 'drink', uses: 1, label: 'Poción de liebre', icon: '🐇', color: 0x2affb0, fx: { speed: 1.2, msg: ['¡PATAS DE LIEBRE!', 'Corrés como si te persiguiera el Diablo'] } },
+  pocion_salto: { slot: 22, kind: 'drink', uses: 1, label: 'Poción de salto', icon: '🦘', color: 0x3a8cff, fx: { jump: 30, msg: ['¡BOING!', 'Saltás como un canguro un rato'] } },
+  pocion_colores: { slot: 23, kind: 'drink', uses: 1, label: 'Poción de colores', icon: '🌈', color: 0xff3ad8, fx: { pill: 1, msg: ['TODO BRILLA', 'La poción era de colores'] } },
 };
 export const consumable = (item) => (Object.hasOwn(CONSUMABLES, item) ? CONSUMABLES[item] : null);
 export const SLOT_KIND = Object.fromEntries(Object.values(CONSUMABLES).map((c) => [c.slot, c.kind]));

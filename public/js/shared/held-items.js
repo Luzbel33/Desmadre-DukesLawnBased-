@@ -19,6 +19,10 @@ export const HELD_ITEMS = {
   pipe: { slot: 17, shape: 'box', hx: .02, hy: .028, hz: .06, oy: .01, mass: .08, label: 'pipa' },
   bong: { slot: 18, shape: 'cyl', r: .056, h: .32, oy: .05, mass: .9, breakDv: 6, label: 'bong' },
   brownie: { slot: 19, shape: 'box', hx: .035, hy: .019, hz: .033, oy: 0, mass: .06, harmless: true, label: 'brownie' },
+  pocion_vida: { slot: 20, shape: 'ball', r: .07, oy: 0, mass: .28, breakDv: 7, glass: 0xff2a3a, label: 'poción de vida' },
+  pocion_liebre: { slot: 21, shape: 'ball', r: .07, oy: 0, mass: .28, breakDv: 7, glass: 0x2affb0, label: 'poción de liebre' },
+  pocion_salto: { slot: 22, shape: 'ball', r: .07, oy: 0, mass: .28, breakDv: 7, glass: 0x3a8cff, label: 'poción de salto' },
+  pocion_colores: { slot: 23, shape: 'ball', r: .07, oy: 0, mass: .28, breakDv: 7, glass: 0xff3ad8, label: 'poción de colores' },
 };
 export const heldType = item => Object.hasOwn(HELD_ITEMS, item) ? 'held_' + item : null;
 export const HELD_PROP_DEFS = Object.fromEntries(Object.entries(HELD_ITEMS).map(([item, d]) => [heldType(item), { ...d, item, kind: 'blunt', grip: [0, 0, 0] }]));
