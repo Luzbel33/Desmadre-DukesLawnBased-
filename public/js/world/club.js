@@ -12,7 +12,7 @@ import { whenAsset, assetModel } from '../game/assets.js';
 import { billTexture } from '../game/equipment.js';
 import { loadAssetsLater } from '../game/assets.js';
 import { BUNKER_MANIFEST } from '../game/asset-manifest.js';
-import { ClubWings, HALL_DOORS, MIRROR_LAYER } from './club-wings.js';
+import { ClubWings, HALL_DOORS } from './club-wings.js';
 import { Smoke } from '../fx/flame.js';
 
 const HAS_DOM = typeof document !== 'undefined';
@@ -168,8 +168,7 @@ export class Club {
     this._smoke();
     this.wings = new ClubWings(this).build();
     const meshes = this.b.finish(this.group);
-    // la estructura (muros, pisos, techos de todo el Búnker) también se ve en los espejos del laberinto
-    for (const m of meshes) { m.userData.club = true; m.layers.enable(MIRROR_LAYER); }
+    for (const m of meshes) m.userData.club = true;
     if (HAS_DOM) {
       this._led();
       this._beams();

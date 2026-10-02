@@ -32,7 +32,6 @@ export const HALL_DOORS = {
   east: [[-476.2, -473.8, 0, 3]], // arsenal (en z)
   west: [[-472.2, -469.8, 0, 3]], // sala psicodélica (en z)
 };
-export const MIRROR_LAYER = 7; // lo que se ve en los espejos del laberinto (CubeCamera)
 const V3 = new THREE.Vector3(), V4 = new THREE.Vector3();
 // espejo deformante (Reflector con las coordenadas de la reflexión torcidas): 0 ondas, 1 panza, 2 estirado
 const FUNHOUSE = {
@@ -100,7 +99,6 @@ export class ClubWings {
     this._wing('arsenal', () => this._arsenal());
     this._wing('psico', () => this._psico());
     this._wing('maze', () => this._maze());
-    this._mirrorLayers();
     return this;
   }
 
@@ -913,12 +911,16 @@ export class ClubWings {
   _westShell() {
     const c = this.c, ps = W.psico, mz = W.maze;
     c.deco('black', (ps.x0 + ps.x1) / 2, 0.015, (ps.z0 + ps.z1) / 2, ps.x1 - ps.x0, 0.03, ps.z1 - ps.z0);
-    c.deco('blackTile', (mz.x0 + mz.x1) / 2, 0.02, (mz.z0 + mz.z1) / 2, mz.x1 - mz.x0, 0.04, mz.z1 - mz.z0);
+    c.deco('flagstone', (mz.x0 + mz.x1) / 2, 0.02, (mz.z0 + mz.z1) / 2, mz.x1 - mz.x0, 0.04, mz.z1 - mz.z0);
     c.deco('black', (ps.x0 + ps.x1) / 2, ps.h + 0.15, (ps.z0 + ps.z1) / 2, ps.x1 - ps.x0 + 0.4, 0.3, ps.z1 - ps.z0 + 0.4);
     c.deco('black', (mz.x0 + mz.x1) / 2, mz.h + 0.15, (mz.z0 + mz.z1) / 2, mz.x1 - mz.x0 + 0.4, 0.3, mz.z1 - mz.z0 + 0.4);
-    c.wallZ('bunkerBrick', ps.x0 - WT / 2, mz.z1 + 0.4, ps.z0 - 0.4, ps.h + 0.3); // oeste de las dos
-    c.wallX('bunkerBrick', mz.x0 - WT, mz.x1, mz.z1 + 0.2, mz.h + 0.3); // sur del laberinto
-    c.wallX('bunkerBrick', ps.x0, ps.x1, ps.z1, ps.h + 0.3, [[-37.2, -34.8, 0, 2.8]]); // entre las dos, con puerta
+    c.wallZ('bunkerBrick', ps.x0 - WT / 2, ps.z1 + 0.2, ps.z0 - 0.4, ps.h + 0.3); // oeste de la psicodélica
+    // entre la psicodélica y el laberinto, con la puerta (y el muro sigue al oeste, sobre el laberinto)
+    c.wallX('cryptBrick', mz.x0 - WT, ps.x1, ps.z1, ps.h + 0.3, [[-37.2, -34.8, 0, 2.8]]);
+    // el laberinto: oeste, sur y este
+    c.wallZ('cryptBrick', mz.x0 - WT / 2, mz.z1 + 0.4, ps.z1, mz.h + 0.3);
+    c.wallX('cryptBrick', mz.x0 - WT, mz.x1 + WT, mz.z1 + 0.2, mz.h + 0.3);
+    c.wallZ('cryptBrick', mz.x1 + WT / 2, mz.z1 + 0.4, ps.z1, mz.h + 0.3);
     // la puerta desde el club (lado del club): neón que respira
     this.neon('LA MENTE', { font: 'Metal Mania', px: 130, color: '#c050ff' }, 2.8, 0.7, H.x0 + 0.03, 3.75, -471, Math.PI / 2);
     for (const s of [-1, 1]) c.deco('neonPurple', H.x0 + 0.03, 1.5, -471 + s * 1.26, 0.04, 3.0, 0.05);
@@ -989,6 +991,23 @@ export class ClubWings {
       this.mesh(new THREE.CircleGeometry(1.5, 48), this._spiralMat(), -36, 2.6, ps.z0 + 0.06);
     }
     this.neon('volá alto', { font: 'Metal Mania', px: 110, color: '#30e8ff' }, 3.2, 0.8, -36, 4.45, ps.z0 + 0.07);
+    // tres espejos deformantes de verdad en la pared oeste (te ves con panza, finito u ondulado)
+    this.funhouse = [];
+    if (HAS_DOM) {
+      [-461.5, -457.5, -453.5].forEach((z, k) => {
+        const x = ps.x0 + 0.07;
+        this.deco('gold', x - 0.01, 1.55, z, 0.04, 2.9, 2.0);
+        const m = new Reflector(new THREE.PlaneGeometry(1.8, 2.7), { textureWidth: 512, textureHeight: 768, clipBias: 0.003, color: 0xe8eef4, multisample: 0, shader: FUNHOUSE });
+        m.position.set(x + 0.02, 1.55, z); m.rotation.y = Math.PI / 2;
+        m.material.uniforms.uMode.value = k;
+        m.visible = false;
+        // en primera persona tu cabeza está oculta: en el espejo se tiene que ver
+        const orig = m.onBeforeRender;
+        m.onBeforeRender = (r, sc, cam) => { const ch2 = G.me?.char, hv = ch2?.headVisible; if (ch2 && !hv) ch2.setVisibleHead(true); orig.call(m, r, sc, cam); if (ch2 && !hv) ch2.setVisibleHead(false); };
+        this.c.group.add(m);
+        this.funhouse.push(m);
+      });
+    }
     // La Chamana: atiende en un puesto con telas, velas y frascos (sus cosas pegan distinto: game/club.js _drug)
     this.anchors.shaman = new THREE.Vector3(-30.5, 0, ps.z0 + 1.35);
     this.box('blackWood', -30.5, 0.45, ps.z0 + 2.2, 2.4, 0.9, 0.7);
@@ -1097,22 +1116,16 @@ export class ClubWings {
     return m;
   }
 
-  // ---------------------------------------------------------------- laberinto de espejos
+  // ---------------------------------------------------------------- el laberinto del terror
+  // Un laberinto de verdad (búsqueda en profundidad con semilla: siempre el mismo) con algunos rulos para que haya más
+  // de un camino, pasillos angostos de cripta, techo bajo, luces que titilan, niebla al ras, huesos, velas y cadenas.
+  // El cofre está en la celda más lejana de la entrada; los sustos (game/maze.js) en celdas del camino y callejones.
   _maze() {
-    const mz = W.maze, cols = 9, rows = 5, cw = (mz.x1 - mz.x0) / cols, ch = (mz.z1 - mz.z0) / rows, wh = 3.0;
-    // espejos de las paredes: reflejan un cubo que se renderiza a baja resolución y solo con alguien adentro
-    if (HAS_DOM) {
-      this.cubeRT = new THREE.WebGLCubeRenderTarget(128);
-      this.cubeCam = new THREE.CubeCamera(0.1, 30, this.cubeRT);
-      this.cubeCam.position.set((mz.x0 + mz.x1) / 2, 1.6, (mz.z0 + mz.z1) / 2);
-      this.cubeCam.layers.set(MIRROR_LAYER);
-      this.c.group.add(this.cubeCam);
-      defineMat('mazeMirror', new THREE.MeshStandardMaterial({ color: 0xd8e4ee, metalness: 1, roughness: 0.04, envMap: this.cubeRT.texture, envMapIntensity: 1.25, normalMap: this._waveNormal(), normalScale: new THREE.Vector2(0.35, 0.35) }));
-    } else defineMat('mazeMirror', new THREE.MeshStandardMaterial({ color: 0xd8e4ee, metalness: 1, roughness: 0.04 }));
-    // laberinto: búsqueda en profundidad con semilla (siempre el mismo), entrada al norte en el medio, y unos atajos
-    const rr = rng(1979), east = [], south = [];
+    const mz = W.maze, r = this.rand, cols = 14, rows = 13, cw = (mz.x1 - mz.x0) / cols, ch = (mz.z1 - mz.z0) / rows, wh = mz.h;
+    const rr = rng(6661), east = [], south = [];
     for (let i = 0; i < cols; i++) { east.push(new Array(rows).fill(true)); south.push(new Array(rows).fill(true)); }
-    const seen = new Set(), stack = [[4, 0]]; seen.add('4,0');
+    const start = [Math.floor((-36 - mz.x0) / cw), 0];
+    const seen = new Set([start.join()]), stack = [start];
     while (stack.length) {
       const [i, j] = stack[stack.length - 1];
       const nb = [[i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]].filter(([a, b]) => a >= 0 && b >= 0 && a < cols && b < rows && !seen.has(a + ',' + b));
@@ -1121,91 +1134,91 @@ export class ClubWings {
       if (a !== i) east[Math.min(a, i)][j] = false; else south[i][Math.min(b, j)] = false;
       seen.add(a + ',' + b); stack.push([a, b]);
     }
-    for (let k = 0; k < 6; k++) { const i = Math.floor(rr() * (cols - 1)), j = Math.floor(rr() * rows); east[i][j] = false; }
+    // rulos: se abren algunos muros sueltos (varios caminos, menos callejones)
+    for (let k = 0; k < 16; k++) {
+      const i = Math.floor(rr() * cols), j = Math.floor(rr() * rows);
+      if (rr() < 0.5 && i < cols - 1) east[i][j] = false; else if (j < rows - 1) south[i][j] = false;
+    }
+    // distancias desde la entrada (para el cofre y los sustos)
+    const open = (i, j, a, b) => a === i ? !south[i][Math.min(j, b)] : !east[Math.min(i, a)][j];
+    const dist = new Map([[start.join(), 0]]), q = [start];
+    while (q.length) {
+      const [i, j] = q.shift(), d = dist.get(i + ',' + j);
+      for (const [a, b] of [[i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]]) {
+        if (a < 0 || b < 0 || a >= cols || b >= rows || dist.has(a + ',' + b) || !open(i, j, a, b)) continue;
+        dist.set(a + ',' + b, d + 1); q.push([a, b]);
+      }
+    }
+    let far = start, fd = 0;
+    for (const [k, d] of dist) if (d > fd) { fd = d; far = k.split(',').map(Number); }
+    // la sala del cofre: 2x2 abierta alrededor de la celda más lejana
+    const ti = Math.min(far[0], cols - 2), tj = Math.min(far[1], rows - 2);
+    east[ti][tj] = false; east[ti][tj + 1] = false; south[ti][tj] = false; south[ti + 1][tj] = false;
+    const cell = (i, j) => [mz.x0 + (i + 0.5) * cw, mz.z0 + (j + 0.5) * ch];
+    const deadEnds = [];
+    for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
+      const n = [[i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]].filter(([a, b]) => a >= 0 && b >= 0 && a < cols && b < rows && open(i, j, a, b)).length;
+      if (n === 1 && !(i === start[0] && j === start[1])) deadEnds.push([i, j]);
+    }
+    // muros de cripta con un zócalo húmedo
     const panel = (x, z, len, alongX) => {
-      this.box('mazeMirror', x, wh / 2, z, alongX ? len + 0.1 : 0.1, wh, alongX ? 0.1 : len + 0.1, { noShadow: true });
-      this.deco('neonCyan', x, wh + 0.02, z, alongX ? len : 0.05, 0.04, alongX ? 0.05 : len);
+      this.box('cryptBrick', x, wh / 2, z, alongX ? len + 0.3 : 0.3, wh, alongX ? 0.3 : len + 0.3);
+      this.deco('moldy', x, 0.2, z, alongX ? len + 0.32 : 0.32, 0.4, alongX ? 0.32 : len + 0.32);
     };
     for (let i = 0; i < cols - 1; i++) for (let j = 0; j < rows; j++) if (east[i][j]) panel(mz.x0 + (i + 1) * cw, mz.z0 + (j + 0.5) * ch, ch, false);
     for (let i = 0; i < cols; i++) for (let j = 0; j < rows - 1; j++) if (south[i][j]) panel(mz.x0 + (i + 0.5) * cw, mz.z0 + (j + 1) * ch, cw, true);
-    // forro espejado en las paredes del borde
-    this.deco('mazeMirror', mz.x0 + 0.04, wh / 2, (mz.z0 + mz.z1) / 2, 0.04, wh, mz.z1 - mz.z0);
-    this.deco('mazeMirror', mz.x1 - 0.04, wh / 2, (mz.z0 + mz.z1) / 2, 0.04, wh, mz.z1 - mz.z0);
-    this.deco('mazeMirror', (mz.x0 - 37.2) / 2, wh / 2, mz.z0 + 0.04, -37.2 - mz.x0, wh, 0.04);
-    this.deco('mazeMirror', (mz.x1 - 34.8) / 2, wh / 2, mz.z0 + 0.04, mz.x1 + 34.8, wh, 0.04);
-    this.deco('mazeMirror', (mz.x0 + mz.x1) / 2, wh / 2, mz.z1 - 0.04, mz.x1 - mz.x0, wh, 0.04);
-    // al fondo, tres espejos deformantes de verdad (te ves con panza, finito u ondulado): solo uno se renderiza a la vez
-    this.funhouse = [];
-    if (HAS_DOM) {
-      [1, 4, 7].forEach((i, k) => {
-        const x = mz.x0 + (i + 0.5) * cw, z = mz.z1 - 0.07;
-        this.deco('gold', x, 1.55, z + 0.01, 2.0, 2.9, 0.04);
-        const m = new Reflector(new THREE.PlaneGeometry(1.8, 2.7), { textureWidth: 512, textureHeight: 768, clipBias: 0.003, color: 0xe8eef4, multisample: 0, shader: FUNHOUSE });
-        m.position.set(x, 1.55, z - 0.02); m.rotation.y = Math.PI;
-        m.material.uniforms.uMode.value = k;
-        m.visible = false;
-        // en primera persona tu cabeza está oculta: en el espejo se tiene que ver
-        const orig = m.onBeforeRender;
-        m.onBeforeRender = (r, s, cam) => { const ch2 = G.me?.char, hv = ch2?.headVisible; if (ch2 && !hv) ch2.setVisibleHead(true); orig.call(m, r, s, cam); if (ch2 && !hv) ch2.setVisibleHead(false); };
-        this.c.group.add(m);
-        this.funhouse.push(m);
-      });
-    }
-    // piso de damero (de feria) y una grilla de paneles de luz en el techo que los espejos multiplican
-    if (HAS_DOM) {
-      const cv = canvas(64, 64), g = cv.getContext('2d');
-      g.fillStyle = '#e8e8ec'; g.fillRect(0, 0, 64, 64); g.fillStyle = '#0b0b10'; g.fillRect(0, 0, 32, 32); g.fillRect(32, 32, 32, 32);
-      const tx = ctex(cv); tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.magFilter = THREE.NearestFilter;
-      const chk = defineMat('checker', new THREE.MeshStandardMaterial({ map: tx, roughness: 0.18, metalness: 0.1 }));
-      chk.userData.tileU = chk.userData.tileV = 1.2;
-      this.deco('checker', (mz.x0 + mz.x1) / 2, 0.045, (mz.z0 + mz.z1) / 2, mz.x1 - mz.x0, 0.01, mz.z1 - mz.z0);
-    }
-    for (let i = 0; i < 6; i++) for (let j = 0; j < 3; j++) this.deco('fluo', mz.x0 + (i + 0.5) * (mz.x1 - mz.x0) / 6, mz.h - 0.02, mz.z0 + (j + 0.5) * (mz.z1 - mz.z0) / 3, 0.9, 0.03, 0.9);
-    this.sign((g, w, h) => {
-      g.fillStyle = '#0a0a10'; g.fillRect(0, 0, w, h); g.fillStyle = '#30e8ff'; g.font = 'bold 54px "Courier New", monospace'; g.textAlign = 'center';
-      g.fillText('← SALIDA', w / 2, 70); g.font = '28px "Courier New", monospace'; g.fillStyle = '#ff3cc8'; g.fillText('(o no)', w / 2, 115);
-    }, 400, 140, 1.1, 0.38, mz.x0 + 0.1, 2.6, -452, Math.PI / 2);
-    this.light(-42, wh + 0.3, -457, 0xdff0ff, 14, 16, { priority: 1.2, decay: 1.0 });
-    this.light(-30, wh + 0.3, -455, 0xdff0ff, 14, 16, { priority: 1.2, decay: 1.0 });
-    this.light(-42, wh, -453, 0xff3cc8, 6, 10, { priority: 1.0, decay: 1.1 });
-    this.light(-30, wh, -461, 0x30e8ff, 6, 10, { priority: 1.0, decay: 1.1 });
+    // luces: pocas, cálidas y que titilan (alguna roja); en la sala del cofre, dorada
+    const lit = [[3, 2], [9, 3], [12, 6], [6, 6], [2, 9], [8, 10], [11, 11], [5, 12], [0, 4], [13, 1]];
+    lit.forEach(([i, j], k) => { const [x, z] = cell(i, j); this.light(x, wh - 0.25, z, k % 4 === 3 ? 0xff2a1a : 0xffa050, k % 4 === 3 ? 3 : 4, 7, { flicker: true, priority: 1.0, decay: 1.4 }); this.cyl('iron', x, wh - 0.12, z, 0.012, 0.012, 0.24, 4); this.cyl('warmBulb', x, wh - 0.27, z, 0.05, 0.05, 0.09, 8); });
+    // velas en los callejones, huesos y alguna calavera; cadenas que cuelgan
+    deadEnds.forEach(([i, j], k) => {
+      const [x, z] = cell(i, j);
+      if (k % 3 === 0) { this.cyl('wax', x + 0.6, 0.12, z + 0.5, 0.03, 0.035, 0.24, 8); this.world().flames?.add(x + 0.6, 0.27, z + 0.5, 0.025, 0.06); }
+      if (k % 4 === 1) this.model('c_skel_sit', x + (r() - 0.5) * 0.6, 0, z + (r() - 0.5) * 0.6, r() * 6);
+      if (k % 3 === 2) for (let b = 0; b < 4; b++) this.cyl('bone', x + (r() - 0.5) * 1.2, 0.05, z + (r() - 0.5) * 1.2, 0.025, 0.02, 0.3 + r() * 0.15, 6, { rx: Math.PI / 2, yaw: r() * 6 });
+    });
+    for (let k = 0; k < 14; k++) { const [x, z] = cell(Math.floor(r() * cols), Math.floor(r() * rows)), len = 0.6 + r() * 1.1; this.cyl('iron', x + (r() - 0.5), wh - len / 2, z + (r() - 0.5), 0.018, 0.018, len, 4); }
+    // la sala del cofre
+    const [cx, cz] = [mz.x0 + (ti + 1) * cw, mz.z0 + (tj + 1) * ch];
+    this.anchors.mazeChest = new THREE.Vector3(cx, 0, cz);
+    this.light(cx, wh - 0.3, cz, 0xffc040, 7, 6, { priority: 1.4, decay: 1.2 });
+    for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; this.cyl('wax', cx + Math.cos(a) * 1.3, 0.15, cz + Math.sin(a) * 1.3, 0.035, 0.04, 0.3, 8); this.world().flames?.add(cx + Math.cos(a) * 1.3, 0.33, cz + Math.sin(a) * 1.3, 0.03, 0.07); }
+    // los sustos: celdas del camino a distintas profundidades y algunos callejones (los usa game/maze.js)
+    const path = [], byD = [...dist.entries()].sort((a, b) => a[1] - b[1]);
+    for (const f of [0.15, 0.32, 0.5, 0.68, 0.85]) { const [k] = byD[Math.floor(f * (byD.length - 1))]; path.push(k.split(',').map(Number)); }
+    const de = deadEnds.filter(([i, j]) => (dist.get(i + ',' + j) || 0) > 6).slice(0, 3);
+    this.anchors.mazeScares = [...path, ...de].map(([i, j]) => new THREE.Vector3(...[cell(i, j)[0], 0, cell(i, j)[1]]));
+    this.anchors.mazeCell = { x0: mz.x0, z0: mz.z0, cw, ch, cols, rows };
+    // niebla al ras del piso
+    const fog = this.c.fog;
+    if (fog) for (const [i, j] of [[3, 3], [10, 3], [6, 8], [2, 11], [11, 10]]) { const [x, z] = cell(i, j); fog.add(x, 0.2, z, 5, { radius: 4, height: 0.5, opacity: 0.07, speed: 0.02 }); }
+    // carteles rayados en las paredes
+    const scrawl = (text, x, z, yaw) => this.sign((g, w, h) => {
+      g.clearRect(0, 0, w, h); g.fillStyle = '#7a0a0a'; g.font = 'bold 64px "Metal Mania", Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(text, w / 2, h / 2);
+      for (let k = 0; k < 9; k++) { const x0 = 40 + Math.random() * (w - 80); g.fillRect(x0, h / 2 + 18, 3, 20 + Math.random() * 50); }
+    }, 512, 160, 1.5, 0.47, x, 1.75, z, yaw);
+    const [ex] = cell(start[0], 0);
+    scrawl('no mires atrás', ex, mz.z0 + 0.17, 0);
+    const msgs = ['ya casi', 'te está siguiendo', 'SALIDA →', 'volvé', 'acá no'];
+    deadEnds.slice(0, msgs.length).forEach(([i, j], k) => {
+      const [x, z] = cell(i, j);
+      // contra la pared que cierra el callejón
+      const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([a, b]) => { const ni = i + a, nj = j + b; return ni >= 0 && nj >= 0 && ni < cols && nj < rows && open(i, j, ni, nj); });
+      if (!dirs.length) return;
+      const [a, b] = dirs[0];
+      scrawl(msgs[k], x - a * (cw / 2 - 0.17), z - b * (ch / 2 - 0.17), Math.atan2(a, b));
+    });
   }
-  _waveNormal() {
-    const cv = canvas(128, 128), g = cv.getContext('2d'), img = g.createImageData(128, 128);
-    for (let y = 0; y < 128; y++) for (let x = 0; x < 128; x++) {
-      const nx = Math.sin(x / 128 * Math.PI * 4) * 0.5 + Math.sin((x + y) / 128 * Math.PI * 2) * 0.25, ny = Math.cos(y / 128 * Math.PI * 2) * 0.35;
-      const i = (y * 128 + x) * 4; img.data[i] = 128 + nx * 120; img.data[i + 1] = 128 + ny * 120; img.data[i + 2] = 230; img.data[i + 3] = 255;
-    }
-    g.putImageData(img, 0, 0);
-    const t = ctex(cv, false); t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    return t;
-  }
-  // con la cámara en el laberinto: el cubo de los espejos se actualiza de a ratos y se prende el espejo deformante más
-  // cercano que se esté mirando (los otros quedan como espejo común)
+  // en la sala psicodélica se prende el espejo deformante más cercano que se esté mirando (uno solo se renderiza)
   _mirrors(t, camRoom) {
-    const cam = G.camera, inMaze = camRoom === WING_ROOM.maze;
-    // el laberinto es quieto: el cubo se rehace al entrar y después cada 3 s (a la gente la muestran los deformantes)
-    if (!inMaze) this._cubeT = -9;
-    if (this.cubeCam && inMaze && G.renderer && t - (this._cubeT ?? -9) > 3) {
-      this._cubeT = t;
-      // sin el cielo de fondo (el Búnker está bajo tierra: en los espejos se veían nubes)
-      // (la niebla se deja: sacarla recompilaría los materiales)
-      const bg = G.scene.background;
-      G.scene.background = null;
-      this.cubeCam.update(G.renderer, G.scene);
-      G.scene.background = bg;
-    }
+    const cam = G.camera, here = camRoom === WING_ROOM.psico;
     let best = null, bd = 11;
-    if (inMaze && cam) {
+    if (here && cam && this.funhouse) {
       const fwd = cam.getWorldDirection(V3);
       for (const m of this.funhouse) { const d = cam.position.distanceTo(m.position); if (d < bd && V4.subVectors(m.position, cam.position).dot(fwd) > 0) { bd = d; best = m; } }
     }
-    for (const m of this.funhouse) { m.visible = m === best; if (m === best) m.material.uniforms.uT.value = t % 1000; }
-  }
-  // capas: lo del laberinto y la sala psicodélica se ve en los espejos
-  _mirrorLayers() {
-    const mirror = getMat('mazeMirror');
-    for (const id of ['maze', 'psico']) this.wings.get(id)?.group.traverse((o) => { if (o.material !== mirror && !this.funhouse.includes(o)) o.layers.enable(MIRROR_LAYER); });
+    for (const m of this.funhouse || []) { m.visible = m === best; if (m === best) m.material.uniforms.uT.value = t % 1000; }
   }
 
   // ---------------------------------------------------------------- cada cuadro (lo llama Club.update cerca del Búnker)
@@ -1213,7 +1226,7 @@ export class ClubWings {
     if (camRoom) this.lastRoom = camRoom; // en el marco de una puerta (fuera de toda sala) se mantiene lo de antes
     const see = SEES[this.lastRoom] || [];
     // la sala psicodélica pega un poco (colores que laten en la pantalla) aunque no hayas tomado nada
-    const psy = this.lastRoom === WING_ROOM.psico ? 0.55 : this.lastRoom === WING_ROOM.maze ? 0.2 : 0;
+    const psy = this.lastRoom === WING_ROOM.psico ? 0.55 : 0;
     this.psy = (this.psy || 0) + (psy - (this.psy || 0)) * Math.min(1, dt * 1.2);
     this._mirrors(t, this.lastRoom);
     for (const [id, w] of this.wings) {

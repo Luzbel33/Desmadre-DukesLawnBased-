@@ -72,8 +72,8 @@ export const CLUB = {
     hell: { x0: -12, x1: 12, z0: -522, z1: -478.4, h: 12, deck: 4.5 }, // El Infierno: dos pisos (balcón en U a 4.5 m)
     vip: { x0: 12, x1: 36, z0: -500, z1: -478.4, h: 5 }, // la sala VIP de los caños
     arsenal: { x0: 24.4, x1: 46, z0: -478, z1: -456, h: 4.2 }, // búnker militar: pistolas y granadas
-    psico: { x0: -48, x1: -24.4, z0: -478, z1: -464, h: 5 }, // sala psicodélica
-    maze: { x0: -48, x1: -24.4, z0: -464, z1: -450, h: 3.6 }, // laberinto de espejos
+    psico: { x0: -48, x1: -24.4, z0: -478, z1: -450, h: 5 }, // sala psicodélica (con los espejos deformantes al sur)
+    maze: { x0: -58, x1: -26, z0: -449.8, z1: -420, h: 3.2 }, // el laberinto del terror (se entra por la psicodélica)
   },
   throne: { x: 17.6, z: -449.8, y: 0.62, yaw: -Math.PI / 2 - 0.55 }, // el trono del Diablo (sobre la tarima)
   // el pentagrama del Búnker (en el piso del club, a la vista del trono): adonde llega el ritual y desde donde el
