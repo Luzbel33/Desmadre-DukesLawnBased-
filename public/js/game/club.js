@@ -506,9 +506,9 @@ export class ClubGame {
       if (n.data.t <= 0 && !n.action) {
         n.data.t = 6 + Math.random() * 8;
         if (item === 2 || SLOT_KIND[item] === 'smoke') {
-          n.action = 'smoke'; n.actionT = 0; n.actionEnd = 1.4;
+          n.action = 'smoke'; n.actionT = 0; n.actionEnd = 1.4; n.habit('smoke');
           setTimeout(() => { if (n.char && !n.dead && n.scene.visible) G.fx?.puff(n.char.headWorld?.(V1) || n.pos, V2.set(Math.sin(n.yaw), 0.4, Math.cos(n.yaw)), 0.7, 0xb8b0a8); }, 1100);
-        } else { n.action = 'drink'; n.actionT = 0; n.actionEnd = 1.6; }
+        } else { n.action = 'drink'; n.actionT = 0; n.actionEnd = 1.6; n.habit('drink'); }
       }
       n.lookAt = this._near(n, 4);
     };

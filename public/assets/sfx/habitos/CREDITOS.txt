@@ -1,0 +1,29 @@
+Sonidos de fumar y tomar de DESMADRE (recortados, limpiados, nivelados y pasados a OGG).
+Todos en dominio público (CC0 1.0): se pueden usar sin pedir permiso ni dar crédito; igual los nombramos.
+
+pitada-1      "Cigarette Drag" — Storm_Crow — https://freesound.org/people/Storm_Crow/sounds/790482/
+pitada-2/3, exhalar-2/4
+              "Smoke Exhale Blow Humdrum" — petercornell — https://freesound.org/people/petercornell/sounds/837240/
+bong-1, exhalar-1
+              "Bong Rip Full" — rentless — https://freesound.org/people/rentless/sounds/553909/
+exhalar-3     "blowing_smoke_3.wav" — ivanmilic — https://freesound.org/people/ivanmilic/sounds/513854/
+tos-1/2/3     "Sound Effects Pack" (Human/cough1-3) — OwlishMedia — https://opengameart.org/content/sound-effects-pack
+tos-4         "smokers cough" — riippumattog — https://freesound.org/people/riippumattog/sounds/827098/
+tos-5         "smoker cough 2" — riippumattog — https://freesound.org/people/riippumattog/sounds/844521/
+tos-6         "Normal Coughing 2.wav" — killianm97 — https://freesound.org/people/killianm97/sounds/554231/
+sorbo-1       "Sound Effects Pack" (Human/drink-sip-and-swallow) — OwlishMedia (link de arriba)
+sorbo-2, ahh-m-1
+              "satisfying drink.wav" — Kiyoshiakira — https://freesound.org/people/Kiyoshiakira/sounds/436770/
+sorbo-3, trago-1/2/3
+              "Liquid Bottle Drink Set" (swallow-01..05) — qubodup — https://opengameart.org/content/liquid-bottle-drink-set
+trago-4       "Sound Effects Pack" (Impacts/gulp1) — OwlishMedia (link de arriba)
+ahh-m-2       "Drinking.wav" — craigglenday — https://freesound.org/people/craigglenday/sounds/517173/
+ahh-f1/f2/f3  "Female RPG Voice Starter Pack" (healed, Type 1-3) — Cici Fyre — https://opengameart.org/content/female-rpg-voice-starter-pack
+              (las mismas tres voces que los quejidos f1..f3 de assets/sfx/vo)
+eructo-m-1    "Human_Burp.wav" — lzmraul — https://freesound.org/people/lzmraul/sounds/389463/
+eructo-m-2    "belch1.mp3" — mattfinarelli — https://freesound.org/people/mattfinarelli/sounds/531558/
+eructo-m-3    "Big burp" — NyuSan — https://freesound.org/people/NyuSan/sounds/570619/
+eructo-m-4    "Burp 1" — kreha — https://freesound.org/people/kreha/sounds/840214/
+eructo-m-5    "A Great Big Burp" — Rayce88 — https://freesound.org/people/Rayce88/sounds/813244/
+eructo-f-1    "burp30.wav" — Reitanna — https://freesound.org/people/Reitanna/sounds/232453/
+eructo-f-2    "burp17.wav" — Reitanna — https://freesound.org/people/Reitanna/sounds/215352/

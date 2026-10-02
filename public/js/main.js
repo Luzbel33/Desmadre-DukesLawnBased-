@@ -65,6 +65,7 @@ import { RadialMenu } from './ui/radial.js';
 import { preloadHumans, MODELS, DEFAULT_MODEL } from './char/human.js';
 import { AudioEngine } from './audio/audio.js';
 import { voiceFor, voiceRate, vocalName } from './audio/vocals.js';
+import { playHabit, drinkPlan } from './audio/habits.js';
 import { YouTubeScreenManager } from './media/screens.js';
 import { youtubeId, mediaPosition } from './media/youtube.js';
 import { ZONES, zoneAt, isPvpAt, INTERACT, SCREENS, SCREEN_BY_ID, FIELD, STORM, CASTLE, MOON } from './shared/mapdata.js';
@@ -633,7 +634,8 @@ function interact() {
     if (it.k === 'media') return openMedia(it.screen);
     if (it.k === 'bong') {
       L.setAction('bong', 3.0);
-      setTimeout(() => { if (!state.local) return; state.local.high = clamp(state.local.high + 0.24, 0, 1.6); puffFrom(state.local, 1.8); G.sfx?.trigger('cough', null, 0.7); }, 1800);
+      habitSfx('bong', { c: Math.random() < 0.7 });
+      setTimeout(() => { if (!state.local) return; state.local.high = clamp(state.local.high + 0.24, 0, 1.6); puffFrom(state.local, 1.8); }, 1800);
       state.net.send({ t: 'ev', k: 'bong' });
       return;
     }
@@ -942,6 +944,18 @@ function throwPopcorn(side) {
   state.net?.send({ t: 'ev', k: 'pop', x: +pos.x.toFixed(2), y: +pos.y.toFixed(2), z: +pos.z.toFixed(2), dx: +dir.x.toFixed(2), dy: +dir.y.toFixed(2), dz: +dir.z.toFixed(2) });
 }
 
+// Fumar / tomar con sonido: el que lo hace decide (tos, "ahh", eructo) y avisa, así todos oyen lo mismo.
+// p = state.local (sin espacializar) o un remoto (suena donde está, con su voz)
+function habitSfx(kind, plan, p = state.local) {
+  if (!p) return;
+  const me = p === state.local, id = me ? G.myId : p.id;
+  playHabit(G.sfx, kind, plan, {
+    where: me ? () => null : () => tmpV.set(p.pos.x, p.pos.y + 1.5, p.pos.z),
+    voice: voiceFor(MODELS[p.look?.model] || MODELS[DEFAULT_MODEL], id), rate: voiceRate(id),
+  });
+  if (me) state.net.send({ t: 'ev', k: 'habit', h: kind, c: plan.c ? 1 : 0, ah: plan.ah ? 1 : 0, b: plan.b ? 1 : 0 });
+}
+
 // Voz de dolor de un jugador (cada uno con su voz y su tono). pos null = la mía (sin espacializar)
 function playVocal(kind, vi, look, id, pos) {
   const voice = voiceFor(MODELS[look?.model] || MODELS[DEFAULT_MODEL], id);
@@ -962,18 +976,17 @@ function hitFx(pos, amount = 0.5, dir = null) {
 function consume(L, hand, item, generation, stillHeld) {
   const C = consumable(item);
   if (!C) return;
-  if (C.kind === 'drink') G.sfx?.trigger('pickup', null, 0.25);
+  const fx = C.fx || {};
+  if (C.kind === 'drink') { G.sfx?.trigger('pickup', null, 0.25); habitSfx('drink', drinkPlan(item)); }
+  else if (C.kind === 'smoke') habitSfx(item === 'bong' ? 'bong' : 'smoke', { c: Math.random() < (fx.cough ?? 0.06) });
   setTimeout(() => {
     const P = state.local;
     if (P !== L || !stillHeld()) return;
-    const fx = C.fx || {};
-    if (C.kind === 'drink') { G.sfx?.trigger('gulp', null, 0.65); state.net.send({ t: 'ev', k: 'drink' }); }
-    else if (C.kind === 'smoke') { puffFrom(P, C.puff || 1); state.net.send({ t: 'ev', k: 'puff', a: C.puff || 1 }); }
-    else G.sfx?.trigger('munch', null, 0.6);
+    if (C.kind === 'smoke') { puffFrom(P, C.puff || 1); state.net.send({ t: 'ev', k: 'puff', a: C.puff || 1 }); }
+    else if (C.kind !== 'drink') G.sfx?.trigger('munch', null, 0.6);
     if (fx.drunk) P.drunk = clamp(P.drunk + fx.drunk, 0, 1.6);
     if (fx.high) P.high = clamp(P.high + fx.high, 0, 1.6);
     if (fx.pill) P.pill = Math.max(P.pill || 0, fx.pill);
-    if (fx.cough && Math.random() < fx.cough) setTimeout(() => G.sfx?.trigger('cough', null, 0.75), 450);
     if (fx.shake) state.shake = Math.max(state.shake || 0, fx.shake);
     if (fx.fire && P.char) {
       const m = P.char.mouthWorld(new THREE.Vector3()), d = new THREE.Vector3(Math.sin(P.yaw), 0.1, Math.cos(P.yaw));
@@ -987,7 +1000,7 @@ function consume(L, hand, item, generation, stillHeld) {
     if (fx.later) setTimeout(() => { const Q = state.local; if (!Q) return; Q.high = clamp(Q.high + fx.later.high, 0, 1.6); bigMessage('🍫', 'El brownie pegó', 1800); }, fx.later.s * 1000);
     hand.bites = (hand.bites || 0) + 1;
     if (hand.bites >= C.uses) { hand.item = null; hand.bites = 0; hand.itemGeneration = generation + 1; updateHotbar(); }
-  }, C.kind === 'drink' || item === 'bong' ? 750 : C.kind === 'smoke' ? 900 : 450);
+  }, item === 'bong' ? 1800 : C.kind === 'drink' ? 750 : C.kind === 'smoke' ? 900 : 450); // el bong: el humo sale cuando lo largás
 }
 
 // La plata, como los pochoclos: con la mano de los dólares (click izquierdo) sale un fajo; con la mano libre (derecho)
@@ -1013,13 +1026,13 @@ function doTap(side) {
   const stillHeld = () => state.local === L && !L.dead && hand.item === item && (hand.itemGeneration || 0) === generation;
   if (r === 'drink') {
     G.sfx?.trigger('pickup', null, 0.25);
+    habitSfx('drink', drinkPlan('beer'));
     setTimeout(() => {
       if (!state.local) return;
       state.local.drunk = clamp(state.local.drunk + 0.1, 0, 1.6);
-      G.sfx?.trigger('gulp', null, 0.6);
-      state.net.send({ t: 'ev', k: 'drink' });
     }, 650);
   } else if (r === 'smoke') {
+    habitSfx('smoke', { c: Math.random() < 0.08 });
     setTimeout(() => {
       if (!state.local) return;
       state.local.high = clamp(state.local.high + 0.1, 0, 1.6);
@@ -1030,10 +1043,10 @@ function doTap(side) {
     setTimeout(() => { state.local?.heal(3); G.sfx?.trigger('munch', null, 0.55); }, 450);
   } else if (r === 'potion') {
     // la poción de la bruja: un efecto al azar (y el frasco se termina)
+    habitSfx('drink', { ah: Math.random() < 0.4 ? 1 : 0, b: Math.random() < 0.12 ? 1 : 0 });
     setTimeout(() => {
       const P = state.local;
       if (!stillHeld()) return;
-      G.sfx?.trigger('gulp', null, 0.7);
       hand.item = null; hand.itemGeneration = generation + 1; updateHotbar();
       const fx = [
         () => { P.speedHigh = 1; bigMessage('¡PATAS DE LIEBRE!', 'Corrés como si te persiguiera el Diablo', 1800); },
@@ -1043,7 +1056,6 @@ function doTap(side) {
         () => { P.high = clamp(P.high + 0.5, 0, 1.6); bigMessage('MMMH...', 'Hierbas "medicinales"', 1600); },
       ];
       fx[Math.floor(Math.random() * fx.length)]();
-      state.net.send({ t: 'ev', k: 'drink' });
     }, 900);
   } else if (r === 'food') {
     setTimeout(() => {
@@ -1145,8 +1157,8 @@ function handleEvent(m) {
     case 'bong':
       if (rp) setTimeout(() => puffFrom(rp, 1.8), 1800);
       break;
-    case 'drink':
-      if (rp) G.sfx?.trigger('gulp', rp.pos, 0.5);
+    case 'habit': // fumó o tomó: pitada, humo, tos / sorbo, "ahh", eructo (lo decidió él)
+      if (rp && ['smoke', 'bong', 'drink'].includes(m.h)) habitSfx(m.h, { c: m.c, ah: m.ah, b: m.b }, rp);
       break;
     case 'crash':
       G.sfx?.trigger('hit', new THREE.Vector3(+m.x || 0, 0.6, +m.z || 0), 1);

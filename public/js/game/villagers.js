@@ -195,8 +195,8 @@ export class Villagers {
       d.sip = (d.sip ?? 3 + Math.random() * 6) - dt;
       if (d.sip <= 0 && !nn.action) {
         d.sip = 6 + Math.random() * 8;
-        if (nn.item === 1) { nn.action = 'drink'; nn.actionT = 0; nn.actionEnd = 1.6; }
-        else if (nn.item === 2) { nn.action = 'smoke'; nn.actionT = 0; nn.actionEnd = 1.4; setTimeout(() => { if (nn.char && !nn.dead) G.fx?.puff(nn.char.headWorld?.(V1) || nn.pos, V2.set(Math.sin(nn.yaw), 0.4, Math.cos(nn.yaw)), 0.6, 0xb8b0a8); }, 1100); }
+        if (nn.item === 1) { nn.action = 'drink'; nn.actionT = 0; nn.actionEnd = 1.6; nn.habit('drink'); }
+        else if (nn.item === 2) { nn.action = 'smoke'; nn.actionT = 0; nn.actionEnd = 1.4; nn.habit('smoke'); setTimeout(() => { if (nn.char && !nn.dead) G.fx?.puff(nn.char.headWorld?.(V1) || nn.pos, V2.set(Math.sin(nn.yaw), 0.4, Math.cos(nn.yaw)), 0.6, 0xb8b0a8); }, 1100); }
       }
       nn.lookAt = group === 'cinema' ? new THREE.Vector3(...SCREEN_BY_ID.cine.c) : d.partner && !d.partner.dead ? d.partner.pos : this._near(nn, 4);
     }, { item });
@@ -212,7 +212,7 @@ export class Villagers {
       if (p && Math.random() < dt * 0.3) npc.lookAt = p;
       if (npc.emote && npc.emoteT > 2) npc.emote = null;
       d.sip = (d.sip ?? 5 + Math.random() * 5) - dt;
-      if (npc.item === 1 && d.sip <= 0 && !npc.action) { d.sip = 7 + Math.random() * 6; npc.action = 'drink'; npc.actionT = 0; npc.actionEnd = 1.6; }
+      if (npc.item === 1 && d.sip <= 0 && !npc.action) { d.sip = 7 + Math.random() * 6; npc.action = 'drink'; npc.actionT = 0; npc.actionEnd = 1.6; npc.habit('drink'); }
     };
   }
   _guard(n, patrol = false) {

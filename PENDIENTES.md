@@ -22,7 +22,6 @@ Fuente única de trabajo pendiente.
 - [ ] Laberinto: pasar a un laberinto normal más elaborado, con sustos (jumpscares) y un tesoro con premio al azar
       (objetos únicos).
 - [ ] Sala psicodélica más grande y con más variedad: visuales, ilusiones, cuadros de arte psicodélico libre.
-- [ ] Sonidos de fumar (inhalar, exhalar, tos) y de tomar (trago, "ahh" refrescante, a veces eructo).
 - [ ] Reemplazar las rampas por un circuito de carreras con autos de carrera, partes tipo Guts and Glory con
       obstáculos mortales, y MOTOS.
 - [ ] Menú de admin (mejor forma de activarlo que el nombre SmokePyro): spawnear cualquier objeto, limpiar/borrar

@@ -14,7 +14,7 @@ function makeIR(c,secs=2.6,decay=2.2){
   }
   return b;
 }
-const ACTIONS={drink:'drink',smoke:'smoke',bong:'drink',eat:'drink',punchL:'swing',punchR:'swing',kick:'swing',swing:'swing',throw:'throw'};
+const ACTIONS={punchL:'swing',punchR:'swing',kick:'swing',swing:'swing',throw:'throw'}; // fumar y tomar: audio/habits.js
 // variantes sintetizadas por sonido (cada semilla da otra; los pájaros son "especies" distintas)
 const VARIANTS={birds:8};
 export class AudioEngine {

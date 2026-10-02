@@ -2,6 +2,7 @@
 // Nombre lógico -> variantes. Si falta un archivo, el motor usa el sonido procedural del mismo nombre.
 // Voces de dolor: grabaciones CC0 de OpenGameArt/Freesound (assets/sfx/vo/CREDITOS.txt).
 import { vocalManifest } from './vocals.js';
+import { habitManifest } from './habits.js';
 const A = 'assets/sfx/';
 const seq = (base, from, to, pad = 3) => Array.from({ length: to - from + 1 }, (_, i) => `${A}${base}${String(from + i).padStart(pad, '0')}.ogg`);
 const list = (...names) => names.map((n) => `${A}${n}.ogg`);
@@ -38,6 +39,8 @@ export const SFX_MANIFEST = {
   'ui-select': list('select_001', 'select_002', 'select_003'),
   door: list('doorOpen_1', 'doorOpen_2'),
   ...vocalManifest(),
+  // fumar y tomar: pitada, humo, tos, sorbo, trago, "ahh" y eructos (assets/sfx/habitos/CREDITOS.txt)
+  ...habitManifest(),
   'rain': castle('lluvia'),
   'rain-roof': castle('lluvia-techo'),
   'fire': castle('fuego'),

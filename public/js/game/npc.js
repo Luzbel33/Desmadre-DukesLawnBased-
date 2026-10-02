@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { G, clamp } from '../core/G.js';
 import { HumanCharacter, humansReady, loadHuman, loadMask, masksReady, MODELS } from '../char/human.js';
 import { voiceFor, voiceRate, vocalName } from '../audio/vocals.js';
+import { playHabit } from '../audio/habits.js';
 import { Ragdoll, PART } from './ragdoll.js';
 import { GR, RAPIER, groups } from '../core/physics.js';
 import { goreFor, branchOf } from './gore.js';
@@ -109,6 +110,14 @@ export class Npc {
     this.equip = null;
     this.crouch = false;
     this.prop = null; // algo que no es de equipment (la pala del sepulturero): Object3D pegado a la mano derecha
+  }
+
+  // fuma o toma con sonido (audio/habits.js): bajito, con su voz; a veces el "ahh", la tos o el eructo
+  habit(kind) {
+    if (!this.scene.visible || !G.sfx) return;
+    let id = 0; for (const ch of this.name) id = (id * 31 + ch.charCodeAt(0)) | 0;
+    const plan = kind === 'drink' ? { ah: Math.random() < 0.3, b: Math.random() < 0.06 } : { c: Math.random() < 0.08 };
+    playHabit(G.sfx, kind, plan, { where: () => V1.copy(this.pos).setY(this.pos.y + 1.4), voice: voiceFor(MODELS[this.look.model], id), rate: voiceRate(id), vol: 0.7, max: 11 });
   }
 
   // quejido / grito / muerte con la voz de su modelo (cada NPC la suya: el número sale del nombre)
