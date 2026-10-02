@@ -66,6 +66,39 @@ test('arranque: un fallo de compilación se informa sin quitar objetos del mapa'
   mesh.geometry.dispose(); mesh.material.dispose();
 });
 
+test('arranque incremental prepara solo lo nuevo y vuelve a preparar materiales modificados', async () => {
+  const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera();
+  const old = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial()); scene.add(old);
+  const compiled = [], renderer = { initTexture() {}, async compileAsync(batch) { compiled.push(...batch.children); } };
+  await prepareScene(renderer, scene, camera); compiled.length = 0;
+  const fresh = old.clone(); scene.add(fresh);
+  await prepareScene(renderer, scene, camera, undefined, { incremental: true });
+  assert.deepEqual(compiled, [fresh]); compiled.length = 0;
+  old.material.needsUpdate = true;
+  await prepareScene(renderer, scene, camera, undefined, { incremental: true });
+  assert.deepEqual(compiled, [old, fresh]); compiled.length = 0;
+  await prepareScene(renderer, scene, camera, undefined, { incremental: true });
+  assert.equal(compiled.length, 0);
+  scene.add(new THREE.PointLight());
+  await prepareScene(renderer, scene, camera, undefined, { incremental: true });
+  assert.deepEqual(compiled, [old, fresh]);
+  old.geometry.dispose(); old.material.dispose();
+});
+
+test('arranque incremental reintenta fallos y se invalida al restaurar WebGL', async () => {
+  const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera();
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial()); scene.add(mesh);
+  let restore, fail = true, count = 0;
+  const renderer = { domElement: { addEventListener(name, cb) { assert.equal(name, 'webglcontextrestored'); restore = cb; } },
+    initTexture() {}, async compileAsync() { count++; if (fail) throw new Error('GPU'); } };
+  await assert.rejects(prepareScene(renderer, scene, camera, undefined, { incremental: true }), /GPU/);
+  fail = false; await prepareScene(renderer, scene, camera, undefined, { incremental: true });
+  assert.equal(count, 2);
+  await prepareScene(renderer, scene, camera, undefined, { incremental: true }); assert.equal(count, 2);
+  restore(); await prepareScene(renderer, scene, camera, undefined, { incremental: true }); assert.equal(count, 3);
+  mesh.geometry.dispose(); mesh.material.dispose();
+});
+
 test('cortadora: un toque enciende, el eco viejo no apaga y corta quieta', async () => {
   const ph = new Physics(); await ph.init();
   const packets = [], stamps = [];

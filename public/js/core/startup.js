@@ -3,10 +3,32 @@ import * as THREE from 'three';
 // A timer yields even in a background tab, unlike requestAnimationFrame.
 export const yieldToBrowser = () => new Promise(resolve => setTimeout(resolve, 0));
 
-export async function prepareScene(renderer, scene, camera, onProgress = () => {}) {
+// Remember successful warmups only. Entry can skip unchanged world objects while
+// still preparing new room content, changed materials and restored WebGL contexts.
+const warmups = new WeakMap();
+export async function prepareScene(renderer, scene, camera, onProgress = () => {}, { incremental = false } = {}) {
+  let cache = warmups.get(renderer);
+  if (!cache) {
+    cache = { objects: new WeakMap(), scene: null, signature: '' }; warmups.set(renderer, cache);
+    renderer.domElement?.addEventListener('webglcontextrestored', () => { cache.objects = new WeakMap(); });
+  }
+  const lights = [];
+  scene.traverse(o => { if (o.isLight) lights.push(o.type + ':' + o.castShadow + ':' + o.visible); });
+  const signature = [scene.environment?.uuid, scene.fog?.isFogExp2, !!scene.fog,
+    renderer.toneMapping, renderer.outputColorSpace, renderer.shadowMap?.enabled,
+    renderer.shadowMap?.type, renderer.getRenderTarget?.()?.texture?.colorSpace, ...lights].join('|');
+  if (cache.scene !== scene || cache.signature !== signature) {
+    cache.objects = new WeakMap(); cache.scene = scene; cache.signature = signature;
+  }
+  const states = new Map();
   const objects = [], textures = new Set();
   scene.traverse(object => {
     if (!(object.isMesh || object.isPoints || object.isLine || object.isSprite)) return;
+    const materials = [].concat(object.material || []);
+    const state = [object.geometry, ...materials.flatMap(m => [m, m.version])];
+    const previous = cache.objects.get(object);
+    if (incremental && previous && state.length === previous.length && state.every((v, i) => v === previous[i])) return;
+    states.set(object, state);
     objects.push(object);
     for (const material of [].concat(object.material || [])) {
       for (const value of Object.values(material)) if (value?.isTexture && !value.isRenderTargetTexture) textures.add(value);
@@ -43,5 +65,7 @@ export async function prepareScene(renderer, scene, camera, onProgress = () => {
       if (pending.size >= 4) await Promise.race(pending);
     }
     await Promise.all(pending);
+    for (const [object, state] of states) cache.objects.set(object, state);
+    if (!objects.length) onProgress(0, 0);
   } finally { batch.children = []; }
 }

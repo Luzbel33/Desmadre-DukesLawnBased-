@@ -1480,7 +1480,7 @@ async function joinGame() {
     const target = G.renderer.getRenderTarget();
     try {
       G.renderer.setRenderTarget(G.post.ao?.beautyRenderTarget || G.post.composer.renderTarget1);
-      await prepareScene(G.renderer, G.scene, G.camera, (done, total) => { $('m-err').textContent = `Preparando sala... ${Math.round(done / Math.max(1, total) * 100)}%`; });
+      await prepareScene(G.renderer, G.scene, G.camera, (done, total) => { $('m-err').textContent = `Preparando sala... ${Math.round(done / Math.max(1, total) * 100)}%`; }, { incremental: true });
     } finally { G.renderer.setRenderTarget(target); }
     G.inGame = true; G.sfx?.trigger('ui', null, .35); state.eyeOffset = undefined; state.room = room; state.joinedName = name;
     $('m-err').textContent = '';

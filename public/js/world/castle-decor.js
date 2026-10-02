@@ -209,6 +209,7 @@ export class Decor {
     this._graves();
     this._cobwebs();
     this._banners();
+    this._courtyardLife();
     this._skulls();
     this._props();
     this._scarecrow();
@@ -533,14 +534,14 @@ export class Decor {
       });
     };
     // la vara de cada estandarte queda justo debajo de la cornisa del portón (y = 11.03)
-    for (const s of [-1, 1]) {
+    for (const [x, y, z] of [[-4.3, 10.93, Z], [4.3, 10.93, Z], [8.5, 10.1, -101.25], [16.5, 10.1, -101.25]]) {
       whenAsset('c_banner', () => {
         const m = assetModel('c_banner');
         if (!m) return;
         const k = 0.86;
         m.scale.setScalar(k);
         const top = new THREE.Box3().setFromObject(m).max.y; // punta de los remates de la vara
-        m.position.set(s * 4.3, 10.93 - (top - 0.035 * k), Z);
+        m.position.set(x, y - (top - 0.035 * k), z);
         m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
         this.scene.add(m);
         m.updateMatrixWorld(true);
@@ -559,6 +560,46 @@ export class Decor {
       m.updateMatrixWorld(true);
       m.traverse((o) => { o.matrixAutoUpdate = false; });
     });
+  }
+
+  _courtyardLife() {
+    if (!HAS_DOM) return;
+    // Faldon flexible: la costura superior queda fija al travesano.
+    const geo = new THREE.PlaneGeometry(7.7, 0.42, 24, 3);
+    const mat = getMat('canvasRed').clone(); mat.side = THREE.DoubleSide;
+    const wind = { value: 0 };
+    mat.onBeforeCompile = sh => {
+      sh.uniforms.courtyardWind = wind;
+      sh.vertexShader = 'uniform float courtyardWind;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        float hem = clamp((0.21 - position.y) / 0.42, 0.0, 1.0);
+        transformed.z += sin(position.x * 2.1 + courtyardWind * 1.7) * 0.045 * hem * hem;`);
+    };
+    mat.customProgramCacheKey = () => 'courtyard-awning-hem';
+    const hem = new THREE.Mesh(geo, mat); hem.position.set(19.5, 2.79, -97.325);
+    hem.receiveShadow = true; hem.name = 'courtyard-awning-hem'; this.scene.add(hem);
+    this.anim.push(time => { wind.value = time; });
+    // Modelos existentes, apoyados por su bounding box real; colision exacta de su envolvente.
+    const prop = (type, x, y, z, scale, solid = true) => this.place(type, x, y, z, 0, scale, { onReady: m => {
+      m.updateMatrixWorld(true);
+      let bounds = new THREE.Box3().setFromObject(m);
+      m.position.y += y - bounds.min.y; m.updateMatrix(); m.updateMatrixWorld(true);
+      bounds = new THREE.Box3().setFromObject(m);
+      if (solid) { const size = bounds.getSize(new THREE.Vector3()), center = bounds.getCenter(new THREE.Vector3());
+        this.phys.box(center.x, center.y, center.z, size.x / 2, size.y / 2, size.z / 2, 0, { paint: false, mat: 'wood' }); }
+      if (type === 'c_lantern') this._glowLantern(m);
+      m.name = 'courtyard-provision-' + type;
+    } });
+    prop('c_barrel_a', 16.85, 0.04, -99.6, 1);
+    prop('c_barrel_a', 22.15, 0.04, -99.6, 1);
+    prop('c_crate', 18.35, 0.98, -99.45, 0.48);
+    prop('c_pots', 20, 0.98, -99.45, 0.5);
+    for (const x of [16.45, 22.55]) {
+      // Faroles sobre pequenos estantes unidos a los postes delanteros.
+      const b = new Builder(this.phys);
+      b.box('woodDark', x, 1.72, -97.6, 0.75, 0.1, 0.55, { collide: false });
+      b.finish(this.scene);
+      prop('c_lantern', x, 1.77, -97.6, 0.35, false);
+    }
   }
 
   // vidrio del farol encendido: brilla cálido (lo toma el bloom) y no tapa la luz

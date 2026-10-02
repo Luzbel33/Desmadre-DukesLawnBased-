@@ -268,6 +268,25 @@ export class Castle {
       // Los asientos usan el mismo contrato que los bancos existentes.
       for (const dx of [-0.75, 0.75]) this.seats.push({ x: x + dx, y: 0.5, z: -100, yaw: 0 });
     }
+    // Ménsulas sujetas a la fachada: las telas quedan delante del relieve de piedra.
+    for (const x of [8.5, 16.5]) for (const dx of [-0.55, 0.55]) {
+      this.deco('iron', x + dx, 10.02, -102.15, 0.055, 0.055, 1.8, { mask: false });
+    }
+    // Puesto de provisiones: apoyado en el patio, separado de la fachada y del paso al cementerio.
+    for (const x of [16, 23]) for (const z of [-100.6, -97.6]) {
+      this.box('woodDark', x, 1.48, z, 0.18, 2.88, 0.18, { mask: false });
+      this.deco('iron', x, 0.28, z, 0.2, 0.12, 0.2, { mask: false });
+    }
+    for (const z of [-100.6, -97.6]) this.box('woodDark', 19.5, 2.9, z, 7.4, 0.16, 0.18, { mask: false });
+    for (const x of [16, 19.5, 23]) this.box('woodDark', x, 2.94, -99.1, 0.12, 0.12, 3.2, { mask: false });
+    this.box('canvasRed', 19.5, 3.04, -99.1, 7.7, 0.08, 3.55);
+    this.roofs.push({ x0: 15.65, x1: 23.35, z0: -100.875, z1: -97.325, y0: -1, y1: 3.08 });
+    // Mostrador abierto por los lados; patas y tablero comparten los colliders del modelo.
+    this.box('woodDark', 19.5, 0.92, -99.45, 3.8, 0.12, 0.9, { mask: false });
+    for (const x of [17.85, 21.15]) for (const z of [-99.75, -99.15]) {
+      this.box('woodDark', x, 0.45, z, 0.14, 0.82, 0.14, { mask: false });
+    }
+    for (const x of [16.45, 22.55]) this.light(x, 2.1, -97.6, 0xffae62, 12, 10, { flicker: true, priority: 2.5 });
   }
 
   // ---------------------------------------------------------------- murallas y torres de las esquinas
