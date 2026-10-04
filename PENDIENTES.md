@@ -157,6 +157,9 @@ modelos cargados al acercarse.
 
 ## 10. Rendimiento
 
+- [ ] Probar con los amigos que andaban a 2 FPS: el preset arranca en Automático (core/graphics.js elige por placa y baja/sube solo);
+      si alguno sigue lento, pedirle el nombre de la placa (aviso del lobby si el navegador va sin aceleración).
+- [ ] Si hace falta más en integradas: bajar el costo de CPU de three.js al recorrer la escena (~4 ms) y la distancia de dibujo en Mínimo.
 - [ ] QA de rendimiento real en la PC de Luz después de los cambios recientes.
 - [ ] Perfilar caídas puntuales antes de seguir agregando densidad visual.
 - [ ] Mantener culling/LOD/sleep de NPC y partículas sin bajar la calidad visual cercana.

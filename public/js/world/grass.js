@@ -6,6 +6,7 @@ import { cutRect, growAll, fieldMask } from '../shared/raster.js';
 
 // near/far: briznas; vf: matas lejanas (un triángulo ancho cada ~60 cm) hasta donde llega la bruma
 const QUALITY = {
+  minima: { nearR: 8, nearS: 0.16, farR: 22, farS: 0.46, vfR: 0, vfS: 1 },
   baja: { nearR: 10, nearS: 0.13, farR: 30, farS: 0.36, vfR: 0, vfS: 1 },
   media: { nearR: 11, nearS: 0.12, farR: 34, farS: 0.34, vfR: 78, vfS: 0.82 },
   alta: { nearR: 14, nearS: 0.1, farR: 44, farS: 0.3, vfR: 96, vfS: 0.75 },

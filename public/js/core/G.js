@@ -22,11 +22,13 @@ export const G = {
   media: null,
   input: null,
   settings: { desmadre: false },
+  perf: { shadowEvery: 1, npcLod: 1 }, // lo pone el preset gráfico (core/graphics.js)
   opts: {
     sens: 1,
     invertY: false,
     fov: 72,
-    graphics: 'equilibrado',
+    graphics: 'equilibrado', // el preset que se está usando
+    graphicsMode: 'auto', // 'auto' o el preset elegido a mano
     atmosphere: 'natural',
     grass: 'media',
     shadows: 'media',

@@ -427,6 +427,10 @@ export class World {
     sun.target.position.set(fx, 0, fz);
     sun.position.set(fx + this.sunDir.x * 200, this.sunDir.y * 200, fz + this.sunDir.z * 200);
     sun.target.updateMatrixWorld();
+    // en 'Rendimiento' la sombra del sol se redibuja un cuadro sí y uno no (mapa y matriz se actualizan juntos: no tiembla)
+    const every = G.perf?.shadowEvery || 1;
+    sun.shadow.autoUpdate = every <= 1;
+    if (every > 1 && G.frame % every === 0) sun.shadow.needsUpdate = true;
     if (this.forest) this.forest.update(G.camera ? G.camera.position : focus, G.time);
     if (this.sky?.material.uniforms.time) this.sky.material.uniforms.time.value = G.time;
     // sombra lejana: cuando están los árboles (o si tardan demasiado)

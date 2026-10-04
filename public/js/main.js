@@ -7,7 +7,7 @@ import { Physics, GR, groups } from './core/physics.js';
 import { Input } from './core/input.js';
 import { guard } from './core/browser-guard.js';
 import { keys, KEY_ACTIONS, keyName } from './core/keybinds.js';
-import { GRAPHICS, readGraphics, applyGraphics } from './core/graphics.js';
+import { GRAPHICS, TIERS, readGraphics, readAutoTier, applyGraphics, applyShadows, classifyGpu, gpuName, softwareOnly, AutoTuner } from './core/graphics.js';
 import { readAtmosphere, applyAtmosphere } from './core/atmosphere.js';
 import { Net } from './net/net.js';
 import { World } from './world/world.js';
@@ -96,6 +96,7 @@ const state = {
   promptAction: null,
   reconnecting: false,
   preparingJoin: false,
+  preparingGfx: false, // compilando shaders tras cambiar el preset gráfico (el loop espera)
   room: null,
   joinedName: null,
 };
@@ -259,9 +260,7 @@ function setupMenuDefaults() {
   $('o-mute').checked = !!G.opts.muted;
   for (const def of SCREENS) { const option = document.createElement('option'); option.value = def.id; option.textContent = def.name; $('media-screen').appendChild(option); }
   updateAudioUI();
-  $('o-grass').value = G.opts.grass;
-  $('o-shadows').value = G.opts.shadows;
-  $('o-graphics').value = G.opts.graphics;
+  syncGraphicsUI();
   $('o-atmosphere').value = G.opts.atmosphere;
   $('o-voicemode').value = G.opts.voiceMode;
   $('o-hints').value = G.hud?.mode || 'primeras';
@@ -1637,18 +1636,9 @@ function setupUIEvents() {
   $('o-fullscreen').addEventListener('change', (e) => guard.setEnabled(e.target.checked));
   $('o-hints').addEventListener('change', (e) => G.hud?.setHintMode(e.target.value));
   $('o-grass').addEventListener('change', (e) => { G.opts.grass = e.target.value; G.grass.build(G.opts.grass); });
-  $('o-graphics').addEventListener('change', (e) => {
-    applyGraphics(G, e.target.value, localStorage);
-    $('o-grass').value = G.opts.grass;
-    $('o-shadows').value = G.opts.shadows;
-  });
+  for (const id of ['o-graphics', 'm-graphics']) $(id)?.addEventListener('change', (e) => setGraphicsMode(e.target.value));
   $('o-atmosphere').addEventListener('change', (e) => applyAtmosphere(G, e.target.value, localStorage));
-  $('o-shadows').addEventListener('change', (e) => {
-    G.opts.shadows = e.target.value;
-    const size = G.opts.shadows === 'ultra' ? 4096 : G.opts.shadows === 'baja' ? 1024 : 2048;
-    const shadow = G.world.sun.shadow;
-    shadow.mapSize.set(size, size); shadow.map?.dispose(); shadow.map = null; shadow.needsUpdate = true;
-  });
+  $('o-shadows').addEventListener('change', (e) => changeGraphics(() => applyShadows(G, e.target.value)));
 
   addEventListener('keydown', (e) => {
     if (!G.inGame) return;
@@ -2022,19 +2012,110 @@ function benders() {
   return a;
 }
 
+// ---------------------------------------------------------------- gráficos: automático según la placa
+// Al arrancar se elige el preset por la placa de video (core/graphics.js); en automático, si el juego no llega a ~25 FPS
+// baja un escalón solo (y lo recuerda para la próxima), y si sobra mucho sube, nunca por encima de lo que da la placa.
+const gfx = { gpu: null, tuner: new AutoTuner(), hinted: false, busy: false };
+function autoStartTier() {
+  const ceiling = gfx.gpu?.tier || 'equilibrado';
+  const last = readAutoTier(localStorage);
+  return last && TIERS.indexOf(last) < TIERS.indexOf(ceiling) ? last : ceiling;
+}
+function setGraphicsMode(mode) {
+  if (gfx.busy || (mode !== 'auto' && !GRAPHICS[mode])) { syncGraphicsUI(); return; }
+  G.opts.graphicsMode = mode;
+  if (mode === 'auto') {
+    try { localStorage.setItem('dukes.graphics', 'auto'); } catch {}
+    changeGraphics(() => applyGraphics(G, autoStartTier()));
+  } else changeGraphics(() => applyGraphics(G, mode, localStorage));
+}
+// lo que obliga a recompilar los shaders de todo el mapa: cuántas luces hay, cuáles hacen sombra y si hay sombras
+function shaderKey() {
+  const w = G.world;
+  return [G.renderer?.shadowMap.enabled, w?.pool?.live.length, w?.pool?.hero?.light.castShadow, w?.storm?.flashLight?.castShadow, w?.farSun?.visible].join('|');
+}
+// Cambiar eso en caliente compilaba ~170 shaders de una en el cuadro siguiente (segundos de pantalla trabada; en una PC
+// lenta, casi un minuto). Ahora el loop se pausa y se compilan de a tandas en paralelo (compileAsync), con un aviso.
+async function changeGraphics(apply) {
+  if (gfx.busy) { syncGraphicsUI(); return; }
+  const before = shaderKey();
+  apply();
+  syncGraphicsUI();
+  gfx.tuner.reset(8);
+  if (!G.renderer || !G.post || !G.scene || shaderKey() === before) return;
+  gfx.busy = true; state.preparingGfx = true;
+  G.hud?.notify('Ajustando gráficos...', 2500);
+  const target = G.renderer.getRenderTarget();
+  try {
+    G.renderer.setRenderTarget(G.post.ao?.beautyRenderTarget || G.post.composer.renderTarget1);
+    await prepareScene(G.renderer, G.scene, G.camera, () => {}, { incremental: true });
+  } catch (e) { console.warn('gráficos: no se pudieron preparar los shaders', e); }
+  finally { G.renderer.setRenderTarget(target); state.preparingGfx = false; gfx.busy = false; gfx.tuner.reset(6); syncGraphicsUI(); }
+}
+function syncGraphicsUI() {
+  for (const id of ['o-graphics', 'm-graphics']) {
+    const el = $(id);
+    if (!el) continue;
+    const auto = el.querySelector('option[value="auto"]');
+    if (auto) auto.textContent = G.opts.graphicsMode === 'auto' ? `Automático (${GRAPHICS[G.opts.graphics]?.label})` : 'Automático';
+    el.value = G.opts.graphicsMode;
+  }
+  if ($('o-grass')) $('o-grass').value = G.opts.grass;
+  if ($('o-shadows')) $('o-shadows').value = G.opts.shadows;
+}
+function showGpuWarning() {
+  const el = $('m-gpu');
+  if (!el || !gfx.gpu?.software) return;
+  el.innerHTML = '⚠ Tu navegador está dibujando <b>sin la placa de video</b> (así va a 1-5 FPS). Prendé la <b>aceleración por hardware</b> en su configuración (Chrome/Edge: Sistema · Firefox: Rendimiento) y reinicialo.';
+  el.classList.remove('hidden');
+}
+function tuneGraphics(frameSeconds) {
+  if (document.hidden || !G.inGame || state.mode === 'menu' || gfx.busy) return;
+  const profile = GRAPHICS[G.opts.graphics] || GRAPHICS.equilibrado;
+  const pr = G.renderer.getPixelRatio(), max = Math.min(devicePixelRatio || 1, profile.maxDpr), min = Math.min(max, profile.minDpr);
+  const v = gfx.tuner.sample(frameSeconds * 1000, frameSeconds, { canShrink: pr > min + 0.01, canGrow: pr < max - 0.01 });
+  if (!v) return;
+  const i = TIERS.indexOf(G.opts.graphics);
+  if (G.opts.graphicsMode !== 'auto') {
+    if (v < 0 && i > 0 && !gfx.hinted) { gfx.hinted = true; G.hud?.notify('Va lento: probá <b>Esc → Imagen → Preset gráfico: Mínimo</b>', 7000); }
+    return;
+  }
+  const next = i + v;
+  if (next < 0) {
+    // ya en Mínimo y sigue lento: lo que queda es la placa o el navegador
+    if (!gfx.hinted) {
+      gfx.hinted = true;
+      if (gfx.gpu?.software) G.hud?.notify('El navegador está dibujando <b>sin la placa de video</b>: prendé la aceleración por hardware y reinicialo.', 9000);
+      else if (gfx.gpu?.integrated) G.hud?.notify('Sigue lento. Si tu notebook tiene placa NVIDIA o AMD: <b>Windows → Configuración → Pantalla → Gráficos</b>, elegí el navegador y ponelo en <b>Alto rendimiento</b>.', 10000);
+    }
+    return;
+  }
+  if (next > TIERS.indexOf(gfx.gpu?.tier || 'equilibrado') || next >= TIERS.length) return;
+  try { localStorage.setItem('dukes.graphics.auto', TIERS[next]); } catch {}
+  changeGraphics(() => applyGraphics(G, TIERS[next]));
+  if (v < 0) G.hud?.notify(`Gráficos en <b>${GRAPHICS[TIERS[next]].label}</b> para que ande fluido (Esc → Imagen para cambiarlo)`, 5000);
+}
+
 async function boot() {
   try {
-    const initialGraphics = readGraphics(localStorage);
-    applyGraphics(G, initialGraphics);
     applyAtmosphere(G, readAtmosphere(localStorage));
     status('Iniciando motor...');
     const canvas = $('game');
+    const software = softwareOnly(document);
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, GRAPHICS[initialGraphics].maxDpr)); renderer.setSize(innerWidth, innerHeight);
     renderer.setClearColor(0x000000, 0); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
+    // qué placa dibuja: elige el preset de arranque (en automático) y avisa si el navegador va sin aceleración
+    gfx.gpu = classifyGpu(gpuName(renderer), { software, cores: navigator.hardwareConcurrency || 8 });
+    G.opts.graphicsMode = readGraphics(localStorage);
+    const initialGraphics = G.opts.graphicsMode === 'auto' ? autoStartTier() : G.opts.graphicsMode;
+    G.renderer = renderer;
+    applyGraphics(G, initialGraphics);
+    renderer.setSize(innerWidth, innerHeight);
+    showGpuWarning();
     renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.86;
     installFarShadowChunk(); // sombra lejana horneada + la dinámica de cerca (antes de compilar materiales)
-    setMaxAniso(renderer.capabilities.getMaxAnisotropy()); G.renderer = renderer;
+    // filtrado anisotrópico según el preset de arranque (16x en una integrada es ancho de banda tirado; vale hasta recargar)
+    setMaxAniso(Math.min(renderer.capabilities.getMaxAnisotropy(), GRAPHICS[G.opts.graphics].aniso || 16)); G.renderer = renderer;
     G.scene = new THREE.Scene(); G.camera = new THREE.PerspectiveCamera(G.opts.fov, innerWidth / innerHeight, 0.05, 3000);
     G.aimCam = new THREE.PerspectiveCamera(G.opts.fov, innerWidth / innerHeight, 0.05, 3000);
 
@@ -2045,19 +2126,21 @@ async function boot() {
     registerManifest(ASSET_MANIFEST);
     await preloadAssets((n, total) => status(`Cargando objetos... ${n}/${total}`));
     status('Construyendo el mundo...'); await yieldToBrowser();
-    G.world = new World(G.scene, G.phys); await G.world.build(renderer, 'media');
+    // con un preset liviano el mundo se arma liviano (menos lluvia, sin la luz de sombra cúbica): subir de preset
+    // después mejora todo menos eso, que vuelve al recargar
+    G.world = new World(G.scene, G.phys); await G.world.build(renderer, GRAPHICS[G.opts.graphics].vol ? 'media' : 'baja');
     await yieldToBrowser();
     G.grass = new Grass(G.scene); G.grass.setMask(G.world.mask); G.grass.makeLawnGround(); G.grass.build(G.opts.grass);
     await yieldToBrowser();
-    G.post = new Post(renderer, G.scene, G.camera); G.post.setQuality(GRAPHICS[initialGraphics]); G.fx = new FX(G.scene); G.blood = new Decals(G.scene);
+    G.post = new Post(renderer, G.scene, G.camera); G.post.setQuality(GRAPHICS[G.opts.graphics]); G.fx = new FX(G.scene); G.blood = new Decals(G.scene);
     G.post.vol?.setShafts(G.world.castle?.shafts || [], G.world.storm, { x0: -40, x1: 40, z0: -140, z1: -80 });
     if (G.world.fires) G.post.vol?.setFires(G.world.fires, () => G.scene.fog?.density || 0);
-    applyGraphics(G, initialGraphics);
+    applyGraphics(G, G.opts.graphics);
     applyAtmosphere(G, G.opts.atmosphere);
     G.post.vol?.setFog({
       storm: STORM, fade: STORM.fade, keep: { x0: CASTLE.keep.x0, z0: CASTLE.keep.z0, x1: CASTLE.keep.x1, z1: CASTLE.keep.z1 }, keepY: CASTLE.keep.floor - 0.3,
       crypt: { x0: 8.3, z0: CASTLE.keep.z0, x1: CASTLE.keep.x1, z1: CASTLE.keep.z1 }, moonDir: new THREE.Vector3(...MOON),
-      lights: () => [...G.world.pool.slots.map((s) => s.light), ...(G.world.pool.hero ? [G.world.pool.hero.light] : [])],
+      lights: () => [...G.world.pool.live.map((s) => s.light), ...(G.world.pool.hero ? [G.world.pool.hero.light] : [])],
     });
     G.gore = new Gore(G.scene, G.phys);
     G.football = new FootballView(G.scene);
@@ -2159,10 +2242,12 @@ async function boot() {
       const max = Math.min(devicePixelRatio || 1, profile.maxDpr), min = Math.min(max, profile.minDpr);
       DYN.ema += (dt * 1000 - DYN.ema) * 0.05;
       DYN.t += dt;
-      if (DYN.t < 2.5) return;
+      // muy lento (menos de ~22 FPS): baja más rápido y de a más
+      const slow = DYN.ema > 45;
+      if (DYN.t < (slow ? 1 : 2.5)) return;
       const current = renderer.getPixelRatio();
       let pr = current;
-      if (DYN.ema > 21 && pr > min) pr = Math.max(min, +(pr - 0.1).toFixed(2));
+      if (DYN.ema > 21 && pr > min) pr = Math.max(min, +(pr - (slow ? 0.2 : 0.1)).toFixed(2));
       else if (DYN.ema < 15 && pr < max) pr = Math.min(max, +(pr + 0.1).toFixed(2));
       DYN.t = pr !== current ? 0 : 2;
       if (pr === current) return;
@@ -2173,7 +2258,7 @@ async function boot() {
     function frame(now) {
       // se agenda primero: un error en un frame no congela el juego
       requestAnimationFrame(frame);
-      if (window.__dukesPause || state.preparingJoin) { last = now; return; }
+      if (window.__dukesPause || state.preparingJoin || state.preparingGfx) { last = now; return; }
       step(now);
     }
     // depuración: window.__dukesStep(ms) avanza un cuadro a mano; window.__dukesPause congela el loop
@@ -2186,6 +2271,7 @@ async function boot() {
       // Resolution uses the real frame interval; simulation still clamps large hitches
       // so a pause doesn't make movement and physics jump forward in one step.
       dynRes(frameSeconds);
+      tuneGraphics(frameSeconds);
       if (G.inGame && state.local) {
         updateInput(dt);
         G.phys.step(dt, (fd) => { state.local.physicsStep(fd, state.viewYaw); state.props.physicsStep(fd); }, () => state.local.afterPhysics());

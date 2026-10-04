@@ -327,6 +327,8 @@ button.big:hover { filter: brightness(1.06); }
 #menu .controls { padding-top: 14px; margin-top: 18px; border-top: 1px solid var(--line); }
 #menu .controls .cols { line-height: 1.7; }
 .camera-hint { font-size: 11px; text-align: center; color: var(--faint); margin: 8px 0; }
+.gpu-warn { font-size: 11.5px; line-height: 1.5; text-align: center; color: #ffcf7a; margin: 6px 0 0; }
+#m-graphics { min-width: 0; }
 .build-version { display: block; margin-top: 8px; font-size: 10px; letter-spacing: 1.4px; color: #98b191; }
 .model-pick { grid-column: 1 / -1; display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
 .model-pick > span { width: 70px; font-size: 13px; color: var(--dim); align-self: center; }

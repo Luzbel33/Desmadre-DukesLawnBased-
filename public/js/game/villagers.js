@@ -379,6 +379,8 @@ export class Villagers {
       if (d > FAR) {
         // lejos: ni se baja el modelo; si ya estaba, se esconde
         if (n.char && n.visible) n.update(0, camera, false);
+        // escondido y lejos: que three.js no le recalcule los huesos cada cuadro (si se dibuja, sí)
+        if (n.char) n.char.root.matrixWorldAutoUpdate = n.char.root.visible;
         if (n.bubble) n.bubble.style.display = 'none'; // si habló de lejos, el globo no queda pegado en la pantalla
         n._acc = 0;
         continue;
@@ -387,8 +389,10 @@ export class Villagers {
       const wantPhys = d < PHYS;
       if (!wantPhys && n.rag && !n.down && !n.dead) { n.rag.destroy(); n.rag = null; }
       n.physical = wantPhys;
-      if (d > NEAR && ((this.frame + i) & 3)) continue; // a media distancia, uno de cada cuatro cuadros
+      // a media distancia, uno de cada cuatro cuadros (en los presets livianos, "media distancia" empieza antes)
+      if (d > NEAR / (G.perf?.npcLod || 1) && ((this.frame + i) & 3)) continue;
       if (n.char?.skinned) n.char.skinned.castShadow = d < 25;
+      if (n.char) n.char.root.matrixWorldAutoUpdate = true;
       n.update(Math.min(0.2, n._acc), camera, true);
       n._acc = 0;
     }

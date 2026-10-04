@@ -137,6 +137,7 @@
       <div class="row">
         <label>Tu nombre<input id="m-name" maxlength="20" placeholder="Ej: El Tano"></label>
         <label>Sala<input id="m-room" maxlength="24" placeholder="principal"></label>
+        <label>Gráficos<select id="m-graphics"><option value="auto">Automático</option><option value="minimo">Mínimo (PC lenta)</option><option value="rendimiento">Rendimiento</option><option value="equilibrado">Equilibrado</option><option value="calidad">Calidad</option><option value="ultra">Ultra</option></select></label>
       </div>
       <div class="custom">
         <div class="model-pick" id="m-models">
@@ -152,6 +153,7 @@
       <button id="m-play" class="big">¡A JUGAR!</button>
       <p id="m-err" class="err"></p>
       <p class="camera-hint">Primera persona al entrar · <b>Y</b> cambia la cámara</p>
+      <p id="m-gpu" class="gpu-warn hidden"></p>
         </section>
       </div>
       <details class="controls">
@@ -221,16 +223,16 @@
         <summary>🖥 Imagen</summary>
         <div class="settings">
           <label>Preset gráfico
-            <select id="o-graphics"><option value="rendimiento">Rendimiento</option><option value="equilibrado">Equilibrado</option><option value="calidad">Calidad</option><option value="ultra">Ultra</option></select>
+            <select id="o-graphics"><option value="auto">Automático</option><option value="minimo">Mínimo (PC lenta)</option><option value="rendimiento">Rendimiento</option><option value="equilibrado">Equilibrado</option><option value="calidad">Calidad</option><option value="ultra">Ultra</option></select>
           </label>
           <label>Atmósfera visual
             <select id="o-atmosphere"><option value="natural">Natural</option><option value="calida">Tarde cálida</option><option value="bruma">Bruma suave</option></select>
           </label>
           <label>Calidad del pasto
-            <select id="o-grass"><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option><option value="ultra">Ultra</option></select>
+            <select id="o-grass"><option value="minima">Mínima</option><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option><option value="ultra">Ultra</option></select>
           </label>
           <label>Sombras
-            <select id="o-shadows"><option value="baja">Bajas</option><option value="media">Medias</option><option value="alta">Altas</option><option value="ultra">Ultra</option></select>
+            <select id="o-shadows"><option value="off">Sin sombras</option><option value="baja">Bajas</option><option value="media">Medias</option><option value="alta">Altas</option><option value="ultra">Ultra</option></select>
           </label>
           <label>Campo de visión <input type="range" id="o-fov" min="55" max="100" step="1"></label>
           <label>Cámara en tercera persona

@@ -374,6 +374,8 @@ export class Post {
     this.exposure = renderer.toneMappingExposure || 1;
   }
   setQuality(preset) {
+    // 'Mínimo': el pase final sin aberración ni grano (dos lecturas de textura menos por píxel)
+    this.lite = !!preset.lite;
     if (this.bloom) this.bloom.enabled = preset.bloom;
     if (this.ao) {
       this.ao.enabled = preset.aoSamples > 0;
@@ -400,8 +402,8 @@ export class Post {
     u.uShadow.value.set(...g.shadow);
     u.uHigh.value.set(...g.high);
     u.uVignette.value = g.vignette;
-    u.uGrain.value = g.grain;
-    u.uCA.value = g.ca;
+    u.uGrain.value = this.lite ? 0 : g.grain;
+    u.uCA.value = this.lite ? 0 : g.ca;
     u.uFlash.value = flash;
     u.uTime.value = time;
     // la oclusión ambiental pesa más de noche y adentro (rincones oscuros)

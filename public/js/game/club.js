@@ -1004,8 +1004,17 @@ export class ClubGame {
     this._throneStep(dt);
     const cam = G.camera;
     prepareNpcCulling(cam);
-    // los de las alas solo con su sala a la vista (club-wings.js): ocultos no se animan
-    for (const n of this.npcs) n.update(dt, cam, this.club.visible && n.scene.visible);
+    // los de las alas solo con su sala a la vista (club-wings.js): ocultos no se animan. En los presets livianos la
+    // gente a más de 12 m se anima uno de cada N cuadros (con el tiempo acumulado: se mueven igual, menos fluido)
+    const lod = G.perf?.npcLod || 1;
+    this._lodF = (this._lodF || 0) + 1;
+    for (let i = 0; i < this.npcs.length; i++) {
+      const n = this.npcs[i], show = this.club.visible && n.scene.visible;
+      n._lodAcc = (n._lodAcc || 0) + dt;
+      if (lod > 1 && show && cam && !n.dead && !(n.down > 0) && (this._lodF + i) % lod && cam.position.distanceToSquared(n.pos) > 144) continue;
+      n.update(Math.min(0.2, n._lodAcc), cam, show);
+      n._lodAcc = 0;
+    }
     if (this.club.visible) this._lavaStep(dt);
     // la música: cada sala con la suya (audio/clubmix.js) y la de al lado ahogada, más fuerte cerca de la puerta;
     // en la antesala y el ascensor, la del club ahogada; nada afuera. El techno se calla con un video puesto

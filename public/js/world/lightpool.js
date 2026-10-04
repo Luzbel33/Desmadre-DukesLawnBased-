@@ -48,6 +48,20 @@ export class LightPool {
     this.virt = [];
     this._rank = [];
     this.roomAt = null;
+    this.live = this.slots;
+  }
+
+  // Cuántas luces del pool se usan de verdad (preset gráfico). Las que sobran se esconden: three.js deja de
+  // recorrerlas en cada píxel (cambiar la cantidad recompila los shaders una vez, por eso solo al cambiar el preset)
+  setActive(n) {
+    n = Math.max(0, Math.min(this.slots.length, n | 0));
+    if (n === this.live.length) return;
+    this.slots.forEach((s, i) => {
+      const on = i < n;
+      s.light.visible = on;
+      if (!on) { s.src = s.next = null; s.k = 0; s.light.intensity = 0; }
+    });
+    this.live = this.slots.slice(0, n);
   }
 
   add(v) {
@@ -143,22 +157,22 @@ export class LightPool {
     // histéresis: la que ya tiene lugar suma un 35% (no se suelta por una diferencia chica: no parpadea), pero una
     // que aporta claramente más siempre entra (antes una vieja "retenida" podía dejar afuera a la del cuarto nuevo)
     const cur = new Set();
-    for (const s of this.slots) { const c = s.next || s.src; if (c) cur.add(c); }
+    for (const s of this.live) { const c = s.next || s.src; if (c) cur.add(c); }
     for (const r of rank) if (cur.has(r.v)) r.s *= 1.35;
     rank.sort((a, b) => b.s - a.s);
-    const n = this.slots.length;
+    const n = this.live.length;
     const want = new Set();
     for (let i = 0; i < Math.min(n, rank.length); i++) want.add(rank[i].v);
     const taken = new Set();
-    for (const s of this.slots) {
+    for (const s of this.live) {
       const c = s.next || s.src;
       s.next = c && want.has(c) && !taken.has(c) ? c : null;
       if (s.next) taken.add(s.next);
     }
     const fresh = [];
     for (const v of want) if (!taken.has(v)) fresh.push(v);
-    for (const s of this.slots) if (!s.next) s.next = fresh.shift() || null;
-    for (const s of this.slots) this._fade(s, dt);
+    for (const s of this.live) if (!s.next) s.next = fresh.shift() || null;
+    for (const s of this.live) this._fade(s, dt);
     if (hero) {
       const prev = hero.src;
       this._fade(hero, dt);

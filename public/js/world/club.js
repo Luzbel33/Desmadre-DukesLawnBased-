@@ -94,6 +94,7 @@ export class Club {
     // El Búnker no participa del primer render; se activa al acercarse a su zona.
     this.visible = false;
     this.group.visible = false;
+    this.group.matrixWorldAutoUpdate = false;
   }
 
   // ---------------------------------------------------------------- primitivas
@@ -126,8 +127,11 @@ export class Club {
   }
   fire(x, y, z, hx, hz, h, intensity = 1) {
     const w = this.world;
-    if (w.fires && w.quality !== 'baja') { this.fireIds.push(w.fires.add(x, y, z, hx, hz, h, { intensity, wind: 0, speed: 1.1 })); return; }
-    w.flames?.add(x, y, z, Math.min(hx, hz) * 1.8, h, { intensity });
+    const vol = !!w.fires && w.quality !== 'baja';
+    if (vol) this.fireIds.push(w.fires.add(x, y, z, hx, hz, h, { intensity, wind: 0, speed: 1.1 }));
+    // llama plana de respaldo: la prende el preset gráfico sin pase volumétrico (antes ahí el fuego del club desaparecía)
+    const index = w.flames ? w.flames.add(x, y, z, Math.min(hx, hz) * 1.8, h, { intensity: vol ? 0 : intensity }) : -1;
+    if (vol && index >= 0) (w.fireFallback ||= []).push({ index, intensity });
   }
   mesh(geo, mat, x, y, z, { yaw = 0, rx = 0, rz = 0, shadow = false } = {}) {
     const m = new THREE.Mesh(geo, mat);
@@ -820,6 +824,9 @@ export class Club {
     if (near !== this.visible) {
       this.visible = near;
       this.group.visible = near;
+      // afuera, three.js igual recalculaba cada cuadro las matrices de los ~3200 objetos del Búnker (2 ms de CPU por
+      // cuadro mirando el cielo): oculto no se dibuja, así que no hace falta; al volver se recalculan todas juntas
+      this.group.matrixWorldAutoUpdate = near;
       for (const l of this.lights) l.visible = near;
       // los modelos del Búnker grande se piden la primera vez que alguien se acerca (no al entrar al juego)
       if (near && !this._assetsAsked) { this._assetsAsked = true; loadAssetsLater(BUNKER_MANIFEST); }
