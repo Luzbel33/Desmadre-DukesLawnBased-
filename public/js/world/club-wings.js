@@ -14,6 +14,7 @@ import { whenAsset, assetModel, instanceModel } from '../game/assets.js';
 import { plantField } from './cannabis.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { G } from '../core/G.js';
+import { psyArtKit, PSY_ART } from './psy-art.js';
 
 const HAS_DOM = typeof document !== 'undefined';
 const W = CLUB.wings, H = CLUB.hall, WT = 0.4;
@@ -937,9 +938,9 @@ export class ClubWings {
       const planes = [
         [w, d, cx, 0.035, cz, 0, -Math.PI / 2], [w, d, cx, ps.h - 0.01, cz, 0, Math.PI / 2],
         [w, ps.h, cx, ps.h / 2, ps.z0 + 0.02, 0, 0], [d, ps.h, ps.x0 + 0.02, ps.h / 2, cz, Math.PI / 2, 0],
-        [-37.2 - ps.x0, ps.h, (ps.x0 - 37.2) / 2, ps.h / 2, ps.z1 - 0.02, Math.PI, 0],
-        [ps.x1 + 34.8, ps.h, (ps.x1 - 34.8) / 2, ps.h / 2, ps.z1 - 0.02, Math.PI, 0],
-        [2.4, ps.h - 2.8, -36, 2.8 + (ps.h - 2.8) / 2, ps.z1 - 0.02, Math.PI, 0],
+        [-37.2 - ps.x0, ps.h, (ps.x0 - 37.2) / 2, ps.h / 2, ps.z1 - WT / 2 - 0.02, Math.PI, 0],
+        [ps.x1 + 34.8, ps.h, (ps.x1 - 34.8) / 2, ps.h / 2, ps.z1 - WT / 2 - 0.02, Math.PI, 0],
+        [2.4, ps.h - 2.8, -36, 2.8 + (ps.h - 2.8) / 2, ps.z1 - WT / 2 - 0.02, Math.PI, 0],
         [-471 - 1.2 - ps.z0, ps.h, ps.x1 - 0.02, ps.h / 2, (ps.z0 - 472.2) / 2, -Math.PI / 2, 0],
         [ps.z1 - (-469.8), ps.h, ps.x1 - 0.02, ps.h / 2, (ps.z1 - 469.8) / 2, -Math.PI / 2, 0],
         [2.4, ps.h - 3, ps.x1 - 0.02, 3 + (ps.h - 3) / 2, -471, -Math.PI / 2, 0],
@@ -991,6 +992,25 @@ export class ClubWings {
       this.mesh(new THREE.CircleGeometry(1.5, 48), this._spiralMat(), -36, 2.6, ps.z0 + 0.06);
     }
     this.neon('volá alto', { font: 'Metal Mania', px: 110, color: '#30e8ff' }, 3.2, 0.8, -36, 4.45, ps.z0 + 0.07);
+    // cuadros animados con marcos 3D de capas en la mitad sur: dos en la pared este y cuatro en la sur (psy-art.js)
+    const art = [
+      [PSY_ART.sol, ps.x1, -462.6, -Math.PI / 2], [PSY_ART.portal, ps.x1, -455.6, -Math.PI / 2],
+      [PSY_ART.hongo, -45.1, ps.z1 - WT / 2, Math.PI], [PSY_ART.cuadros, -41.2, ps.z1 - WT / 2, Math.PI],
+      [PSY_ART.tunel, -31.0, ps.z1 - WT / 2, Math.PI], [PSY_ART.atrapasuenos, -27.1, ps.z1 - WT / 2, Math.PI],
+    ];
+    const kit = HAS_DOM ? psyArtKit(this.c.anim) : null;
+    art.forEach(([kind, x, z, yaw], k) => {
+      const ex = Math.sin(yaw) * 0.13, ez = Math.cos(yaw) * 0.13;
+      this.c.phys.box(x + ex, 2.45, z + ez, Math.abs(ez) > 0.01 ? 1.45 : 0.13, 1.45, Math.abs(ez) > 0.01 ? 0.13 : 1.45, 0, { paint: false, mat: 'wood' });
+      if (!kit) return;
+      // fondo negro de galería para que el cuadro no se pierda contra el caleidoscopio de la pared
+      const back = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 3.3), new THREE.MeshBasicMaterial({ color: 0x020104 }));
+      for (const m of [back, kit.frame(k, 1, 1), kit.painting(kind, k, 1, 1)]) {
+        m.position.set(x, 2.45, z); m.rotation.y = yaw; m.castShadow = m.receiveShadow = false;
+        if (m.geometry.type === 'PlaneGeometry') m.translateZ(m === back ? 0.028 : 0.035); // el plano del caleidoscopio está a 0.02 de la pared
+        this.c.group.add(m);
+      }
+    });
     // tres espejos deformantes de verdad en la pared oeste (te ves con panza, finito u ondulado)
     this.funhouse = [];
     if (HAS_DOM) {

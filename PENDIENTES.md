@@ -20,8 +20,9 @@ Fuente única de trabajo pendiente.
 - [ ] Laberinto del terror (ya armado al sudoeste, entrada por la psicodélica): faltan los sustos (jumpscares en
       anchors.mazeScares) y el cofre con premio al azar en anchors.mazeChest, con objetos únicos nuevos
       (calavera de oro que se ríe, bola de cristal, silbato de la muerte, patito dorado).
-- [ ] Sala psicodélica (ya es el doble, con los espejos deformantes al sur): llenar la mitad nueva con cuadros de
-      arte libre (Haeckel, Hilma af Klint, Kandinsky, Louis Wain), ilusiones ópticas y un DJ de psytrance.
+- [ ] Sala psicodélica (ya es el doble, con los espejos deformantes al sur y 6 cuadros animados propios con marcos 3D
+      en las paredes este y sur, `world/psy-art.js`): faltan ilusiones ópticas y un DJ de psytrance; opcional, cuadros
+      de arte libre (Haeckel, Hilma af Klint, Kandinsky, Louis Wain). Arte de terceros solo con permiso del artista.
 - [ ] Reemplazar las rampas por un circuito de carreras con autos de carrera, partes tipo Guts and Glory con
       obstáculos mortales, y MOTOS.
 - [ ] Menú de admin (mejor forma de activarlo que el nombre SmokePyro): spawnear cualquier objeto, limpiar/borrar
