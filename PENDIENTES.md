@@ -20,7 +20,7 @@ Fuente única de trabajo pendiente.
 - [ ] Terminar la expansión del castillo: piso de arriba, torres, más habitaciones y mejor hechas (trabajo de Codex
       sin commitear integrado el 13/10: `world/castle-expansion.js`).
 - [ ] Sustos del piso de arriba y las torres hechos (`game/haunt-upper.js`, 2-3 variantes por cuarto, ruidos al azar):
-      probarlos jugando y ajustar tiempos. Faltan sustos nuevos en la planta baja (salón, cocina, biblioteca).
+      probarlos jugando y ajustar tiempos. Sustos nuevos de la planta baja hechos 13/10 (`game/haunt-ground.js`: cocina, biblioteca, salón y comedor, 2-3 variantes): probarlos jugando y ajustar tiempos.
 - [ ] Ajedrez (hecho 13/10: biblioteca y cuarto de los condes, contra otro o contra el Conde; `game/chess.js`). Falta:
       probarlo entre dos personas y sumar tableros en otros lugares (taberna, coffeeshop).
 

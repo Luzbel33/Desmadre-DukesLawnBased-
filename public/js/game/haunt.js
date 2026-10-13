@@ -13,6 +13,7 @@ import { CASTLE, INTERACT } from '../shared/mapdata.js';
 import { whenAsset, assetModel } from './assets.js';
 import { getMat } from '../world/builder.js';
 import { UpperHaunts, UPPER_ZONES } from './haunt-upper.js';
+import { GroundHaunts } from './haunt-ground.js';
 
 const F0 = CASTLE.keep.floor;
 const KZ1 = CASTLE.keep.z1;
@@ -330,6 +331,7 @@ export class Haunt {
     this.lady = { stage: 0, t: -99 };
     this._buildGhosts();
     this.upper = new UpperHaunts(this);
+    this.ground = new GroundHaunts(this); // cocina, biblioteca y variantes del salón y el comedor (game/haunt-ground.js)
     this._buildDoors();
     this._buildInteract();
     this._buildWindowLights();
@@ -865,6 +867,7 @@ export class Haunt {
       cabinet.pivot.rotation.y = -cabinet.open * 1.6;
     }
     this.upper?.update(dt);
+    this.ground?.update(dt);
     if (this._chairStep) { const f = this._chairStep; this._chairStep = null; f(); }
     // el cráneo de carnero baja como una palanca y vuelve a su lugar
     const rs = this.ramSkull;
@@ -1000,6 +1003,7 @@ export class Haunt {
     if (id === 'gallery' && this._can('gallery', 120)) { this.play('gallery'); this._send('gallery'); }
     if (id === 'secret' && this._can('secret', 90)) { G.sfx?.trigger('ghost-breath', c.anchors.secret, 0.7, { full: 3, max: 16 }); this.heart = Math.max(this.heart, 0.5); }
     if (id === 'crypt' && this._can('crypt', 80)) { G.sfx?.trigger('whisper', c.anchors.crypt, 0.6, { full: 4, max: 20 }); }
+    this.ground?.enter(id); // (si ya pasó algo hace menos de 7 s, _can no deja)
   }
 
   // loops de ambiente: fuego, latidos, zumbido del torreón, tic-tac del reloj, lluvia en el aljibe
