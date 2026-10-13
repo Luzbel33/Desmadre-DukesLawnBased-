@@ -479,3 +479,28 @@ button.big:hover { filter: brightness(1.06); }
 /* menús largos (pausa, inicio): se scrollean con la rueda pero sin barra a la vista */
 .menu-card, #media, #ritual-list { scrollbar-width: none; -ms-overflow-style: none; }
 .menu-card::-webkit-scrollbar, #media::-webkit-scrollbar, #ritual-list::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+/* panel de admin (ui/admin.js) */
+#admin { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 8; width: min(820px, 94vw); max-height: 88vh; overflow: auto;
+  background: var(--panel-solid); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; box-shadow: var(--shadow); color: var(--ink); }
+#admin h2 { margin: 0 0 8px; font-weight: 800; font-size: 20px; }
+#admin h3 { margin: 0 0 6px; font-size: 13px; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; }
+#admin button { background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); border-radius: 10px; color: #fff; padding: 6px 10px; cursor: pointer; font: 13px var(--ui); }
+#admin button:hover { background: rgba(255, 204, 51, 0.12); border-color: rgba(255, 204, 51, 0.45); }
+#admin button.sel { background: rgba(255, 204, 51, 0.2); border-color: var(--accent); }
+#admin button.bad:hover { background: rgba(255, 107, 91, 0.2); border-color: var(--bad); }
+#admin button.big { background: var(--accent); color: var(--accent-ink); font-weight: 800; }
+.adm-sub { color: var(--dim); font-size: 13px; margin: 4px 0 10px; }
+.adm-foot { color: var(--faint); font-size: 12px; margin: 12px 0 0; text-align: right; }
+.adm-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.adm-group { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; background: rgba(255, 255, 255, 0.02); }
+.adm-grid3 { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.adm-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.adm-chips.big button { padding: 10px 12px; font-size: 14px; }
+.adm-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.adm-name { font-weight: 700; }
+.adm-btns { display: flex; gap: 5px; flex-wrap: wrap; }
+.adm-tag { font-size: 11px; padding: 1px 6px; border-radius: 6px; background: rgba(107, 156, 255, 0.25); color: #cfe0ff; margin-left: 6px; }
+.adm-tag.own { background: rgba(255, 204, 51, 0.25); color: var(--accent); }
+.adm-login { display: flex; gap: 8px; }
+.adm-login input { flex: 1; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line-strong); background: rgba(0, 0, 0, 0.35); color: #fff; font: 15px var(--ui); }

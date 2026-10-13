@@ -92,6 +92,13 @@ export class Storm {
       fog: new THREE.Color(0x151b24), fogD: 0.0125, hemi: 0.36, hemiSky: new THREE.Color(0x8494ac),
       hemiGround: new THREE.Color(0x48433a), sun: 0.15, sunColor: new THREE.Color(0x9eaed4), env: 0.2,
     };
+    // el atardecer (la hora la elige un admin: G.settings.tod 0 día, 0.5 atardecer, 1 noche)
+    this.dusk = {
+      fog: new THREE.Color(0xc98a62), fogD: 0.0042, hemi: 0.3, hemiSky: new THREE.Color(0xffb27a),
+      hemiGround: new THREE.Color(0x4a3426), sun: 1.25, sunColor: new THREE.Color(0xff9a56), env: 0.2,
+    };
+    this.tod = 0;
+    this._bt = { fog: new THREE.Color(), hemiSky: new THREE.Color(), hemiGround: new THREE.Color(), sunColor: new THREE.Color() };
     this.wind = new THREE.Vector2(2.2, 0.9); // m/s: la lluvia cae inclinada
     this._played = new Set();
     this._build(quality);
@@ -567,7 +574,21 @@ export class Storm {
     const fin = fx * (1 - this.indoor * 0.85);
 
     // -------------------------------------------- mezcla de luz y niebla (día soleado -> noche de tormenta)
-    const w = this.world, B = this.base, Nn = this.night;
+    // la base es la hora del día (día -> atardecer -> noche, de a poco); la tormenta del castillo va encima
+    const w = this.world, B0 = this.base, Nn = this.night, D = this.dusk;
+    const tod = G.settings?.tod || 0;
+    this.tod += (tod - this.tod) * Math.min(1, dt * 0.6);
+    const nk = clamp(this.tod * 2 - 1, 0, 1), dk = clamp(this.tod * 2, 0, 1) * (1 - nk);
+    const B = this._bt;
+    B.fog.copy(B0.fog).lerp(D.fog, dk).lerp(Nn.fog, nk);
+    B.hemiSky.copy(B0.hemiSky).lerp(D.hemiSky, dk).lerp(Nn.hemiSky, nk);
+    B.hemiGround.copy(B0.hemiGround).lerp(D.hemiGround, dk).lerp(Nn.hemiGround, nk);
+    B.sunColor.copy(B0.sunColor).lerp(D.sunColor, dk).lerp(Nn.sunColor, nk);
+    for (const k of ['fogD', 'hemi', 'sun', 'env']) B[k] = lerp(lerp(B0[k], D[k], dk), Nn[k], nk);
+    this.nightK = nk;
+    // el cielo de día pinta el atardecer con el sol bajito (solo el cielo: las sombras no se mueven)
+    const su = w.sky?.material?.uniforms?.sunPosition;
+    if (su && w.sunDir) { const y = lerp(w.sunDir.y, 0.015, dk + nk); su.value.set(w.sunDir.x, y, w.sunDir.z).normalize().multiplyScalar(1000); }
     const sI = s * (1 - this.indoor * 0.0);
     const fog = this.scene.fog;
     fog.color.copy(B.fog).lerp(Nn.fog, s);
@@ -606,8 +627,9 @@ export class Storm {
     ML.target.position.set(mcx, 0, mcz);
     ML.target.updateMatrixWorld();
     // afuera la luna marca las formas (caras iluminadas y en sombra); adentro entra por las ventanas como antes
-    ML.intensity = U ? 0 : fin * 5.5 + s * (1.4 + this.indoor * 0.5);
-    if (ML.castShadow && s > 0.02) {
+    const moonK = Math.max(s, nk * 0.75);
+    ML.intensity = U ? 0 : fin * 5.5 + moonK * (1.4 + this.indoor * 0.5);
+    if (ML.castShadow && moonK > 0.02) {
       this.moonT += dt;
       if (this.moonT > 0.25 || Math.hypot(mcx - this.moonC.x, mcz - this.moonC.y) > 3) {
         this.moonT = 0;
@@ -618,9 +640,9 @@ export class Storm {
 
     // -------------------------------------------- uniforms de cielo, nubes, cortinas y lluvia
     this.dome.position.copy(cam);
-    this.dome.visible = s > 0.005;
+    this.dome.visible = !U && Math.max(s, nk) > 0.005;
     this.skyU.uT.value = t;
-    this.skyU.uAlpha.value = clamp(s * 1.15, 0, 1);
+    this.skyU.uAlpha.value = clamp(Math.max(s * 1.15, nk), 0, 1);
     this.skyU.uFlash.value = fx;
     this.skyU.uFog.value.copy(fog.color);
     this.deckU.uT.value = t;

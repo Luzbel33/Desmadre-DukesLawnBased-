@@ -654,7 +654,7 @@ export class PropManager {
   }
 
   // Revolear un consumible (birra/aerosol) como objeto nuevo
-  spawnThrow(type, pos, vel, extra = null) {
+  spawnThrow(type, pos, vel, extra = null, keep = false) { // keep: no se limpia solo (lo que aparece un admin)
     const id = G.myId * 100000 + (this._spawnN++ % 99999);
     const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random(), Math.random() * 6, 0));
     const row = [id, type, pos.x, pos.y, pos.z, q.x, q.y, q.z, q.w, G.myId, 0, extra];
@@ -664,7 +664,7 @@ export class PropManager {
       this.markThrown(p);
     }
     this.net.send({ t: 'pn', id, k: type, p: [pos.x, pos.y, pos.z], q: [q.x, q.y, q.z, q.w], v: [vel.x, vel.y, vel.z], ...(extra ? { x: heldState(extra) } : {}) });
-    if (p) { p.handledAt = performance.now(); this._mine.push(id); this._cleanMine(); }
+    if (p && !keep) { p.handledAt = performance.now(); this._mine.push(id); this._cleanMine(); }
     return p;
   }
 

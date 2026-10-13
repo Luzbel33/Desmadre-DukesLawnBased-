@@ -1027,7 +1027,7 @@ export class ClubGame {
     const lod = G.perf?.npcLod || 1;
     this._lodF = (this._lodF || 0) + 1;
     for (let i = 0; i < this.npcs.length; i++) {
-      const n = this.npcs[i], show = this.club.visible && n.scene.visible;
+      const n = this.npcs[i], show = this.club.visible && n.scene.visible && !n.hidden;
       n._lodAcc = (n._lodAcc || 0) + dt;
       if (lod > 1 && show && cam && !n.dead && !(n.down > 0) && (this._lodF + i) % lod && cam.position.distanceToSquared(n.pos) > 144) continue;
       n.update(Math.min(0.2, n._lodAcc), cam, show);

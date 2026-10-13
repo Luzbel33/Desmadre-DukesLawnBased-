@@ -28,6 +28,7 @@ export const ACTIONS = [
   { g: 'Menús y cámara', a: 'screens', label: 'Pantallas de YouTube', def: 'KeyP' },
   { g: 'Menús y cámara', a: 'chat', label: 'Chat', def: 'KeyT' },
   { g: 'Menús y cámara', a: 'players', label: 'Lista de jugadores (mantener)', def: 'Tab' },
+  { g: 'Menús y cámara', a: 'admin', label: 'Panel de admin (dueño y admins)', def: 'F9' },
   { g: 'Voz', a: 'talk', label: 'Hablar (mantener)', def: 'KeyV' },
   { g: 'Voz', a: 'mic', label: 'Prender / apagar micrófono', def: 'KeyM' },
   { g: 'El Diablo', a: 'fire', label: 'Fuego por la boca (mantener)', def: 'KeyK' },

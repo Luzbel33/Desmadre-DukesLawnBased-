@@ -130,3 +130,37 @@ test('cambiarse el nombre en la misma sala (sin recargar); el del dueño sigue r
   assert.equal(room.players.get(1).name, 'Anita', 'sin la clave no se puede llamar como el dueño');
   assert.ok(!b.sent.some((m) => m.t === 'name'));
 });
+
+test('admin: la clave hace dueño con cualquier nombre; el dueño nombra admins y un admin no puede echar al dueño', () => {
+  const room = new Room('test-admin', fs.mkdtempSync(path.join(os.tmpdir(), 'desmadre-')));
+  const own = fakeWs(); room.accept(own); join(own, 'Luz', {});
+  const a = fakeWs(); room.accept(a); join(a, 'Ana', {});
+  const b = fakeWs(); room.accept(b); join(b, 'Beto', {});
+  // sin ser admin, nada
+  say(a, { t: 'adm', a: 'kick', to: 3 });
+  assert.ok(!b.closed, 'un jugador común no echa a nadie');
+  say(own, { t: 'adm', a: 'login', key: 'mal' });
+  assert.ok(own.sent.some((m) => m.t === 'adm' && m.a === 'denied'), 'clave mal: rechazada');
+  say(own, { t: 'adm', a: 'login', key: 'Silencio' });
+  assert.ok(a.sent.some((m) => m.t === 'adm' && m.a === 'roles' && m.roles.some(([id, l]) => id === 1 && l === 2)), 'todos se enteran de quién es el dueño');
+  // el dueño hace admin a Ana; Ana no puede echar al dueño ni nombrar admins, pero sí traer a Beto
+  say(own, { t: 'adm', a: 'admin', to: 2, on: true });
+  say(a, { t: 'adm', a: 'kick', to: 1 });
+  assert.ok(!own.closed, 'el admin no echa al dueño');
+  say(a, { t: 'adm', a: 'admin', to: 3, on: true });
+  assert.ok(!room.players.get(3).admin, 'el admin no nombra admins');
+  b.sent.length = 0;
+  say(a, { t: 'adm', a: 'tp', to: 3, p: [0, 0, 20] });
+  assert.ok(b.sent.some((m) => m.t === 'adm' && m.a === 'tp'), 'el admin trae a un jugador común');
+  // la hora del día y los NPC llegan a todos (y quedan para los que entran después)
+  say(own, { t: 'adm', a: 'set', k: 'tod', v: 1 });
+  assert.equal(room.settings.tod, 1);
+  say(own, { t: 'adm', a: 'npc', op: 'add', model: 'metalero', name: 'Extra', p: [0, 0, 20], mode: 'dance' });
+  const late = fakeWs(); room.accept(late); join(late, 'Tardío', {});
+  const w = late.sent.find((m) => m.t === 'welcome');
+  assert.equal(w.settings.tod, 1);
+  assert.equal(w.npcs.list.length, 1);
+  // el dueño sí echa
+  say(own, { t: 'adm', a: 'kick', to: 3 });
+  assert.ok(b.sent.some((m) => m.t === 'err'), 'al echado le llega el aviso');
+});

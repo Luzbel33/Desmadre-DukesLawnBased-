@@ -70,6 +70,8 @@ import { YouTubeScreenManager } from './media/screens.js';
 import { youtubeId, mediaPosition } from './media/youtube.js';
 import { ZONES, zoneAt, isPvpAt, INTERACT, SCREENS, SCREEN_BY_ID, FIELD, STORM, CASTLE, MOON } from './shared/mapdata.js';
 import { relic, PROPHECIES } from './shared/relics.js';
+import { AdminPanel } from './ui/admin.js';
+import { AdminNpcs } from './game/admin-npcs.js';
 
 const $ = (id) => document.getElementById(id);
 const loadingText = $('loading-text');
@@ -126,6 +128,7 @@ function setMode(mode) {
   show($('poker'), mode === 'poker');
   show($('shop'), mode === 'shop');
   show($('cctv'), mode === 'cctv');
+  show($('admin'), mode === 'admin');
   // sentado al póker no hay HUD del juego (zona, barras, etc.): solo la mesa
   show($('hud'), ingame && mode !== 'menu' && mode !== 'poker' && mode !== 'cctv');
   show($('chat'), ingame);
@@ -1120,6 +1123,41 @@ function doTap(side) {
   else if (r === 'punch' || r === 'swing') G.sfx?.trigger('swing', null, r === 'swing' ? 0.45 : 0.28);
 }
 
+// ---------------------------------------------------------------- admin (ui/admin.js, server/room.js onAdmin)
+// inmortal: por la regla de la sala ("inmortales todos") o porque un admin te lo dio (el del Diablo, la O, es aparte)
+function applyGod() {
+  const L = state.local;
+  if (!L) return;
+  if (G.settings?.godAll || state.adminGod) { L.immortal = true; L.bleedRate = 0; state.godApplied = true; }
+  else if (state.godApplied) { L.immortal = false; state.godApplied = false; }
+}
+function onAdmin(m) {
+  const L = state.local;
+  switch (m.a) {
+    case 'roles': {
+      const before = state.adminLvl || 0;
+      for (const [id, lvl] of m.roles || []) { G.roles?.set(id, lvl); const rp = G.players.get(id); if (rp) rp.owner = lvl === 2; }
+      state.adminLvl = G.roles?.get(G.myId) || 0;
+      state.isOwner = state.adminLvl === 2;
+      if (state.adminLvl > before) { G.sfx?.trigger('ui-ok', null, 0.7); G.hud?.notify(state.adminLvl === 2 ? '👑 Sos el dueño de la sala. <b>F9</b> abre el panel.' : '🛡️ Ahora sos admin. <b>F9</b> abre el panel.', 5000); }
+      else if (state.adminLvl < before) G.hud?.notify('Ya no sos admin.', 3000);
+      if (state.mode === 'admin') G.admin?.render();
+      break;
+    }
+    case 'denied': G.admin?.denied(m.m); break;
+    case 'tp': if (L) fadeScreen(true, () => { teleportLocal(new THREE.Vector3(...m.p), m.yaw || 0); G.hud?.notify(`🧲 ${escapeHtml(m.by || 'Un admin')} te llevó.`, 3000); }); break;
+    case 'god': state.adminGod = !!m.on; applyGod(); if (!m.on && L && !G.settings?.godAll) L.immortal = false; G.hud?.notify(m.on ? `😇 ${escapeHtml(m.by)} te hizo inmortal.` : `💀 ${escapeHtml(m.by)} te sacó la inmortalidad.`, 3000); break;
+    case 'heal': if (L) { L.heal(100, { blood: 100, stopBleed: true }); G.sfx?.trigger('ui-ok', null, 0.6); G.hud?.notify(`❤️ ${escapeHtml(m.by)} te curó.`, 2500); } break;
+    case 'kill': if (L && !L.dead) { const im = L.immortal; L.immortal = false; L.die(); L.immortal = im; G.hud?.notify(`☠️ ${escapeHtml(m.by)} te mató. Así, de una.`, 3000); } break;
+    case 'clean':
+      G.gore?.clear?.();
+      if (G.blood) { G.blood.list.length = 0; G.blood.dirty = true; }
+      if (G.owner?.patches) { for (const sl of G.owner.patches.slots) sl.life = 0; G.owner.patches.update(0); }
+      break;
+    case 'npcs': G.adminNpcs?.sync(m); if (state.mode === 'admin') G.admin?.render(); break;
+  }
+}
+
 function handleEvent(m) {
   const rp = G.players.get(m.id);
   switch (m.k) {
@@ -1375,9 +1413,14 @@ function setupNetHandlers(net) {
     state.welcome = m; state.media = m.media || {}; G.media?.applyAll(state.media);
     for (const old of G.players.values()) old.dispose(); G.players.clear(); clearNameTags();
     state.isOwner = !!m.owner;
+    // admin: quién es el dueño (2) y quién admin (1); los NPC que agregaron/sacaron (game/admin-npcs.js)
+    G.roles = new Map([[m.id, m.owner ? 2 : m.admin ? 1 : 0]]);
+    state.adminLvl = G.roles.get(m.id);
+    state.adminGod = false; applyGod();
     for (const p of m.players || []) {
       const rp = new RemotePlayer(p); G.players.set(rp.id, rp);
       rp.owner = !!p.owner;
+      G.roles.set(rp.id, p.owner ? 2 : p.admin ? 1 : 0);
       if (p.inv) { rp.inv = true; rp.char.root.visible = false; }
     }
     if (G.voice) for (const id of [...G.voice.peers.keys()]) G.voice.remove(id);
@@ -1390,11 +1433,13 @@ function setupNetHandlers(net) {
     for(const f of m.fires||[])G.owner?.onPow({...f,a:'patch'});
     renderPlayerList();
     updateDesmadreUI();
+    G.adminNpcs?.sync(m.npcs || {});
   });
   net.on('pjoin', (m) => {
     if (!m.p || m.p.id === G.myId) return;
     G.players.get(m.p.id)?.dispose();
-    const rp = new RemotePlayer(m.p); G.players.set(rp.id, rp); rp.owner = !!m.p.owner; ensureNameTag(rp); renderPlayerList();
+    const rp = new RemotePlayer(m.p); G.players.set(rp.id, rp); rp.owner = !!m.p.owner; G.roles?.set(rp.id, m.p.owner ? 2 : m.p.admin ? 1 : 0); ensureNameTag(rp); renderPlayerList();
+    if (state.mode === 'admin') G.admin?.render();
   });
   net.on('pow', (m) => G.owner?.onPow(m));
   net.on('pleave', (m) => { G.owner?.remove(m.id); const p = G.players.get(m.id); p?.dispose(); G.players.delete(m.id); removeNameTag(m.id); G.voice?.remove(m.id); renderPlayerList(); });
@@ -1439,7 +1484,8 @@ function setupNetHandlers(net) {
   net.on('vs', (m) => state.vehicles.handleSeats(m));
   net.on('vreset', (m) => state.vehicles.handleReset(m));
   net.on('ms', (m) => { state.media[m.s] = m.st; G.media?.apply(m.s, m.st); if (state.mediaScreen === m.s) renderMedia(); });
-  net.on('set', (m) => { G.settings = { ...G.settings, ...(m.settings || {}) }; updateDesmadreUI(); });
+  net.on('set', (m) => { G.settings = { ...G.settings, ...(m.settings || {}) }; updateDesmadreUI(); applyGod(); if (state.mode === 'admin') G.admin?.render(); });
+  net.on('adm', onAdmin);
   net.on('close', () => {
     if (!G.inGame) return;
     G.inGame = false; G.input.enabled = false; G.sfx?.stop(); G.media?.stop();
@@ -1699,6 +1745,9 @@ function setupUIEvents() {
       if (kc === 'KeyV') { G.sfx?.unlock(); G.voice?.setPTT(true); }
     }
     if (state.mode === 'activities' && (e.key === 'Escape' || kc === 'KeyJ')) { e.preventDefault(); closeOverlayToGame(e.key === 'Escape'); return; }
+    // panel de admin: F9 (configurable) lo abre y lo cierra; Esc también lo cierra
+    if (state.mode === 'admin' && (e.key === 'Escape' || kc === 'F9')) { e.preventDefault(); closeOverlayToGame(e.key === 'Escape'); return; }
+    if (kc === 'F9' && !typing && state.mode === 'game') { e.preventDefault(); G.admin?.open(); G.input.unlock(); return; }
     if (state.mode === 'cctv') {
       if (e.key === 'Escape' || kc === 'KeyX') { e.preventDefault(); state.escT = performance.now(); closeCctv(); return; }
       if (kc === 'KeyA' || e.code === 'ArrowLeft') { cctvStep(-1); return; }
@@ -2233,7 +2282,14 @@ async function boot() {
       });
     } catch (e) { console.warn('búnker', e); }
     // todos los NPC (Búnker + mapa): los usan los golpes, el fuego, la granada y los choques
-    G.allNpcs = () => [...(G.club?.npcs || []), ...(G.villagers?.list || [])].filter((n) => n.char);
+    G.adminNpcs = new AdminNpcs(G.scene);
+    G.allNpcs = () => [...(G.club?.npcs || []), ...(G.villagers?.list || []), ...(G.adminNpcs?.all() || [])].filter((n) => n.char && !n.hidden);
+    G.admin = new AdminPanel({
+      getLocal: () => state.local, getNet: () => state.net, teleport: teleportLocal, notify: (h) => G.hud?.notify(h, 3000),
+      giveItem: (item) => { const L = state.local; if (!L) return; L.giveItem(item); updateHotbar(); G.sfx?.trigger('pickup'); },
+      spawnProp: (type, pos) => { state.props?.spawnThrow(type, pos, { x: 0, y: 0, z: 0 }, null, true); G.fx?.puff(pos, new THREE.Vector3(0, 1, 0), 0.8, 0xd8d0c0); },
+      setMode, closeToGame: () => closeOverlayToGame(), roleOf: (id) => G.roles?.get(id) || 0, npcs: G.adminNpcs,
+    });
     // la gente del mapa (vendedores, parroquianos, guardias...): ver game/villagers.js
     try {
       G.villagers = new Villagers({
@@ -2341,7 +2397,7 @@ async function boot() {
         }
         G.poker?.update(G.camera, dt);
         updateNameTags(); updatePrompt(); updateHud(dt); updatePost();
-        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.club?.update(dt); G.villagers?.update(dt, G.camera); G.cctv?.update(dt, G.camera); G.items?.update(dt); G.owner?.update(dt);
+        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.club?.update(dt); G.villagers?.update(dt, G.camera); G.adminNpcs?.update(dt, G.camera); G.cctv?.update(dt, G.camera); G.items?.update(dt); G.owner?.update(dt);
         { const hide = (G.world.storm?.indoor || 0) > 0.95; for (const m of G.grass.meshes) m.visible = !hide; }
         G.fx.update(dt, G.camera); G.blood.update(dt); G.football?.update(dt); G.gore?.update(dt); state.graffiti?.flush();
         G.bag?.update(dt);

@@ -4,7 +4,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { isOwnerName, checkOwnerKey, allowTry } from './owner.js';
 import {
-  PROTOCOL, GRASSMAP, GRASS, SURFACES, SURFACE_BY_ID, SCREENS, VEHICLES, PROPS, FIELD, PAINT, parsePatch, grassAllowed, CLUB, CASTLE,
+  PROTOCOL, GRASSMAP, GRASS, SURFACES, SURFACE_BY_ID, SCREENS, VEHICLES, PROPS, FIELD, PAINT, parsePatch, grassAllowed, CLUB, CASTLE, playableAt,
 } from '../public/js/shared/mapdata.js';
 import { applyDots, cutRect, growAll, fieldMask, mowField, DOT_BYTES } from '../public/js/shared/raster.js';
 import { Football } from './football.js';
@@ -38,7 +38,10 @@ export class Room {
     this.chatSequence = 0;
     this.chatEpoch = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     this.firePatches = []; // temporary; never persisted with the world
-    this.settings = { desmadre: false };
+    this.settings = { desmadre: false, tod: 0, godAll: false }; // tod: hora del día (0 día, 0.5 atardecer, 1 noche)
+    this.adminNpcs = []; // NPC que agregó un admin: { id, model, name, p, yaw, mode }
+    this.hiddenNpcs = []; // nombres de NPC del mapa que un admin sacó
+    this.npcSeq = 1;
     this.props = new Map();
     this.dirtyProps = new Set();
     this.vehicles = new Map();
@@ -228,7 +231,7 @@ export class Room {
     this.players.set(p.id, p);
     const players = [];
     for (const o of this.players.values()) {
-      if (o !== p) players.push({ id: o.id, name: o.name, look: o.look, color: o.color, st: o.st, owner: o.owner ? 1 : 0, inv: o.inv ? 1 : 0 });
+      if (o !== p) players.push({ id: o.id, name: o.name, look: o.look, color: o.color, st: o.st, owner: o.owner ? 1 : 0, admin: o.admin ? 1 : 0, inv: o.inv ? 1 : 0 });
     }
     const props = [];
     for (const pr of this.props.values()) {
@@ -242,7 +245,8 @@ export class Room {
     const media = {};
     for (const [id, m] of this.media) media[id] = m;
     this.send(p, {
-      t: 'welcome', id: p.id, color: p.color, now: Date.now(), room: this.name, owner: p.owner ? 1 : 0,
+      t: 'welcome', id: p.id, color: p.color, now: Date.now(), room: this.name, owner: p.owner ? 1 : 0, admin: p.admin ? 1 : 0,
+      npcs: { list: this.adminNpcs, hidden: this.hiddenNpcs },
       players, props, vehicles, media, settings: this.settings, gtick: this.grass.tick,
       chatHistory: this.chatHistory,
       fires: this.firePatches.filter(f=>f.end>Date.now()).map(f=>({id:f.id,p:f.p,n:f.n,life:(f.end-Date.now())/1000})),
@@ -426,6 +430,7 @@ export class Room {
       case 'vu': this.onVehState(p, msg); break;
       case 'vr': this.onVehReset(p, msg); break;
       case 'media': this.onMedia(p, msg); break;
+      case 'adm': this.onAdmin(p, msg); break;
       case 'pk':
         if (msg.a === 'sit') this.poker.sit(p.id, p.name, msg.seat | 0);
         else if (msg.a === 'leave') this.poker.leave(p.id);
@@ -615,7 +620,7 @@ export class Room {
       if (!o.h && (!oldest || o.touched < oldest.touched)) oldest = o;
       if (Math.floor(o.id / 100000) === p.id) { mine++; if (!o.h && (!oldestMine || o.touched < oldestMine.touched)) oldestMine = o; }
     }
-    if (mine > MAX_SPAWNED_PER_PLAYER && oldestMine) this._deleteProp(oldestMine);
+    if (mine > (p.owner || p.admin ? 60 : MAX_SPAWNED_PER_PLAYER) && oldestMine) this._deleteProp(oldestMine);
     else if (dyn > MAX_DYNAMIC_PROPS && oldest) this._deleteProp(oldest);
   }
 
@@ -729,6 +734,107 @@ export class Room {
     this.dirtyVeh.delete(v);
     this.broadcast({ t: 'vreset', id: v.id, p: v.p, q: v.q });
     this.broadcast({ t: 'vs', id: v.id, seats: v.seats, o: v.o });
+  }
+
+  // ------------------------------------------------------------------ admin (ui/admin.js)
+  // Dos escalones: el dueño (la clave, con cualquier nombre o como SmokePyro) y los admins que nombra el dueño
+  // durante la partida. Un admin no puede echar ni tocar al dueño ni a otros admins, ni nombrar admins.
+  _adminRoles() {
+    const roles = [];
+    for (const o of this.players.values()) if (o.ready) roles.push([o.id, o.owner ? 2 : o.admin ? 1 : 0]);
+    this.broadcast({ t: 'adm', a: 'roles', roles });
+  }
+  _npcSync() { this.broadcast({ t: 'adm', a: 'npcs', list: this.adminNpcs, hidden: this.hiddenNpcs }); }
+  onAdmin(p, msg) {
+    const lvl = p.owner ? 2 : p.admin ? 1 : 0;
+    const vec = (v) => (Array.isArray(v) && v.length === 3 && v.every(Number.isFinite) ? v.map(r3) : null);
+    const target = this.players.get(msg.to);
+    if (msg.a === 'login') {
+      if (lvl === 2) return;
+      if (!allowTry(p.ws.ip || '') || !checkOwnerKey(msg.key)) { this.send(p, { t: 'adm', a: 'denied', m: 'Clave incorrecta.' }); return; }
+      p.owner = true;
+      this._adminRoles();
+      this.sys('👑 ' + p.name + ' es el dueño de la sala.', '#ffd98a');
+      return;
+    }
+    if (!lvl) return;
+    const now = Date.now();
+    // sin spamear: hasta 12 por segundo (los clicks rápidos no se pierden)
+    if (now - (p.admT || 0) > 1000) { p.admT = now; p.admN = 0; }
+    if (++p.admN > 12) return;
+    // ¿puede tocar a ese jugador? (a sí mismo siempre; el admin no toca al dueño ni a otros admins)
+    const canTouch = (t) => t && t.ready && (t === p || lvl === 2 || (!t.owner && !t.admin));
+    switch (msg.a) {
+      case 'tp': { // traer a alguien (a donde está el admin o a un punto)
+        const to = vec(msg.p);
+        if (!canTouch(target) || !to || !playableAt(to[0], to[2])) return;
+        this.send(target, { t: 'adm', a: 'tp', p: to, yaw: Number.isFinite(msg.yaw) ? msg.yaw : 0, by: p.name });
+        break;
+      }
+      case 'god': {
+        if (!canTouch(target)) return;
+        this.send(target, { t: 'adm', a: 'god', on: !!msg.on, by: p.name });
+        break;
+      }
+      case 'heal': if (canTouch(target)) this.send(target, { t: 'adm', a: 'heal', by: p.name }); break;
+      case 'kill': if (canTouch(target) && target !== p) this.send(target, { t: 'adm', a: 'kill', by: p.name }); break;
+      case 'kick': {
+        if (!target || target === p || target.owner || (lvl < 2 && target.admin)) return;
+        this.send(target, { t: 'err', m: p.name + ' te echó de la sala.' });
+        this.sys('🥾 ' + p.name + ' echó a ' + target.name + '.', '#ff9a7a');
+        setTimeout(() => target.ws.close(1000), 200);
+        break;
+      }
+      case 'admin': { // solo el dueño nombra o saca admins
+        if (lvl < 2 || !target || target.owner) return;
+        target.admin = !!msg.on;
+        this._adminRoles();
+        this.sys(target.admin ? '🛡️ ' + target.name + ' ahora es admin.' : target.name + ' ya no es admin.', '#ffd98a');
+        break;
+      }
+      case 'set': {
+        const S = this.settings;
+        if (msg.k === 'tod') S.tod = [0, 0.5, 1].includes(msg.v) ? msg.v : 0;
+        else if (msg.k === 'godAll') S.godAll = !!msg.v;
+        else if (msg.k === 'desmadre') S.desmadre = !!msg.v;
+        else return;
+        this.broadcast({ t: 'set', settings: S });
+        const said = {
+          tod: ['☀️ Es de día.', '🌇 Cae el atardecer.', '🌙 Se hizo de noche.'][[0, 0.5, 1].indexOf(S.tod)],
+          godAll: S.godAll ? '😇 Nadie se puede morir (por ahora).' : '💀 Se terminó la inmortalidad.',
+          desmadre: S.desmadre ? '☠ MODO DESMADRE: PvP y gore en todo el mapa.' : '☮ Modo desmadre apagado.',
+        };
+        this.sys(said[msg.k] + ' (' + p.name + ')', '#ffd98a');
+        break;
+      }
+      case 'clean': { // lo tirado y spawneado se va, lo del mapa vuelve a su lugar, los autos a su estacionamiento
+        for (const pr of [...this.props.values()]) {
+          if (pr.h) continue;
+          if (pr.dyn) this._deleteProp(pr);
+          else if (pr.spawn && (pr.gone || pr.o)) this._respawnProp(pr);
+        }
+        if (msg.veh) for (const v of this.vehicles.values()) if (!v.seats.some(Boolean)) this._resetVehicle(v);
+        this.firePatches = [];
+        this.broadcast({ t: 'adm', a: 'clean', by: p.name });
+        this.sys('🧹 ' + p.name + ' limpió la sala.', '#ffd98a');
+        break;
+      }
+      case 'npc': {
+        if (msg.op === 'add') {
+          const at = vec(msg.p);
+          if (!at || !playableAt(at[0], at[2]) || this.adminNpcs.length >= 24) return;
+          this.adminNpcs.push({
+            id: this.npcSeq++, model: clampStr(msg.model, 24), name: clampStr(msg.name, 24) || 'Extra', p: at,
+            yaw: Number.isFinite(msg.yaw) ? r3(msg.yaw) : 0, mode: ['idle', 'dance', 'walk'].includes(msg.mode) ? msg.mode : 'idle',
+          });
+        } else if (msg.op === 'del') this.adminNpcs = this.adminNpcs.filter((n) => n.id !== msg.id);
+        else if (msg.op === 'hide') { const n = clampStr(msg.name, 40); if (n && !this.hiddenNpcs.includes(n) && this.hiddenNpcs.length < 200) this.hiddenNpcs.push(n); }
+        else if (msg.op === 'reset') { this.adminNpcs = []; this.hiddenNpcs = []; }
+        else return;
+        this._npcSync();
+        break;
+      }
+    }
   }
 
   // ------------------------------------------------------------------ pantallas / música

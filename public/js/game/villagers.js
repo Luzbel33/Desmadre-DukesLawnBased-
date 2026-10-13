@@ -376,6 +376,7 @@ export class Villagers {
       const n = this.list[i];
       const d = Math.hypot(n.pos.x - cp.x, n.pos.z - cp.z);
       n._acc = (n._acc || 0) + dt;
+      if (n.hidden) { if (n.char && n.visible) n.update(0, camera, false); continue; } // lo sacó un admin (game/admin-npcs.js)
       if (d > FAR) {
         // lejos: ni se baja el modelo; si ya estaba, se esconde
         if (n.char && n.visible) n.update(0, camera, false);
