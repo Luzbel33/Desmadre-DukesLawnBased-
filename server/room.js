@@ -5,8 +5,9 @@ import zlib from 'node:zlib';
 import { isOwnerName, checkOwnerKey, allowTry } from './owner.js';
 import {
   PROTOCOL, GRASSMAP, GRASS, SURFACES, SURFACE_BY_ID, SCREENS, VEHICLES, PROPS, FIELD, PAINT, parsePatch, grassAllowed, CLUB, CASTLE, playableAt,
-  CHESS_BOARDS,
+  CHESS_BOARDS, POOL_TABLE,
 } from '../public/js/shared/mapdata.js';
+import { rack as poolRack, simulate as poolSimulate, judge as poolJudge } from '../public/js/shared/pool.js';
 import { initial as chessInitial, isLegal as chessLegal, apply as chessApply, status as chessStatus } from '../public/js/shared/chess.js';
 import { applyDots, cutRect, growAll, fieldMask, mowField, DOT_BYTES } from '../public/js/shared/raster.js';
 import { Football } from './football.js';
@@ -70,6 +71,7 @@ export class Room {
     }
     for (const s of SCREENS) this.media.set(s.id, { queue: [], cur: null });
     this.chess = new Map(CHESS_BOARDS.map((b) => [b.id, { ...this._chessNew(), seats: { w: 0, b: 0 }, ai: null }]));
+    this.pool = { players: [0, 0], ...this._poolNew(true) };
     this.poker = new PokerTable('bar', 6, {
       broadcast: (o) => this.broadcast(o),
       sendTo: (pid, o) => { const pl = this.players.get(pid); if (pl) this.send(pl, o); },
@@ -213,6 +215,7 @@ export class Room {
     }
     this.poker.leave(p.id);
     for (const id of this.chess.keys()) this._chessLeave(p, id);
+    this._poolLeave(p);
     this.broadcast({ t: 'pleave', id: p.id });
     if (p.ready) this.sys(p.name + ' se fue del lobby.');
   }
@@ -259,6 +262,7 @@ export class Room {
       fires: this.firePatches.filter(f=>f.end>Date.now()).map(f=>({id:f.id,p:f.p,n:f.n,life:(f.end-Date.now())/1000})),
       poker: this.poker.publicState(),
       chess: [...this.chess.keys()].map((id) => this._chessPub(id)),
+      pool: this._poolPub(),
       fb: this.football.state(),
     });
     if ([...this.players.values()].some((o) => o.muted || o.frozen || o.tune)) this._adminRoles();
@@ -441,6 +445,7 @@ export class Room {
       case 'media': this.onMedia(p, msg); break;
       case 'adm': this.onAdmin(p, msg); break;
       case 'chess': this.onChess(p, msg); break;
+      case 'pool': this.onPool(p, msg); break;
       case 'pk':
         if (msg.a === 'sit') this.poker.sit(p.id, p.name, msg.seat | 0);
         else if (msg.a === 'leave') this.poker.leave(p.id);
@@ -814,6 +819,73 @@ export class Room {
       default: return;
     }
     this.broadcast({ t: 'chess', ...this._chessPub(msg.b) });
+  }
+
+  // ------------------------------------------------------------------ pool (game/pool.js; física y reglas en shared/pool.js)
+  // El servidor simula cada tiro (es la verdad) y manda la posición de antes y el tiro: los clientes repiten la
+  // misma simulación para verla y al final quedan donde dijo el servidor.
+  _poolNew(solo) { return { balls: poolRack((Math.random() * 4294967296) >>> 0), g: { cur: 0, grp: [null, null], win: null, solo, msg: '' }, n: 0 }; }
+  _poolPub(shot = null) {
+    const P = this.pool;
+    return { players: P.players, g: P.g, balls: P.balls, n: P.n, shot };
+  }
+  _poolName(i) { return this.players.get(this.pool.players[i])?.name || '?'; }
+  _poolLeave(p) {
+    const P = this.pool, i = P.players.indexOf(p.id);
+    if (i < 0) return;
+    P.players[i] = 0;
+    const rest = P.players.filter(Boolean).length;
+    if (!P.g.solo && P.g.win == null && P.n > 0 && rest) this.sys(`🎱 ${this._poolName(1 - i)} gana al pool: ${p.name} dejó la mesa.`, '#e8dcc0');
+    if (rest < 2) { const keep = P.players.find(Boolean) || 0; Object.assign(P, this._poolNew(true)); P.players = [keep, 0]; }
+    this.broadcast({ t: 'pool', ...this._poolPub() });
+  }
+  onPool(p, msg) {
+    const P = this.pool, i = P.players.indexOf(p.id);
+    switch (msg.a) {
+      case 'join': {
+        const at = p.st?.p;
+        if (i >= 0 || !Array.isArray(at) || Math.hypot(at[0] - POOL_TABLE.c[0], at[2] - POOL_TABLE.c[2]) > 4.5 || Math.abs(at[1]) > 2.5) return;
+        const slot = P.players.indexOf(0);
+        if (slot < 0) return;
+        P.players[slot] = p.id;
+        // dos en la mesa: partida nueva (el que estaba practicando saca)
+        const two = P.players.every(Boolean);
+        if (two || P.g.win != null) { const pl = [...P.players]; Object.assign(P, this._poolNew(!two)); P.players = two ? pl : [p.id, 0]; }
+        if (two) this.sys(`🎱 ${this._poolName(0)} y ${this._poolName(1)} arman un pool en el bar.`, '#e8dcc0');
+        break;
+      }
+      case 'leave': this._poolLeave(p); return;
+      case 'rack': { // otra partida: terminada o practicando solo
+        if (i < 0 || (P.g.win == null && !P.g.solo && P.n > 0)) return;
+        const pl = [...P.players]; Object.assign(P, this._poolNew(!pl.every(Boolean))); P.players = pl;
+        break;
+      }
+      case 'aim': { // dónde apunta el que tira (solo para que los demás vean el taco)
+        const now = Date.now();
+        if (i < 0 || now - (p.poolAimT || 0) < 80 || !Number.isFinite(msg.ang)) return;
+        p.poolAimT = now;
+        this.broadcast({ t: 'poolaim', id: p.id, ang: msg.ang, pull: Math.min(1, Math.max(0, +msg.pull || 0)), on: msg.on ? 1 : 0 }, p);
+        return;
+      }
+      case 'shot': {
+        const ang = +msg.ang, pow = +msg.pow;
+        if (i < 0 || P.g.win != null || !Number.isFinite(ang) || !Number.isFinite(pow) || pow < 0 || pow > 1) return;
+        if (!P.g.solo && P.g.cur !== i) return;
+        if (P.g.solo) P.g.cur = i;
+        const now = Date.now();
+        if (now - (P.shotT || 0) < 1500) return; // un tiro a la vez (las bolas todavía ruedan en los clientes)
+        P.shotT = now;
+        const before = P.balls.map((b) => ({ ...b }));
+        const { ev } = poolSimulate(P.balls, ang, pow);
+        poolJudge(P.g, P.balls, ev);
+        P.n++;
+        if (P.g.win != null && !P.g.solo) this.sys(`🎱 ${this._poolName(P.g.win)} le ganó a ${this._poolName(1 - P.g.win)} al pool (${P.g.msg.toLowerCase()}).`, '#e8dcc0');
+        this.broadcast({ t: 'pool', ...this._poolPub({ ang, pow, before, by: p.id }) });
+        return;
+      }
+      default: return;
+    }
+    this.broadcast({ t: 'pool', ...this._poolPub() });
   }
 
   // ------------------------------------------------------------------ admin (ui/admin.js)

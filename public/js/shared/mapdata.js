@@ -395,6 +395,7 @@ F('bartable', 99.5, 0, -34.5);
 F('bartable', 104, 0, -34.5);
 F('bartable', 99.5, 0, -28.5);
 F('pokertable', 106, 0, -26.5, 0, { id: 'poker_bar' });
+F('pooltable', 115.3, 0, -38.7, Math.PI / 2, { id: 'pool_bar' }); // la juega game/pool.js (POOL_TABLE)
 F('jukebox', 99.6, 0, -20.6, Math.PI);
 F('bong', 96.3, 0, -22, Math.PI / 2, { id: 'bong_bar' });
 F('couch', 96.1, 0, -25.2, Math.PI / 2, { seats: 3 });
@@ -471,7 +472,12 @@ F('workbench', -100.5, 0, -14, Math.PI / 2, { len: 5 });
 F('ramp', -103.3, 0, 45, Math.PI, { w: 7.6, l: 5, h: 1.7 }); // Circuito: el salto sobre la cama de pinchos
 
 // Puntos de interacción (se completan en el cliente con los muebles que tienen id)
+// la mesa de pool del bar (game/pool.js, física y reglas en shared/pool.js): c = centro del paño (arriba), yaw como
+// la mesa del FURNITURE (el largo de la mesa va por el z local)
+export const POOL_TABLE = { c: [115.3, 0.9, -38.7], yaw: Math.PI / 2 };
+
 export const INTERACT = [
+  { id: 'pool', k: 'pool', p: [115.3, 1.0, -38.7], r: 2.3, label: 'Jugar al pool' },
   { id: 'rockola', k: 'media', screen: 'rockola', p: [99.6, 1.0, -21.2], r: 1.8, label: 'Elegir música en la rockola' },
   { id: 'cine_pochoclos', k: 'npc', shop: 'cinema', p: [98,1,-7.8], r: 2, label: 'Pedir pochoclos o una bebida' },
   { id: 'cine_cabina', k: 'media', screen: 'cine', p: [97.5, 1.0, 2], r: 2.2, label: 'Elegir película / video' },

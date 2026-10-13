@@ -1225,6 +1225,15 @@ export class Character {
         addY(-0.62 * down);
         break;
       }
+      case 'pool': { // agachado sobre la mesa de pool: la izquierda hace el puente, la derecha atrás con el taco
+        const k = smooth(clamp(et / 0.35, 0, 1));
+        J.spine[0] = 0.95 * k; J.neck[0] = -0.8 * k;
+        J.hips = [0.22 * k, 0, 0];
+        J.hipL[0] = -0.4 * k; J.kneeL[0] = 0.35 * k; J.hipR[0] = -0.05 * k; J.kneeR[0] = 0.12 * k;
+        J.shoulderL[0] = -1.35 * k; J.elbowL[0] = -0.15 * k; J.shoulderL[2] = -0.12 * k;
+        J.shoulderR[0] = 0.1 * k; J.elbowR[0] = -1.55 * k; J.shoulderR[2] = -0.12 * k;
+        break;
+      }
       case 'pushups': {
         const c = (Math.sin(et * 4) + 1) / 2;
         J.shoulderL[0] = J.shoulderR[0] = -1.4;

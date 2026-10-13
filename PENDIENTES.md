@@ -38,7 +38,8 @@ Fuente única de trabajo pendiente.
 - [ ] Playermodel mosca diminuta (para el dueño): vuela, zumba, se la puede aplastar, voz súper aguda por el mic; no
       puede tomar, pero sí jugar al póker y fumar mini cigarritos.
 - [ ] Apostar en las peleas del bar y del búnker; que la plata tenga un uso real.
-- [ ] Pool jugable.
+- [ ] Pool (hecho 13/10: mesa en el bar, bola 8 de a dos o práctica solo; `game/pool.js`, física en `shared/pool.js`).
+      Falta: probar entre dos personas, efecto a la blanca (retroceso/corrido) y bola en mano después de una falta.
 - [ ] Cyber con PCs/maquinitas: minijuegos de plataformas de a uno o cooperativos.
 - [ ] Skates con ollies y trucos.
 - [ ] Escobas voladoras / vehículos voladores y un minijuego con eso.

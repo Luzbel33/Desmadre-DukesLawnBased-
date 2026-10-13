@@ -2542,7 +2542,7 @@ export class LocalPlayer {
     }
     if (this.emote) {
       this.emoteT += dt;
-      if (this.emoteT > 8 && !['dance1', 'dance2', 'dance3', 'sitfloor'].includes(this.emote)) this.emote = null;
+      if (this.emoteT > 8 && !['dance1', 'dance2', 'dance3', 'sitfloor', 'pool'].includes(this.emote)) this.emote = null;
       if (this.speed > 0.5 || this.state !== 'active') this.emote = null;
     }
     if (this.physMode === 'rag') this.react.reset(); else this.react.update(dt);

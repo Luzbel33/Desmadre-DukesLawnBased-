@@ -29,6 +29,7 @@ import { Villagers } from './game/villagers.js';
 import { Cctv } from './game/cctv.js';
 import { Gags, GAGS } from './game/gags.js';
 import { ChessGame } from './game/chess.js';
+import { PoolGame } from './game/pool.js';
 import { BunkerItems } from './game/bunker-items.js';
 import { pbrReady } from './world/builder.js';
 import { yieldToBrowser, prepareScene } from './core/startup.js';
@@ -675,6 +676,7 @@ function interact() {
     }
     if (it.k === 'football') { state.net.send({ t: 'fbctl', a: 'start' }); G.sfx?.trigger('ui-ok'); return; }
     if (it.k === 'race') { G.race?.start(); return; }
+    if (it.k === 'pool') { G.pool?.use(); return; }
     if (it.k === 'haunt') { G.haunt?.use(it); return; }
     if (it.k === 'club' && it.e === 'monitors') { openCctv(); return; }
     if (it.k === 'club') { G.club?.use(it); return; }
@@ -1532,6 +1534,7 @@ function setupNetHandlers(net) {
     G.voice?.connectAll((m.players || []).map((p) => p.id));
     if (m.poker) G.poker?.applyState(m.poker);
     G.chess?.syncAll(m.chess);
+    G.pool?.sync(m.pool);
     if (m.fb) G.football?.applyState(m.fb);
     state.props.load(m.props || []);
     state.vehicles.load(m.vehicles || []);
@@ -1592,6 +1595,8 @@ function setupNetHandlers(net) {
   net.on('set', (m) => { G.settings = { ...G.settings, ...(m.settings || {}) }; updateDesmadreUI(); applyGod(); if (state.mode === 'admin') G.admin?.render(); });
   net.on('adm', onAdmin);
   net.on('chess', (m) => G.chess?.sync(m));
+  net.on('pool', (m) => G.pool?.sync(m));
+  net.on('poolaim', (m) => G.pool?.aimFrom(m));
   net.on('close', () => {
     if (!G.inGame) return;
     G.inGame = false; G.input.enabled = false; G.sfx?.stop(); G.media?.stop();
@@ -1775,6 +1780,11 @@ function setupUIEvents() {
   $('cctv-next').addEventListener('click', () => cctvStep(1));
   {
     // ajedrez: el mouse libre sobre el tablero (game/chess.js elige la casilla)
+    // pool: apuntando (puntero capturado) el click izquierdo carga la fuerza y al soltar tira; el derecho cancela
+    addEventListener('mousedown', (e) => { if (state.mode !== 'pool') return; if (e.button === 0) G.pool?.press(true); else if (e.button === 2) G.pool?.cancelCharge(); });
+    addEventListener('mouseup', (e) => { if (state.mode === 'pool' && e.button === 0) G.pool?.press(false); });
+    addEventListener('keydown', (e) => { state.shiftDown = e.shiftKey; });
+    addEventListener('keyup', (e) => { state.shiftDown = e.shiftKey; });
     const cv = (e) => state.mode === 'chess' && G.renderer && e.target === G.renderer.domElement;
     const at = (e) => { const r = G.renderer.domElement.getBoundingClientRect(); return [((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1]; };
     addEventListener('mousemove', (e) => { if (cv(e)) G.chess?.pointer(...at(e), G.camera, false); });
@@ -1877,6 +1887,7 @@ function setupUIEvents() {
     // panel de admin: F9 (configurable) lo abre y lo cierra; Esc también lo cierra
     if (state.mode === 'admin' && (e.key === 'Escape' || kc === 'F9')) { e.preventDefault(); closeOverlayToGame(e.key === 'Escape'); return; }
     if (kc === 'F9' && !typing && state.mode === 'game') { e.preventDefault(); G.admin?.open(); G.input.unlock(); return; }
+    if (state.mode === 'pool' && (e.key === 'Escape' || kc === 'KeyX')) { e.preventDefault(); state.escT = performance.now(); G.pool?.stopAim(); return; }
     if (state.mode === 'chess' && (e.key === 'Escape' || kc === 'KeyX')) { e.preventDefault(); state.escT = performance.now(); G.chess?.leave(); return; }
     if (state.mode === 'cctv') {
       if (e.key === 'Escape' || kc === 'KeyX') { e.preventDefault(); state.escT = performance.now(); closeCctv(); return; }
@@ -2459,7 +2470,7 @@ async function boot() {
       if (!locked && state.radial.open) { state.radial.hide(); state.escT = performance.now(); G.hud?.notify('<b>Click</b> para seguir jugando', 2200); return; }
       if (!locked && G.inGame && state.mode === 'game' && !escJustClosed()) openPause();
     };
-    canvas.addEventListener('click', () => { if (G.inGame && (state.mode === 'game' || state.mode === 'poker') && !G.input.locked) { guard.enter(); G.input.lock(); } });
+    canvas.addEventListener('click', () => { if (G.inGame && (state.mode === 'game' || state.mode === 'poker' || state.mode === 'pool') && !G.input.locked) { guard.enter(); G.input.lock(); } });
     guard.init({ isPlaying: () => G.inGame && !!state.local });
 
     G.sfx = new AudioEngine({ opts: G.opts, changed: updateAudioUI });
@@ -2510,6 +2521,8 @@ async function boot() {
       onSit: (seat) => { const L = state.local; if (!L) return; if (L.vehicle) state.vehicles?.exitCurrent(); L.sitAt(seat); setMode('chess'); G.input.unlock(); },
       onLeave: () => { if (state.local?.seat?.chess) state.local.standUp(); if (state.mode === 'chess') { setMode('game'); setTimeout(() => G.input.lock(), 0); } },
     }).build(G.world?.seats || (G.world.seats = []));
+    // pool en el bar (game/pool.js)
+    G.pool = new PoolGame({ scene: G.scene, getLocal: () => state.local, getNet: () => state.net, setMode, getMode: () => state.mode, teleport: teleportLocal, bigMessage }).build();
     G.items = new BunkerItems({
       getLocal: () => state.local, getNet: () => state.net,
       kick: (k) => { camKick.v.x -= k * 12; }, shake: (k) => { state.shake = Math.max(state.shake || 0, k); },
@@ -2603,6 +2616,7 @@ async function boot() {
         if (state.mode === 'poker' && G.poker && G.input.locked) { G.poker.lookAround(G.input.dx, G.input.dy); G.poker.wheel(G.input.wheel); }
         if (state.mode === 'poker' && G.poker?.cameraPose(G.camera, dt)) state.local.char.setVisibleHead(false); // cámara en los ojos: sin ver la propia cabeza
         else if (state.mode === 'chess' && G.chess?.cameraPose(G.camera, dt)) state.local.char.setVisibleHead(true);
+        else if (state.mode === 'pool' && (G.pool?.input(G.input.dx, G.input.dy, state.shiftDown), G.pool?.cameraPose(G.camera, dt))) state.local.char.setVisibleHead(true);
         else {
           if (Math.abs(G.camera.fov - G.opts.fov) > 0.01) { G.camera.fov = G.opts.fov; G.camera.updateProjectionMatrix(); }
           updateCamera(dt);
@@ -2610,7 +2624,7 @@ async function boot() {
         }
         G.poker?.update(G.camera, dt);
         updateNameTags(); updatePrompt(); updateHud(dt); updatePost();
-        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.club?.update(dt); G.villagers?.update(dt, G.camera); G.adminNpcs?.update(dt, G.camera); G.circuit?.update(dt, G.camera); G.race?.update(dt); G.cctv?.update(dt, G.camera); G.chess?.update(dt); G.items?.update(dt); G.owner?.update(dt);
+        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.club?.update(dt); G.villagers?.update(dt, G.camera); G.adminNpcs?.update(dt, G.camera); G.circuit?.update(dt, G.camera); G.race?.update(dt); G.cctv?.update(dt, G.camera); G.chess?.update(dt); G.pool?.update(dt); G.items?.update(dt); G.owner?.update(dt);
         { const hide = (G.world.storm?.indoor || 0) > 0.95; for (const m of G.grass.meshes) m.visible = !hide; }
         G.fx.update(dt, G.camera); G.gags?.update(dt); G.blood.update(dt); G.football?.update(dt); G.gore?.update(dt); state.graffiti?.flush();
         G.bag?.update(dt);
