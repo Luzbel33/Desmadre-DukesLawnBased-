@@ -128,16 +128,18 @@ const BACK = {
   len: 8, face: Math.PI, r: 0.22,
   turn: () => 0, up: () => 0, hands: () => ({ l: 1, r: 1 }),
   pose(b) {
-    const P = blank(), d = 0.5 - 0.5 * Math.cos(TAU * (b / 8)), circ = TAU * (b / 2), rise = env(b, 4, 5.5, 6.5, 8);
+    // la bajada es a medias (antes llegaba a una sentadilla profunda con el torso hacia adelante y parecía otra cosa): el
+    // pecho queda arqueado hacia afuera, la cadera se mece de lado a lado (un ocho lento) y las rodillas se abren poco
+    const P = blank(), d = 0.5 - 0.5 * Math.cos(TAU * (b / 8)), dd = d * 0.6, circ = TAU * (b / 4), rise = env(b, 4, 5.5, 6.5, 8);
     P.shoulderL = [-2.75, 0, 0.35]; P.shoulderR = [-2.75, 0, -0.35];
     P.elbowL = [-0.95 - d * 0.35, 0, 0]; P.elbowR = [-0.95 - d * 0.35, 0, 0];
-    P.spine = [0.12 * d + 0.1 * rise * Math.sin(circ), 0, 0.05 * Math.sin(circ)]; P.neck = [-0.18 + 0.15 * rise * Math.sin(circ + 0.9), 0, -0.1 * Math.sin(circ)];
-    P.hips = [0.1 * d, 0.09 * Math.sin(circ) * (0.4 + d), 0];
-    roll(P, 0.07 * Math.cos(circ) * (0.4 + d));
-    P.hipL[0] = -0.12 - d * 1.15; P.hipR[0] = -0.12 - d * 1.15;
-    P.hipL[2] += 0.1 + d * 0.55; P.hipR[2] -= 0.1 + d * 0.55;
-    P.kneeL = [0.2 + d * 1.75, 0, 0]; P.kneeR = [0.2 + d * 1.75, 0, 0];
-    P.y = -0.03 - d * 0.55;
+    P.spine = [-0.06 * d - 0.05 * Math.sin(circ * 0.5), 0.1 * Math.sin(circ), 0.07 * Math.sin(circ)]; P.neck = [-0.2 + 0.1 * rise * Math.sin(circ + 0.9), 0.12 * Math.sin(circ + 0.6), -0.1 * Math.sin(circ)];
+    P.hips = [-0.12 * dd, 0.14 * Math.sin(circ) * (0.5 + dd), 0];
+    roll(P, 0.11 * Math.sin(circ + 1.2) * (0.5 + dd));
+    P.hipL[0] = -0.12 - dd * 1.0; P.hipR[0] = -0.12 - dd * 1.0;
+    P.hipL[2] += 0.08 + dd * 0.4; P.hipR[2] -= 0.08 + dd * 0.4;
+    P.kneeL = [0.2 + dd * 1.5, 0, 0]; P.kneeR = [0.2 + dd * 1.5, 0, 0];
+    P.y = -0.03 - dd * 0.5;
     fit(P, FIT.BACK0, 1, FIT.BACK1, d);
     return P;
   },

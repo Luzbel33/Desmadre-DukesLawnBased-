@@ -64,6 +64,47 @@ function soilMat() {
   SOIL = new THREE.MeshStandardMaterial({ map: t, bumpMap: tb, bumpScale: 2.2, roughness: 0.92, metalness: 0 });
   return SOIL;
 }
+// tela rayada con trama, manchas de humedad y desgaste (toldos, banderines); scallop: el borde festoneado va en el alfa
+const FABRICS = new Map();
+function fabric(c1, c2, stripes = 8, scallop = false) {
+  const key = c1 + c2 + stripes + scallop;
+  if (FABRICS.has(key) || !HAS_DOM) return FABRICS.get(key);
+  const W = 256, H = 128, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d');
+  const sw = W / stripes;
+  for (let i = 0; i < stripes; i++) { g.fillStyle = i % 2 ? c2 : c1; g.fillRect(i * sw, 0, sw + 1, H); }
+  let s = 31; const r = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  for (let i = 0; i < 700; i++) { g.fillStyle = `rgba(${r() < 0.5 ? '0,0,0' : '255,240,210'},${r() * 0.08})`; g.fillRect(r() * W, r() * H, 1 + r() * 14, 1); g.fillRect(r() * W, r() * H, 1, 1 + r() * 8); }
+  for (let i = 0; i < 14; i++) { g.fillStyle = `rgba(20,24,18,${0.05 + r() * 0.08})`; g.beginPath(); g.ellipse(r() * W, r() * H, 6 + r() * 20, 4 + r() * 12, r() * 3, 0, 6.3); g.fill(); } // humedad / moho
+  if (scallop) { // el festón: semicírculos que cuelgan abajo y recorte alfa
+    const a = document.createElement('canvas'); a.width = W; a.height = H; const ga = a.getContext('2d');
+    ga.fillStyle = '#fff'; ga.fillRect(0, 0, W, H * 0.6);
+    for (let i = 0; i < stripes; i++) { ga.beginPath(); ga.arc(i * sw + sw / 2, H * 0.6, sw / 2, 0, Math.PI); ga.fill(); }
+    const id = g.getImageData(0, 0, W, H), ad = ga.getImageData(0, 0, W, H);
+    for (let i = 0; i < id.data.length; i += 4) id.data[i + 3] = ad.data[i] > 128 ? 255 : 0;
+    g.putImageData(id, 0, 0);
+  }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  const m = new THREE.MeshStandardMaterial({ map: t, roughness: 0.95, side: THREE.DoubleSide, alphaTest: scallop ? 0.5 : 0 });
+  FABRICS.set(key, m);
+  return m;
+}
+// un toldo: tela con caída (se comba entre los postes) y un festón colgando adelante
+function awning(d, cx, cy, cz, w, dpt, yaw, c1, c2) {
+  if (!HAS_DOM) return;
+  const g = new THREE.PlaneGeometry(w, dpt, 14, 6), p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const u = p.getX(i) / w * 2, v = p.getY(i) / dpt * 2; // -1..1
+    p.setZ(i, -(1 - u * u) * 0.12 - (1 - v) * 0.05 * 0 + Math.sin(u * 5 + v) * 0.012);
+  }
+  g.rotateX(-Math.PI / 2 + 0.3); g.computeVertexNormals();
+  const m = new THREE.Mesh(g, fabric(c1, c2, 10)); m.position.set(0, 0, 0);
+  const val = new THREE.Mesh(new THREE.PlaneGeometry(w, 0.28, 1, 1), fabric(c1, c2, 10, true));
+  val.position.set(0, -dpt / 2 * Math.sin(0.3) - 0.1, dpt / 2 * Math.cos(0.3));
+  const grp = new THREE.Group(); grp.add(m, val); grp.position.set(cx, cy, cz); grp.rotation.y = yaw; grp.traverse((o) => { o.castShadow = true; });
+  d.scene.add(grp);
+  return grp;
+}
 // las mallas de tierra de un área se juntan y se agregan de una (una sola malla por área)
 function soilFlush(d, geos) {
   if (!geos.length || !HAS_DOM) return null;
@@ -202,7 +243,7 @@ function ivy(b, x, z, nx, nz, w, h, rnd, n = 5, y0 = 0) {
       const leaf = new THREE.PlaneGeometry(sz, sz * 1.1);
       leaf.rotateZ((rnd() - 0.5) * 1.6); leaf.rotateY(Math.atan2(nx, nz) + (rnd() - 0.5) * 0.9);
       leaf.translate(p.x + tx * (k ? 0.07 : -0.07) + nx * 0.05, p.y + (rnd() - 0.5) * 0.12, p.z + tz * (k ? 0.07 : -0.07) + nz * 0.05);
-      b.geo(rnd() < 0.2 ? 'bone' : 'green', leaf);
+      b.geo(rnd() < 0.3 ? 'moss' : 'green', leaf);
     }
   }
 }
@@ -502,8 +543,17 @@ function patio(d) {
   dummy(33.5, -96.6, 0.2); dummy(36.2, -96.0, -0.3); dummy(38.8, -96.8, 0.1);
   const target = (x, z, yaw) => {
     b.box('woodDark', x - 0.5, 0.6, z, 0.07, 1.2, 0.07, { collide: false }); b.box('woodDark', x + 0.5, 0.6, z, 0.07, 1.2, 0.07, { collide: false });
-    const ring = (r, key) => { const g = new THREE.CylinderGeometry(r, r, 0.05, 20); g.rotateX(PI / 2); g.translate(x, 1.35, z + 0.0); b.geo(key, g); };
-    ring(0.5, 'hay'); ring(0.36, 'white'); ring(0.24, 'red'); ring(0.1, 'white');
+    if (HAS_DOM) {
+      const cv = document.createElement('canvas'); cv.width = cv.height = 128; const g2 = cv.getContext('2d');
+      for (const [rr, col] of [[62, '#b89458'], [48, '#e8e2d0'], [34, '#9a2a24'], [20, '#e8e2d0'], [8, '#9a2a24']]) { g2.fillStyle = col; g2.beginPath(); g2.arc(64, 64, rr, 0, 6.3); g2.fill(); }
+      g2.strokeStyle = 'rgba(60,40,20,0.5)'; g2.lineWidth = 2; for (let k = 0; k < 8; k++) { g2.beginPath(); g2.moveTo(64, 64); g2.lineTo(64 + Math.cos(k * 0.785) * 62, 64 + Math.sin(k * 0.785) * 62); g2.stroke(); }
+      for (let k = 0; k < 120; k++) { g2.fillStyle = `rgba(30,20,10,${Math.random() * 0.3})`; g2.fillRect(Math.random() * 128, Math.random() * 128, 2, 2); }
+      const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.08, 24), [new THREE.MeshStandardMaterial({ color: 0x6a5232, roughness: 1 }), new THREE.MeshStandardMaterial({ map: t, roughness: 0.95 }), new THREE.MeshStandardMaterial({ map: t, roughness: 0.95 })]);
+      disc.rotation.x = PI / 2; disc.position.set(x, 1.35, z); disc.castShadow = true; d.scene.add(disc);
+      // tres flechas clavadas
+      for (const [ax, ay] of [[0.12, 0.05], [-0.2, 0.18], [0.05, -0.22]]) { const sh = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.55, 4), new THREE.MeshStandardMaterial({ color: 0x8a7050 })); sh.rotation.x = PI / 2; sh.position.set(x + ax, 1.35 + ay, z + 0.3); d.scene.add(sh); const fl = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.1), new THREE.MeshStandardMaterial({ color: 0x9a2a24, side: THREE.DoubleSide })); fl.position.set(x + ax, 1.35 + ay, z + 0.52); d.scene.add(fl); }
+    }
     d.phys.box(x, 1.0, z, 0.55, 1.0, 0.1, 0, { paint: false });
   };
   target(31.5, -85.8, 0); target(34.5, -85.8, 0); target(37.5, -85.8, 0);
@@ -530,9 +580,8 @@ function patio(d) {
     const [mx, mz] = px(0, 0);
     b.box('woodDark', mx, 0.85, mz, 3.2, 0.08, 0.7, { yaw: yaw + PI / 2 * 0 });
     b.box('woodDark', mx, 0.42, mz, 3.0, 0.1, 0.55, { collide: false, yaw });
-    // toldo inclinado
-    const awn = new THREE.PlaneGeometry(3.6, 1.9, 8, 1); awn.rotateX(-PI / 2 + 0.28); awn.translate(0, 2.55, 0); awn.rotateY(yaw); awn.translate(mx, 0, mz);
-    const am = getMat(cloth).clone(); am.side = THREE.DoubleSide; const aw = new THREE.Mesh(awn, am); aw.castShadow = true; d.scene.add(aw);
+    // toldo de tela rayada (con caída y festón)
+    awning(d, mx, 2.5, mz, 3.5, 2.0, yaw + PI / 2, cloth[0], cloth[1]);
     // farolito colgando con su llama
     const [lx, lz] = px(0.6, 0.55);
     b.cylinder('iron', lx, 2.3, lz, 0.006, 0.006, 0.45, 4, { collide: false, noShadow: true });
@@ -541,8 +590,8 @@ function patio(d) {
     c.light(lx, 2.0, lz, 0xffb060, 2.6, 7, { flicker: true, priority: 0.8 });
     return { px, mx, mz };
   };
-  const s1 = stall(-43.2 + 0.2, -86, PI / 2, 'canvasRed'); // contra la muralla oeste (la plaza al este)
-  const s2 = stall(-43.2 + 0.2, -92.4, PI / 2, 'fabricGreen');
+  const s1 = stall(-43.2 + 0.2, -86, PI / 2, ['#8a2230', '#d8c9a8']); // contra la muralla oeste (la plaza al este)
+  const s2 = stall(-43.2 + 0.2, -92.4, PI / 2, ['#2c5a3a', '#cdbf96']);
   void s1; void s2;
   b.finish(d.scene);
   for (const [z, off] of [[-86, 0], [-92.4, 0]]) {
@@ -616,6 +665,10 @@ function towerRoom(d, t, kind, rnd) {
   const barrel = (a, r = 0.32) => { const [x, z] = at(t, a, R - r); b.cylinder('woodDark', x, 0.45, z, r * 0.9, r, 0.9, 10, { collide: true }); b.cylinder('iron', x, 0.3, z, r * 1.02, r * 1.02, 0.04, 10, { collide: false }); b.cylinder('iron', x, 0.62, z, r * 1.02, r * 1.02, 0.04, 10, { collide: false }); };
   const torch = (a, y = 2.3) => { const [x, z] = at(t, a, R + 0.05); c.flame(x, y + 0.2, z, 0.07, 0.2, { intensity: 0.9 }); b.box('iron', x, y, z, 0.1, 0.4, 0.1, { collide: false }); };
   const place = (type, a, r, y, yawOff, s, o) => { const [x, z] = at(t, a, r); ground(d, type, x, y, z, a + PI + yawOff, s, o); };
+  // la luz del cuarto (cada torre con su color: se nota qué es sin cartel) y un resplandor bajo la escalera
+  const tint = { calabozo: 0xff6a4a, armeria: 0xffa860, alquimia: 0x7affa0, guardia: 0xffc27a }[kind];
+  { const [lx, lz] = at(t, inward + PI, 1.2); c.light(lx, 1.9, lz, tint, 6.5, 10, { flicker: true, priority: 1.3 }); }
+  { const [lx, lz] = at(t, inward + PI / 2, 3.6); c.light(lx, 0.9, lz, tint, 2.6, 6, { priority: 1 }); }
   if (kind === 'calabozo') {
     // celdas con rejas, cadenas, el potro de tortura y huesos
     for (const a of [inward + 1.9, inward - 1.9]) { // dos celdas contra el muro
@@ -658,12 +711,14 @@ function towerRoom(d, t, kind, rnd) {
     const [tx, tz] = at(t, inward + PI, 1.5);
     b.box('woodDark', tx, 0.85, tz, 1.8, 0.08, 0.8, { yaw: inward, collide: true });
     for (const dx of [-0.8, 0.8]) b.box('woodDark', tx + Math.cos(inward) * dx, 0.42, tz - Math.sin(inward) * dx, 0.08, 0.84, 0.7, { yaw: inward, collide: false });
-    const [cx, cz] = at(t, inward + 2.4, 3.2);
-    const cauldron = new THREE.LatheGeometry([[0, 0], [.3, .03], [.42, .25], [.38, .5], [.33, .55], [.3, .55], [.36, .48], [.39, .25], [.28, .06], [0, .06]].map(([r2, y]) => new THREE.Vector2(r2, y)), 24);
-    cauldron.translate(cx, 0.28, cz); b.geo('iron', cauldron);
-    b.cylinder('ember', cx, 0.1, cz, 0.34, 0.3, 0.14, 12, { collide: true });
+    const a0 = inward + 2.4, [cx, cz] = at(t, a0, 3.2);
+    b.cylinder('ember', cx, 0.09, cz, 0.36, 0.3, 0.14, 12, { collide: true }); // brasas debajo
+    d.world.embers?.add(cx, 0.2, cz, 6, { radius: 0.3, height: 0.8, strength: 0.5 });
     c.light(cx, 0.9, cz, 0x6aff6a, 2.4, 5.5, { flicker: true, priority: 0.9 });
-    if (HAS_DOM) { const brew = new THREE.Mesh(new THREE.CircleGeometry(0.33, 16), new THREE.MeshStandardMaterial({ color: 0x0a2a08, emissive: 0x3aff40, emissiveIntensity: 1.2, roughness: 0.2 })); brew.rotation.x = -PI / 2; brew.position.set(cx, 0.78, cz); d.scene.add(brew); d.anim.push((tt) => { brew.material.emissiveIntensity = 1.0 + Math.sin(tt * 3 + cx) * 0.3; }); }
+    d.place('c_cauldron', cx, 0.16, cz, a0 + 0.4, 0.7, { still: false, onReady: (m) => {
+      d.phys.cylinder(cx, 0.45, cz, 0.45, 0.4, { mat: 'metal' });
+      m.traverse((o) => { if (o.isMesh) { o.castShadow = true; if (/liquid/i.test(o.name) && o.material) { o.material = o.material.clone(); o.material.emissive = new THREE.Color(0x3aff40); d.anim.push((tt) => { o.material.emissiveIntensity = 1.0 + Math.sin(tt * 3 + cx) * 0.3; }); } } });
+    } });
     for (const a of [inward + 0.9, inward - 0.9, inward + 2.6]) { // estantes
       const [x, z] = at(t, a, R - 0.25);
       b.box('woodDark', x, 1.0, z, 1.4, 0.05, 0.4, { yaw: a, collide: false }); b.box('woodDark', x, 1.6, z, 1.4, 0.05, 0.4, { yaw: a, collide: false }); b.box('woodDark', x, 2.2, z, 1.4, 0.05, 0.4, { yaw: a, collide: false });
@@ -730,8 +785,82 @@ function towerDeck(d, t, kind, rnd) {
   void kind;
 }
 
+// ================================================================ FACHADA DEL TORREÓN
+// decales de lluvia, musgo y escudo; portal con frontón sobre la puerta, postigos entreabiertos, enredaderas y
+// gárgolas bajo la cornisa. La cara de adelante está en z = -103 (mira al sur, hacia la plaza).
+function decalTex(kind) {
+  const W = 128, H = 256, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d');
+  let s = 91; const r = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  if (kind === 'streak') { // chorreado de lluvia: tiras oscuras que se afinan hacia abajo
+    for (let i = 0; i < 9; i++) { const x = 14 + r() * (W - 28), w = 3 + r() * 9, len = 90 + r() * 150, a = 0.14 + r() * 0.2; const gr = g.createLinearGradient(0, 0, 0, len); gr.addColorStop(0, `rgba(8,12,10,${a})`); gr.addColorStop(1, 'rgba(8,12,10,0)'); g.fillStyle = gr; g.fillRect(x, 0, w, len); }
+  } else if (kind === 'moss') { // musgo y humedad que sube desde el piso
+    for (let i = 0; i < 1400; i++) { const x = r() * W, y = H - r() * r() * H * 0.9; g.fillStyle = `rgba(${28 + r() * 30},${60 + r() * 50},${24 + r() * 20},${0.1 + r() * 0.3})`; g.beginPath(); g.arc(x, y, 1 + r() * 4, 0, 6.3); g.fill(); }
+  } else if (kind === 'arms') { // escudo del Conde: calavera y espadas cruzadas sobre rojo, lema
+    cv.width = 256; cv.height = 256; g.clearRect(0, 0, 256, 256);
+    g.fillStyle = '#2a0a0e'; g.beginPath(); g.moveTo(40, 30); g.lineTo(216, 30); g.lineTo(216, 130); g.quadraticCurveTo(216, 210, 128, 236); g.quadraticCurveTo(40, 210, 40, 130); g.closePath(); g.fill();
+    g.strokeStyle = '#b8955a'; g.lineWidth = 9; g.stroke();
+    g.strokeStyle = '#c8c0b0'; g.lineWidth = 9; g.beginPath(); g.moveTo(70, 70); g.lineTo(186, 180); g.moveTo(186, 70); g.lineTo(70, 180); g.stroke();
+    g.fillStyle = '#e8e2d0'; g.beginPath(); g.ellipse(128, 112, 34, 38, 0, 0, 6.3); g.fill(); g.fillRect(110, 140, 36, 20);
+    g.fillStyle = '#1a0608'; for (const dx of [-14, 14]) { g.beginPath(); g.ellipse(128 + dx, 108, 9, 11, 0, 0, 6.3); g.fill(); } g.beginPath(); g.moveTo(128, 122); g.lineTo(121, 136); g.lineTo(135, 136); g.fill();
+    g.fillStyle = '#b8955a'; g.font = 'bold 22px Georgia'; g.textAlign = 'center'; g.fillText('NUNC EST BIBENDUM', 128, 28 + 0);
+    for (let i = 0; i < 400; i++) { g.fillStyle = `rgba(0,0,0,${r() * 0.18})`; g.fillRect(r() * 256, r() * 256, 2, 2); }
+  }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+function facade(d) {
+  const b = new Builder(d.phys), rnd = d.r, Z = -102.92, F0 = 3.5;
+  const decal = (tex, x, y, z, w, h, rotY = 0, op = 1) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: op, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, toneMapped: true }));
+    m.position.set(x, y, z); m.rotation.y = rotY; m.renderOrder = 2; d.scene.add(m);
+  };
+  if (HAS_DOM) {
+    const streak = decalTex('streak'), moss = decalTex('moss');
+    // chorreado bajo cada ventana y musgo en el zócalo
+    for (const x of [-20.5, -12.5, -5, 5, 12.5, 20.5]) decal(streak, x, x === -5 || x === 5 ? 9.2 : 3.5 + 3.4, Z + 0.01, 1.9, 3.8, 0, 0.9);
+    for (const x of [-22, -16, -9, 9, 16, 22]) decal(moss, x, 1.05, Z + 0.015, 6.2, 2.0, 0, 0.9);
+    // el escudo sobre la puerta (en el frontón)
+    decal(decalTex('arms'), 0, 10.6, Z + 0.62, 1.8, 1.8, 0, 1);
+  }
+  // portal: dos pilastras, dintel y frontón triangular con el escudo en el tímpano
+  for (const sx of [-1, 1]) {
+    b.box('castleStone', sx * 2.45, (F0 + 9.6) / 2, Z + 0.2, 0.7, 9.6 - F0 + 0.2, 0.6, { collide: false });
+    b.box('keepStone', sx * 2.45, F0 + 0.18, Z + 0.25, 1.0, 0.36, 0.8, { collide: false });
+    b.box('keepStone', sx * 2.45, 9.7, Z + 0.25, 0.95, 0.3, 0.75, { collide: false });
+    b.box('keepStone', sx * 3.5, 6.2, Z + 0.1, 0.28, 3.4, 0.3, { collide: false }); // jambas de las ventanas altas, con relieve
+  }
+  b.box('castleStone', 0, 9.2, Z + 0.2, 5.6, 0.5, 0.65, { collide: false });
+  const gable = new THREE.Shape(); gable.moveTo(-3.1, 0); gable.lineTo(3.1, 0); gable.lineTo(0, 1.9); gable.lineTo(-3.1, 0);
+  const gg = new THREE.ExtrudeGeometry(gable, { depth: 0.5, bevelEnabled: true, bevelSize: 0.05, bevelThickness: 0.05, bevelSegments: 1 });
+  gg.translate(0, 9.45, Z + 0.1); b.geo('castleStone', gg);
+  b.box('keepStone', 0, 9.62, Z + 0.62, 5.0, 0.12, 0.1, { collide: false });
+  // dos faroles de hierro (cada uno con su luz) pegados a las pilastras
+  for (const sx of [-1, 1]) { b.box('iron', sx * 3.0, 5.2, Z + 0.55, 0.05, 0.9, 0.05, { collide: false }); b.box('iron', sx * 3.0, 5.65, Z + 0.78, 0.04, 0.04, 0.5, { collide: false }); b.cylinder('winGlow', sx * 3.0, 5.4, Z + 1.02, 0.09, 0.09, 0.3, 6, { collide: false, noShadow: true }); d.c.flame(sx * 3.0, 5.4, Z + 1.02, 0.05, 0.14, { intensity: 0.9 }); d.c.light(sx * 3.0, 5.4, Z + 1.3, 0xffa855, 3.4, 8, { flicker: true, priority: 1 }); }
+  // postigos entreabiertos en las ventanas bajas (hojas de madera con vetas, un poco torcidas)
+  for (const cx of [-20.5, -12.5, 12.5, 20.5]) for (const s of [-1, 1]) {
+    const hinge = cx + s * 0.78, ang = s * (0.95 + rnd() * 0.5);
+    const w = 0.78, h = 3.45;
+    const geo = new THREE.BoxGeometry(w, h, 0.07);
+    geo.translate(s * w / 2, 0, 0); geo.rotateY(ang); geo.translate(hinge, 6.8, Z + 0.08);
+    b.geo('woodDark', geo);
+    const hb = new THREE.BoxGeometry(w * 0.9, 0.08, 0.1); hb.translate(s * w / 2, 0.9, 0); hb.rotateY(ang); hb.translate(hinge, 6.8, Z + 0.1); b.geo('iron', hb);
+    const hb2 = hb.clone(); hb2.translate(0, 0, 0); hb2.applyMatrix4(new THREE.Matrix4().makeTranslation(0, -1.8, 0)); b.geo('iron', hb2);
+  }
+  // macetas con plantas secas en los alféizares de las ventanas altas del salón
+  for (const x of [-5, 5]) { b.box('terracotta', x, 4.9, Z + 0.5, 1.1, 0.34, 0.34, { collide: false }); for (let k = 0; k < 7; k++) b.cylinder('moss', x + (k - 3) * 0.14, 5.25, Z + 0.5, 0.01, 0.02, 0.35 + rnd() * 0.25, 4, { collide: false, rz: (rnd() - 0.5) * 0.9, noShadow: true }); }
+  // enredaderas que trepan por las esquinas y el zócalo del frente
+  for (const [x, w, h] of [[-23.5, 3.2, 11], [-17.6, 2.2, 6.5], [-9.2, 1.6, 4.5], [9.2, 1.6, 4.5], [17.6, 2.2, 6.5], [23.5, 3.2, 11], [-13.5, 1.8, 3.4], [14, 1.8, 3.8]]) ivy(b, x, Z + 0.02, 0, 1, w, h, rnd, 5, 3.4);
+  b.finish(d.scene);
+  // gárgolas (cabezas de bronce/piedra) bajo la cornisa, cada una escupiendo hacia adelante
+  for (const [type, x] of [['c_lionhead', -16.5], ['c_bullhead', -8.5], ['c_horsehead', 8.5], ['c_lionhead', 16.5]]) {
+    d.place(type, x, 15.2, Z + 0.35, 0, 1.0, { onReady: (m) => { m.traverse((o) => { if (o.isMesh) o.castShadow = true; }); } });
+  }
+}
+
 // ================================================================ entrada
 export function dressYard(d) {
+  try { facade(d); } catch (e) { console.warn('fachada', e); }
   try { huerta(d); } catch (e) { console.warn('huerta', e); }
   try { cementerio(d); } catch (e) { console.warn('cementerio', e); }
   try { patio(d); } catch (e) { console.warn('patio', e); }

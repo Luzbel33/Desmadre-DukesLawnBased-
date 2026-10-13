@@ -2,6 +2,7 @@
 // velas, lápidas con epitafios, telarañas, retratos pintados por código, calaveras, árboles secos, niebla baja,
 // murciélagos, cuervos y el espantapájaros. Todo lo repetido va instanciado.
 import { soilRow, dressYard } from './castle-yard.js';
+import { dressWalls } from './castle-walls.js';
 import * as THREE from 'three';
 import { G, rng } from '../core/G.js';
 import { whenAsset, assetModel, assetBounds, instanceModel, artwork, placeModel } from '../game/assets.js';
@@ -225,6 +226,7 @@ export class Decor {
     this.c.fair = this.fair;
     this.anim.push((t) => this.fair.update(t));
     dressYard(this); // huerta, cementerio, plaza de armas y torres con vida (world/castle-yard.js)
+    dressWalls(this); // tapices, trofeos, espadas cruzadas, candeleros y bultos adentro del torreón (world/castle-walls.js)
   }
 
   // ---------------------------------------------------------------- modelos repetidos (instanciados cuando llegan)
@@ -741,14 +743,12 @@ export class Decor {
     // mesas, sarcófagos, altar y demás: también hacen sombra con el fuego y el candelabro (luz heroica, capa 1)
     for (const m of b.finish(this.scene) || []) m.layers.enable(1);
     // caldero con brebaje verde que burbujea (y la luz verde)
-    const cauldron = new THREE.LatheGeometry([[0, 0], [.36, .04], [.5, .3], [.46, .6], [.4, .66], [.37, .66], [.43, .58], [.46, .3], [.34, .09], [0, .09]].map(([r2, y]) => new THREE.Vector2(r2, y)), 32);
-    const cm = new THREE.Mesh(cauldron, getMat('iron'));
-    cm.position.set(-22.7, F0 + 0.42, -123.2);
-    this.scene.add(cm);
-    const brew = new THREE.Mesh(new THREE.CircleGeometry(0.4, 20), new THREE.MeshStandardMaterial({ color: 0x0a2a08, emissive: 0x3aff40, emissiveIntensity: 1.3, roughness: 0.2 }));
-    brew.rotation.x = -Math.PI / 2;
-    brew.position.set(-22.7, F0 + 0.99, -123.2);
-    this.scene.add(brew);
+    // el caldero es el modelo de hierro fundido con textura (assets/props/art/cauldron.glb, con su líquido aparte);
+    // el brebaje late (emisivo) y lo cuelga una cadena del gancho del hogar
+    const brew = { material: { emissiveIntensity: 1 } };
+    this.place('c_cauldron', -22.7, F0 + 0.4, -123.2, 0.6, 0.78, { still: false, onReady: (m) => {
+      m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; if (/liquid/i.test(o.name) && o.material) { o.material = o.material.clone(); o.material.emissive = new THREE.Color(0x3aff40); o.material.emissiveIntensity = 1.2; brew.material = o.material; } } });
+    } });
     this.c.light(-22.3, F0 + 1.3, -123.2, 0x5aff50, 3, 6, { flicker: true, priority: 1 });
     this.c.light(-21.4, F0 + 0.9, -123.2, 0xff7a30, 9, 11, { flicker: true, priority: 1.8, shadow: true, decay: 1.5 });
     this.c.fire3d(-22.8, F0 + 0.1, -123.2, 0.36, 0.7, 0.85, { intensity: 1.0 });
