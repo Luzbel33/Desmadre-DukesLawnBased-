@@ -189,6 +189,12 @@ def build(name):
     off = len(used)
     for reg, P, tint, alpha in items:
         pf = P['faces']
+        if reg == 'hair' and C.get('hat'):
+            # Short hair cards above the brim protrude through a fitted hat.
+            # Keep the visible temple/nape hair; the cap conceals the crown.
+            hat = next(item[1] for item in items if item[0] == 'hat')
+            brim_y = np.percentile(hat['pos'][:, 1], 8) - 0.006
+            pf = [f for f in pf if P['pos'][f[0], 1].max() <= brim_y]
         if reg == 'eyes':  # sin la córnea (transparente en MakeHuman; acá la dibujaría blanca)
             pf = [f for f in pf if P['vt'][f[1]][:, 0].min() < 0.8]
         verts.append(P['pos'])

@@ -22,7 +22,7 @@ export const MODELS = {
   // CC-BY 4.0), rig reparado en Blender (assets/blender/repair_demon.py + retarget_human.py)
   diablo: { file: 'assets/chars/diablo.glb', label: 'El Diablo', gender: 'm', devil: true, owner: true, voice: 'demon' },
   // la gente del Búnker (MakeHuman CC0 + ropa procedural: assets/blender/mh/build_npc.py). Se bajan recién cerca del club
-  portero: { file: 'assets/chars/npc/portero.glb', label: 'El Portero', gender: 'm', npc: true },
+  portero: { file: 'assets/chars/npc/portero.glb', label: 'El Portero', gender: 'm', npc: true, mask: 'pig' },
   lilith: { file: 'assets/chars/npc/lilith.glb', label: 'Lilith', gender: 'f', npc: true, mask: 'bull' },
   coneja: { file: 'assets/chars/npc/coneja.glb', label: 'La Coneja', gender: 'f', npc: true, mask: 'rabbit' },
   dj: { file: 'assets/chars/npc/dj.glb', label: 'DJ Calavera', gender: 'm', npc: true },
@@ -52,6 +52,7 @@ export const MODELS = {
 export const DEFAULT_MODEL = 'eric';
 const CACHE = new Map(); // modelo -> { scene, meta }
 const MASK_FILES = {
+  pig: 'assets/props/art/mask_pig.glb',
   bull: 'assets/props/art/mask_bull.glb',
   horse: 'assets/props/art/mask_horse.glb',
   lion: 'assets/props/art/mask_lion.glb',
