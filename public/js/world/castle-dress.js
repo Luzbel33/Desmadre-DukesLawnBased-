@@ -9,11 +9,13 @@ import { rng } from '../core/G.js';
 import { CASTLE } from '../shared/mapdata.js';
 import { whenAsset, assetBounds } from '../game/assets.js';
 import { supportedMatrix } from '../game/placement.js';
+import { UPPER_FLOOR } from './castle-expansion.js';
 
 const F0 = CASTLE.keep.floor;
 const HAS_DOM = typeof document !== 'undefined';
 const _q = new THREE.Quaternion(), _e = new THREE.Euler(), _v = new THREE.Vector3(), _s = new THREE.Vector3();
 const PI = Math.PI;
+const TAU = PI * 2;
 
 // matriz de un objeto: posición de su base, giro (yaw), escala y, si hace falta, inclinaciones (rx, rz)
 function mx(x, y, z, yaw = 0, s = 1, o = {}) {
@@ -26,7 +28,7 @@ function ctex(cv, srgb = true) { const t = new THREE.CanvasTexture(cv); if (srgb
 
 // ---------------------------------------------------------------- tanda de instancias (una por tipo y cuarto)
 class Batch {
-  constructor(d) { this.d = d; this.map = new Map(); }
+  constructor(d, roomId = null) { this.d = d; this.map = new Map(); this.roomId = roomId; }
   add(type, x, y, z, yaw = 0, s = 1, o = {}) {
     if (['c_chair', 'c_armchair'].includes(type) && y >= F0 - .05 && !o.rx && !o.rz) this.d.c.seats.push({x, y:y+(type==='c_chair'?.46:.48)*s, z, yaw});
     if (!this.map.has(type)) this.map.set(type, { mats: [], supports: [], shadow: false });
@@ -49,12 +51,13 @@ class Batch {
     return this.add(type, cx + Math.sin(ang) * (h * s) / 2, cy - Math.cos(ang) * (h * s) / 2, z, 0, s, { rz: ang });
   }
   flush() {
+    const roomId = this.roomId;
     for (const [type, b] of this.map) whenAsset(type, () => {
       const bounds = assetBounds(type);
       b.supports.forEach((p, i) => {
         if (p && bounds) b.mats[i] = supportedMatrix(bounds, p.x, p.y, p.z, p.yaw, p.s, p.o);
       });
-      this.d.instances(type, b.mats, { shadow: b.shadow });
+      this.d.instances(type, b.mats, { shadow: b.shadow, onReady: roomId == null ? null : meshes => { for (const m of meshes) m.userData.castleRoom = roomId; } });
     });
     this.map.clear();
   }
@@ -110,7 +113,7 @@ function bookAssets() {
 // filas de libros en los estantes. Cada estante se describe en su propio marco (x a lo ancho, z hacia adelante) y se
 // lleva al mundo con su posición y giro; `levels` son las alturas de las tablas y `gap` el alto libre sobre cada una.
 const SHELF = { levels: [0.13, 0.47, 0.81, 1.16, 1.55, 2.01], gap: [0.29, 0.29, 0.3, 0.34, 0.41, 0.44], half: 0.7, back: -0.31 };
-function shelfBooks(d, list, r, parent = null) {
+function shelfBooks(d, list, r, parent = null, roomId = null) {
   if (!HAS_DOM) return;
   const { g, mat } = bookAssets();
   const items = [];
@@ -139,6 +142,7 @@ function shelfBooks(d, list, r, parent = null) {
   im.instanceMatrix.needsUpdate = true;
   im.castShadow = false;
   im.receiveShadow = true;
+  if (roomId != null) im.userData.castleRoom = roomId;
   if (parent) parent.add(im);
   else { im.matrixAutoUpdate = false; d.scene.add(im); }
   return im;
@@ -181,13 +185,14 @@ const RUGS = {
   green: { field: '#26382a', accent: '#a08a48', border: '#2a1a14', trim: '#6a5a3a' },
   brown: { field: '#4a3020', accent: '#b08a50', border: '#180e0a', trim: '#7a5a34' },
 };
-function rug(d, x, z, w, l, kind = 'red', yaw = 0, seed = 1, floor = F0) {
+function rug(d, x, z, w, l, kind = 'red', yaw = 0, seed = 1, floor = F0, roomId = null) {
   if (!HAS_DOM) return;
   const mat = new THREE.MeshStandardMaterial({ map: ctex(rugCanvas(RUGS[kind], seed * 77 + 5)), roughness: 1 });
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.018, l), mat);
   m.position.set(x, floor + 0.03, z);
   m.rotation.y = yaw;
   m.receiveShadow = true;
+  if (roomId != null) m.userData.castleRoom = roomId;
   m.matrixAutoUpdate = false;
   m.updateMatrix();
   d.scene.add(m);
@@ -270,7 +275,242 @@ export function dressCastle(d) {
   dressSecret(ctx);
   dressCrypt(ctx);
   dressYard(ctx);
+  dressUpperCastle(ctx);
+  dressTowerRooms(ctx);
   c.b.finish(d.scene);
+}
+
+// ---------------------------------------------------------------- inhabited upper storey
+function dressUpperCastle({ d, c, r, col }) {
+  const B = new Batch(d, 121), y = UPPER_FLOOR;
+  const lamp = (x, sy, z, scale = 1) => {
+    B.add('c_oillamp', x, sy, z, 0, scale);
+    c.flame(x, sy + 0.5 * scale, z, 0.035, 0.095, {});
+    c.light(x, sy + 0.65 * scale, z, 0xffbf80, 3.8, 7, { flicker: true, priority: 1.5 });
+  };
+  const chair = (x, z, yaw) => { B.add('c_armchair', x, y, z, yaw, 1, { shadow: true }); col(x, y, z, 0.8, 0.75, 0.8, yaw); };
+  // The count's room: four-poster bed, dressing area and an interrupted game.
+  rug(d, -17.5, -120.1, 6.2, 7.6, 'red', 0, 31, y, 121);
+  c.box('blackWood', -18.5, y + 0.18, -123.1, 2.45, 0.36, 2.8, { mask: false });
+  c.deco('oldWood', -18.5, y + 0.31, -121.66, 2.5, 0.18, 0.12, { mask: false });
+  B.add('c_bed', -18.5, y + 0.36, -123.1, 0, 1, { shadow: true }); col(-18.5, y, -123.1, 2.45, 1.0, 2.8);
+  for (const x of [-19.72, -17.28]) for (const z of [-124.54, -121.66]) {
+    c.cyl('blackWood', x, y + 1.42, z, 0.055, 0.075, 2.84, 8, { mask: false });
+    c.cyl('bronze', x, y + 2.88, z, 0.085, 0.065, 0.12, 8, { mask: false });
+  }
+  for (const z of [-124.54, -121.66]) c.deco('blackWood', -18.5, y + 2.8, z, 2.55, 0.15, 0.12, { mask: false });
+  for (const x of [-19.72, -17.28]) c.deco('blackWood', x, y + 2.8, -123.1, 0.12, 0.15, 3.0, { mask: false });
+  const canopy = curtainGeo(2.45, 2.85, 12); canopy.rotateX(-PI / 2); canopy.translate(-18.5, y + 2.78, -123.1); c.b.geo('velvet', canopy);
+  for (const x of [-20.35, -16.65]) { B.add('c_nightstand', x, y, -124, 0, 1, { shadow: true }); col(x, y, -124, 0.55, 0.7, 0.55); lamp(x, y + 0.7, -124, 0.8); }
+  B.add('c_commode', -22.8, y, -118.0, PI / 2, 1, { shadow: true }); col(-22.8, y, -118, 0.7, 1.2, 1.3);
+  B.add('c_frame_stand', -22.75, y + 1.21, -118, PI / 2, 1).add('c_vase_b3', -22.75, y + 1.21, -118.4, 0, 1);
+  B.add('c_roundtable', -14, y, -118.1, 0, 1, { shadow: true }); col(-14, y, -118.1, 0.9, 0.75, 0.9);
+  B.add('c_chess', -14, y + 0.75, -118.1, 0.4, 1);
+  chair(-15.3, -118.1, PI / 2); chair(-12.7, -118.1, -PI / 2);
+  wallChart(d, 'lineage', -18.5, y + 3.83, -125.59, 0, 1.05, 1.15, 121);
+  curtains(d, -23.72, -124, 'z', 1, y + 0.05, 14.5, 0.7, r);
+  B.flush(); B.roomId = 122;
+
+  // Cartography: navigable worktable, brass armillary and map drawers. The map
+  // depicts this castle, so the room doubles as an in-world orientation aid.
+  rug(d, -16.8, -109.6, 8.5, 6.5, 'blue', 0, 32, y, 122);
+  c.box('oldWood', -20.2, y + 0.91, -110.2, 3.2, 0.12, 2.05, { mask: false });
+  for (const x of [-21.55, -18.85]) for (const z of [-110.95, -109.45]) c.box('blackWood', x, y + 0.44, z, 0.14, 0.88, 0.14, { mask: false });
+  castleMap(d, -20.2, y + 0.977, -110.2, 2.5, 1.64);
+  B.add('c_compass', -19, y + 0.97, -109.7, 0.4, 1).add('c_specs', -19.2, y + 0.97, -110.6, 0.5, 1);
+  lamp(-21.3, y + 0.97, -110.7, 0.85);
+  chair(-20.1, -108.7, PI);
+  for (const x of [-22.4, -20.5]) { B.add('c_drawer', x, y, -114.25, 0, 1.4, { shadow: true }); col(x, y, -114.25, 1.2, 0.77, 0.65); }
+  B.lay('c_book_a', 0, 0, -20.4, y + 0.78, -114.25, 0.15).add('c_horsestat', -22.4, y + 0.78, -114.25, 0.6, 1);
+  B.add('c_daybed', -13.5, y, -104.95, PI, 1, { shadow: true }); col(-13.5, y, -104.95, 2.1, 0.7, 0.8);
+  wallChart(d, 'stars', -23.63, y + 2.65, -110.2, PI / 2, 2.8, 2.1, 122);
+  const mapShelves = [-15, -17].map(x => ({ x, y, z: -114.3, yaw: 0, fill: 0.72 }));
+  for (const s of mapShelves) { B.add('c_bookshelf', s.x, y, s.z, 0, 1, { shadow: true }); col(s.x, y, s.z, 1.6, 2.5, 0.65); }
+  shelfBooks(d, mapShelves, r, null, 122);
+  curtains(d, -17.3, -104.28, 'x', -1, y + 0.05, 14.55, 0.7, r);
+  B.flush(); B.roomId = 123;
+
+  // The apothecary's bench is used, with a microscope, labelled glass and
+  // hanging roots; clear circulation stays along the west and south edges.
+  rug(d, 17.6, -121, 6.5, 6.5, 'green', 0, 33, y, 123);
+  c.box('oldWood', 18.1, y + 0.93, -123.1, 4.4, 0.14, 1.25, { mask: false });
+  for (const x of [16.2, 20]) for (const z of [-123.55, -122.65]) c.box('blackWood', x, y + 0.45, z, 0.15, 0.9, 0.15, { mask: false });
+  B.add('c_microscope', 18.1, y + 1, -123.1, 0.3, 1).add('c_bowl', 16.8, y + 1, -123.1, 0.3, 1);
+  B.add('c_jug', 19.7, y + 1, -123.1, 0.5, 0.7).add('c_specs', 18.8, y + 1, -122.7, 0.5, 1);
+  B.lay('c_book_b', 0, 0, 17.2, y + 1, -122.75, -0.2); lamp(16.15, y + 1, -123.25, 0.85);
+  B.add('c_stool2', 18.1, y, -121.7, PI, 1, { shadow: true });
+  for (const x of [12.2, 14.2]) { B.add('c_cabinet2', x, y, -125.1, 0, 1, { shadow: true }); col(x, y, -125.1, 1.3, 1.8, 0.65); }
+  for (const [x, type] of [[21.9, 'c_vase_c'], [22.6, 'c_pots'], [21.1, 'c_basket1']]) B.add(type, x, y, -119.2, x, 1, { shadow: true });
+  wallChart(d, 'botany', 23.62, y + 2.6, -121.1, -PI / 2, 1.9, 2.2, 123);
+  for (const sy of [1.8, 2.5, 3.2]) {
+    c.box('oldWood', 17.2, y + sy, -125.35, 3.6, 0.08, 0.58, { mask: false });
+    for (const x of [15.6, 18.8]) c.deco('iron', x, y + sy - 0.13, -125.51, 0.04, 0.25, 0.3, { mask: false });
+  }
+  apothecaryBottles(d, y);
+  for (const x of [20.4, 21.1, 21.8]) {
+    c.cyl('hemp', x, y + 3.5, -124.3, 0.011, 0.011, 1.8, 5, { mask: false });
+    B.add('c_branches', x, y + 2.35, -124.3, x, 0.22, { rx: PI, ground: true });
+  }
+  B.add('c_daybed', 21.9, y, -116.1, PI, 1, { shadow: true }); col(21.9, y, -116.1, 2.1, 0.7, 0.8);
+  for (const z of [-118, -124]) curtains(d, 23.72, z, 'z', -1, y + 0.05, 14.5, 0.7, r);
+  B.flush(); B.roomId = 124;
+
+  // Armoury: weapons are mounted with grips down; the table holds maintenance
+  // tools and a shield. Nothing is a fake new pickup or displaces the real arsenal.
+  rug(d, 16.7, -109.6, 7.5, 5.8, 'brown', 0, 34, y, 124);
+  for (const x of [15.3, 18.6, 21.3]) {
+    B.add('c_shield', x, y + 1.6, -114.65, 0, 1);
+    B.cross('c_estoc', 1.49, x, y + 2.3, -114.68, 0.68).cross('c_mace', 0.63, x, y + 2.3, -114.7, -0.7, 1.2);
+  }
+  B.add('c_console', 18.5, y, -106.0, PI, 1.2, { shadow: true }); col(18.5, y, -106, 1.85, 1.14, 0.72);
+  B.add('c_hatchet', 18.1, y + 1.14, -106.1, 0.7, 0.9, { ground: true, rx: -PI / 2 });
+  B.add('c_mclock', 18.8, y + 1.14, -106, PI, 1); lamp(17.8, y + 1.14, -106, 0.8);
+  B.add('c_commode', 22.8, y, -111, -PI / 2, 1, { shadow: true }); col(22.8, y, -111, 0.7, 1.2, 1.3);
+  chair(13.5, -108, 0.5); B.add('c_footstool', 14.4, y, -107.6, 0.5, 1);
+  B.add('c_bullhead', 18.5, y + 3.3, -114.65, 0, 1.3);
+  curtains(d, 17.3, -104.28, 'x', -1, y + 0.05, 14.55, 0.7, r);
+  B.flush(); B.roomId = 125;
+
+  // Archive: a narrow central study with an unobstructed east/west crossing.
+  const shelves = [];
+  for (const x of [-1.8, 0.05, 1.9]) {
+    B.add('c_bookshelf', x, y, -125.17, 0, 1, { shadow: true }); col(x, y, -125.17, 1.6, 2.5, 0.65);
+    shelves.push({ x, y, z: -125.17, yaw: 0, fill: 0.75 });
+  }
+  shelfBooks(d, shelves, r, null, 125);
+  rug(d, 2.1, -120.35, 5.6, 2, 'red', 0, 35, y, 125);
+  B.add('c_nightstand', 6.8, y, -117.85, PI, 1, { shadow: true }); col(6.8, y, -117.85, 0.6, 0.7, 0.6); lamp(6.8, y + 0.7, -117.85, 0.8);
+  B.lay('c_book_b', 0, 0, 4.65, y + 1.41, -124.32, 0.25).flat('c_pocketwatch', 0, 0, 5.35, y + 1.41, -124.34, 0.4);
+  B.add('c_candlestick', -2.6, y, -121.65, 0, 1.3); c.flame(-2.6, y + 0.325, -121.65, 0.035, 0.1, {});
+  wallChart(d, 'archive', 4.8, y + 2.9, -125.66, 0, 2.0, 1.65, 125);
+  upperPlaque(d, 'EL CONDE NUNCA DUERME', 4.8, y + 1.03, -124.82, 0, 125);
+  B.flush();
+  // Small plaques help orient players without HUD arrows or new menus.
+  for (const [label, x, z, yaw, roomId] of [['APOSENTOS', -8.34, -123.75, -PI / 2, 121], ['CARTOGRAFÍA', -14.6, -114.7, 0, 122], ['BOTICA', 8.34, -123.75, PI / 2, 123], ['ARMERÍA', 14.6, -114.7, 0, 124]]) {
+    upperPlaque(d, label, x, y + 2.0, z, yaw, roomId);
+  }
+}
+
+function castleMap(d, x, y, z, w, h) {
+  if (!HAS_DOM) return;
+  const cv = canvas(768, 512), ctx = cv.getContext('2d'), r = rng(1947);
+  ctx.fillStyle = '#bba77b'; ctx.fillRect(0, 0, 768, 512);
+  for (let i = 0; i < 2400; i++) { ctx.fillStyle = `rgba(49,29,15,${r() * 0.08})`; ctx.fillRect(r() * 768, r() * 512, 2 + r() * 8, 1 + r() * 4); }
+  ctx.strokeStyle = '#554632'; ctx.lineWidth = 3; ctx.strokeRect(18, 18, 732, 476);
+  ctx.textAlign = 'center'; ctx.fillStyle = '#453525'; ctx.font = '24px Georgia'; ctx.fillText('DOMINIOS DEL CONDE', 384, 60);
+  ctx.lineWidth = 11; ctx.strokeRect(142, 113, 484, 281);
+  for (const cx of [142, 626]) for (const cy of [113, 394]) { ctx.fillStyle = '#bba77b'; ctx.beginPath(); ctx.arc(cx, cy, 26, 0, TAU); ctx.fill(); ctx.stroke(); }
+  ctx.lineWidth = 4; ctx.strokeRect(248, 147, 275, 119); ctx.strokeRect(172, 293, 137, 61);
+  ctx.beginPath(); ctx.moveTo(369, 394); ctx.lineTo(369, 435); ctx.moveTo(399, 394); ctx.lineTo(399, 435); ctx.stroke();
+  ctx.setLineDash([4, 5]); ctx.beginPath(); ctx.moveTo(384, 420); ctx.lineTo(384, 266); ctx.stroke(); ctx.setLineDash([]);
+  ctx.font = '17px Georgia'; ctx.fillText('TORREÓN', 385, 208); ctx.fillText('FOGÓN', 240, 330); ctx.fillText('N', 685, 133);
+  ctx.beginPath(); ctx.moveTo(685, 150); ctx.lineTo(685, 190); ctx.moveTo(676, 160); ctx.lineTo(685, 146); ctx.lineTo(694, 160); ctx.stroke();
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: ctex(cv), roughness: 1 }));
+  mesh.rotation.x = -PI / 2; mesh.position.set(x, y, z); mesh.updateMatrix(); mesh.matrixAutoUpdate = false; mesh.userData.castleRoom = 122; d.scene.add(mesh);
+}
+
+function upperPlaque(d, text, x, y, z, yaw, roomId) {
+  if (!HAS_DOM) return;
+  const cv = canvas(512, 96), ctx = cv.getContext('2d');
+  ctx.fillStyle = '#251b14'; ctx.fillRect(0, 0, 512, 96); ctx.strokeStyle = '#9b8053'; ctx.lineWidth = 3; ctx.strokeRect(8, 8, 496, 80);
+  ctx.fillStyle = '#cfb88b'; ctx.font = '30px Georgia'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, 256, 48);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(1.35, 0.25), new THREE.MeshStandardMaterial({ map: ctex(cv), roughness: 0.85 }));
+  m.position.set(x, y, z); m.rotation.y = yaw; m.updateMatrix(); m.matrixAutoUpdate = false; m.userData.castleRoom = roomId; d.scene.add(m);
+}
+
+function wallChart(d, kind, x, y, z, yaw, width, height, roomId) {
+  if (!HAS_DOM) return;
+  const cv = canvas(768, 768), ctx = cv.getContext('2d'), rand = rng(893 + roomId);
+  const night = kind === 'stars';
+  ctx.fillStyle = night ? '#182832' : '#baaa81'; ctx.fillRect(0, 0, 768, 768);
+  for (let i = 0; i < 5000; i++) { ctx.fillStyle = `rgba(${night ? '191,166,111' : '61,36,17'},${rand() * 0.09})`; ctx.fillRect(rand() * 768, rand() * 768, 1 + rand() * 5, 1 + rand() * 3); }
+  ctx.strokeStyle = night ? '#9a895f' : '#675139'; ctx.fillStyle = night ? '#cbb985' : '#493a26'; ctx.lineWidth = 3;
+  ctx.strokeRect(27, 27, 714, 714); ctx.strokeRect(36, 36, 696, 696);
+  ctx.textAlign = 'center'; ctx.font = '31px Georgia';
+  const titles = { stars: 'ATLAS DEL CIELO NOCTURNO', botany: 'HERBARIO · XII', lineage: 'LA CASA DEL CONDE', archive: 'REGISTRO DE CAMPANAS' };
+  ctx.fillText(titles[kind], 384, 85);
+  ctx.font = '17px Georgia'; ctx.fillText(kind === 'stars' ? 'CARTOGRAFÍA DE LA NOCHE ETERNA' : 'ARCHIVO PRIVADO · CASTILLO DEL TERROR', 384, 115);
+  if (kind === 'stars') {
+    for (const r of [110, 200, 280]) { ctx.beginPath(); ctx.arc(384, 425, r, 0, TAU); ctx.stroke(); }
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 24; i++) { const a = i * TAU / 24; ctx.beginPath(); ctx.moveTo(384 + Math.cos(a) * 110, 425 + Math.sin(a) * 110); ctx.lineTo(384 + Math.cos(a) * 280, 425 + Math.sin(a) * 280); ctx.stroke(); }
+    for (let i = 0; i < 140; i++) { const a = rand() * TAU, r = Math.sqrt(rand()) * 266; ctx.beginPath(); ctx.arc(384 + Math.cos(a) * r, 425 + Math.sin(a) * r, 1 + rand() * 2.3, 0, TAU); ctx.fill(); }
+    ctx.lineWidth = 2.5;
+    for (const points of [[[216,336],[271,294],[330,322],[349,377],[299,431]], [[467,505],[520,468],[553,403],[604,411]], [[382,609],[413,566],[469,590]]]) { ctx.beginPath(); points.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke(); }
+  } else if (kind === 'botany') {
+    for (let k = 0; k < 3; k++) {
+      const bx = 171 + k * 211;
+      ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(bx, 632); ctx.bezierCurveTo(bx - 29, 504, bx + 22, 346, bx - 10, 205); ctx.stroke();
+      for (let i = 0; i < 8; i++) {
+        const by = 260 + i * 43, side = i % 2 ? 1 : -1;
+        ctx.beginPath(); ctx.moveTo(bx, by + 25); ctx.bezierCurveTo(bx + side * 40, by + 9, bx + side * 68, by - 30, bx + side * 41, by - 31); ctx.bezierCurveTo(bx + side * 7, by - 34, bx + side * 12, by + 17, bx, by + 25); ctx.stroke();
+        ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(bx, by + 23); ctx.lineTo(bx + side * 41, by - 28); ctx.stroke(); ctx.lineWidth = 3;
+      }
+      ctx.font = '21px Georgia'; ctx.fillText(['SALVIA', 'ROMERO', 'AJENJO'][k], bx, 687);
+    }
+  } else if (kind === 'lineage') {
+    const nodes = [[384,218],[239,385],[529,385],[151,572],[327,572],[460,572],[637,572]];
+    for (const [a, b] of [[0,1],[0,2],[1,3],[1,4],[2,5],[2,6]]) { ctx.beginPath(); ctx.moveTo(...nodes[a]); ctx.lineTo(...nodes[b]); ctx.stroke(); }
+    nodes.forEach(([cx, cy], i) => { ctx.fillStyle = '#a8956d'; ctx.beginPath(); ctx.ellipse(cx, cy, 55, 63, 0, 0, TAU); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#493a26'; ctx.font = '25px Georgia'; ctx.fillText(['I','II','III','IV','V','VI','VII'][i], cx, cy + 10); });
+    ctx.font = '23px Georgia'; ctx.fillText('NADIE ABANDONA ESTA CASA', 384, 697);
+  } else {
+    ctx.font = '22px Georgia'; ctx.textAlign = 'left';
+    for (const [i, line] of ['TORRE OESTE        00 : 00', 'TORRE DEL HUERTO   03 : 00', 'TORRE DE DIFUNTOS  06 : 00', 'TORRE DEL VIGÍA    09 : 00'].entries()) { const py = 240 + i * 100; ctx.fillText(line, 107, py); ctx.beginPath(); ctx.moveTo(107, py + 19); ctx.lineTo(662, py + 19); ctx.stroke(); }
+    ctx.textAlign = 'center'; ctx.font = '24px Georgia'; ctx.fillText('SI RESPONDEN, NO VUELVAS A TOCAR.', 384, 676);
+  }
+  const mat = new THREE.MeshStandardMaterial({ map: ctex(cv), roughness: 0.93, emissive: night ? 0x5d7691 : 0x9b814b, emissiveIntensity: 0.035 });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), mat);
+  mesh.position.set(x, y, z); mesh.rotation.y = yaw; mesh.updateMatrix(); mesh.matrixAutoUpdate = false; mesh.userData.castleRoom = roomId; d.scene.add(mesh);
+  const co = Math.cos(yaw), si = Math.sin(yaw);
+  for (const sx of [-1, 1]) d.c.deco('blackWood', x + co * sx * (width / 2 + 0.035), y, z - si * sx * (width / 2 + 0.035), 0.07, height + 0.14, 0.07, { yaw, mask: false });
+  for (const sy of [-1, 1]) d.c.deco('blackWood', x, y + sy * (height / 2 + 0.035), z, width + 0.14, 0.07, 0.07, { yaw, mask: false });
+}
+
+function apothecaryBottles(d, floor) {
+  const points = [[0, 0], [0.065, 0], [0.073, 0.025], [0.073, 0.18], [0.029, 0.23], [0.027, 0.30], [0, 0.30]].map(([x, y]) => new THREE.Vector2(x, y));
+  const geo = new THREE.LatheGeometry(points, 12);
+  for (const [k, color] of [0x5c8761, 0x9b602c, 0x647f87].entries()) {
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.23, metalness: 0.18 });
+    const im = new THREE.InstancedMesh(geo, mat, 9);
+    for (let i = 0; i < 9; i++) {
+      const level = Math.floor(i / 3), j = i % 3, x = 15.9 + j * 0.98 + k * 0.22, y = floor + 1.84 + level * 0.7, z = -125.23;
+      const scale = 0.85 + ((i + k) % 3) * 0.15;
+      im.setMatrixAt(i, mx(x, y, z, i, scale));
+      d.c.deco('woodDark', x, y + 0.30 * scale, z, 0.048 * scale, 0.05, 0.048 * scale, { mask: false });
+    }
+    im.receiveShadow = true; im.userData.castleRoom = 123; im.updateMatrix(); im.matrixAutoUpdate = false; d.scene.add(im);
+  }
+}
+
+function dressTowerRooms({ d, c, col }) {
+  const B = new Batch(d);
+  for (const tower of c.towerRooms || []) {
+    const { x, z, floor: y, inward, corner, id } = tower;
+    if (!corner) {
+      B.add('c_winebarrel', x + Math.sign(x) * 0.7, y, z, 0, 1, { shadow: true });
+      B.add('c_stool2', x, y, z + 1.25, 0, 1, { shadow: true });
+      B.add('c_shield', x + Math.sign(x) * 1.5, y + 0.3, z + 1.65, PI, 1);
+      continue;
+    }
+    // Each central nook has a purpose; spiral circulation occupies the outer ring.
+    const a = inward + PI, px = x + Math.sin(a) * 1.18, pz = z + Math.cos(a) * 1.18;
+    if (id === 400) {
+      B.add('c_winebarrel', px, y, pz, 0, 0.9, { shadow: true }); col(px, y, pz, 0.65, 0.95, 0.65);
+      B.add('c_jug', px, y + 1.02, pz, 0, 0.7);
+    } else if (id === 401) {
+      B.add('c_pots', px, y, pz, 0, 1, { shadow: true }).add('c_basket2', x - Math.sin(a) * 1.0, y, z - Math.cos(a) * 1.0, 1, 1);
+    } else if (id === 402) {
+      B.add('c_shield', px, y + 0.2, pz, inward, 1).add('c_mace', px + 0.35, y, pz, inward, 1);
+    } else {
+      B.add('c_skull', px, y + 0.52, pz, inward, 1);
+      c.box('keepStone', px, y + 0.25, pz, 0.68, 0.5, 0.65, { mask: false });
+      B.add('c_candlestick', px + 0.43, y, pz, 0, 1); c.flame(px + 0.43, y + 0.25, pz, 0.04, 0.11, {});
+    }
+    B.add('c_oillamp', x, 11.05, z, 0, 1.5);
+    c.flame(x, 11.8, z, 0.055, 0.17, {});
+    c.light(x, 12, z, 0xffc78a, 5, 8, { flicker: true, priority: 1.5 });
+  }
+  B.flush();
 }
 
 // ---------------------------------------------------------------- salón (101): entrada, trofeos, alfombra de pasillo

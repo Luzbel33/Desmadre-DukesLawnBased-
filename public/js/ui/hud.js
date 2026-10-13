@@ -13,7 +13,7 @@ const SHOW_S = 6; // segundos que se ve una ayuda antes de desvanecerse (en "pri
 
 export class Hud {
   constructor() {
-    this.el = { toasts: $('toasts'), hints: $('hints'), big: $('bigmsg'), cross: $('crosshair') };
+    this.el = { toasts: $('toasts'), hints: $('hints'), big: $('bigmsg'), cross: $('crosshair'), contact: $('hit-confirm') };
     this.hintsNow = new Map(); // id -> { key, text } pedidas este cuadro
     this.chips = new Map(); // id -> { el, t, key, text, counted, gone }
     try { this.seen = JSON.parse(localStorage.getItem(SEEN_KEY) || '{}') || {}; } catch { this.seen = {}; }
@@ -98,4 +98,18 @@ export class Hud {
 
   // Mira: se marca cuando hay algo para usar o agarrar
   crosshair(canUse) { this.el.cross?.classList.toggle('use', !!canUse); }
+
+  // Only contact events call this; it does not imply damage or a confirmed kill.
+  // One replaceable animation handles rapid contacts without timers or layout reads.
+  contact(strength = 0.5, reducedMotion = false) {
+    const el = this.el.contact;
+    if (!el?.animate) return;
+    this._contactAnimation?.cancel();
+    const scale = reducedMotion ? 1 : 1.08 + Math.min(1, Math.max(0, strength)) * 0.16;
+    this._contactAnimation = el.animate([
+      { opacity: 0.95, transform: `translate(-50%, -50%) scale(${scale})`, offset: 0 },
+      { opacity: 0.85, transform: 'translate(-50%, -50%) scale(1)', offset: 0.25 },
+      { opacity: 0, transform: 'translate(-50%, -50%) scale(1)', offset: 1 },
+    ], { duration: reducedMotion ? 150 : 210, easing: 'ease-out' });
+  }
 }

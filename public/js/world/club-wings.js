@@ -110,13 +110,13 @@ export class ClubWings {
     const c = this.c, g = new THREE.Group();
     g.name = 'bunker-' + id; g.visible = false;
     c.group.add(g);
-    const b0 = c.b, g0 = c.group, a0 = c.anim;
+    const b0 = c.b, g0 = c.group, a0 = c.anim, lightStart = c.lights.length;
     c.b = new Builder(c.phys); c.group = g; c.anim = [];
     this._models = new Map();
     this._id = id;
     try { fn(); } finally {
       for (const m of c.b.finish(g)) m.userData.club = true;
-      this.wings.set(id, { group: g, anim: c.anim });
+      this.wings.set(id, { group: g, anim: c.anim, lights: c.lights.slice(lightStart) });
       this._flushModels(g);
       c.b = b0; c.group = g0; c.anim = a0;
     }
@@ -364,6 +364,7 @@ export class ClubWings {
     this.deco('ember', x, 0.795, z, 0.07, 0.01, 0.07);
     const hose = new THREE.CatmullRomCurve3([new THREE.Vector3(x + 0.03, 0.5, z), new THREE.Vector3(x + 0.35, 0.3, z + 0.1), new THREE.Vector3(x + 0.7, 0.12, z + 0.35), new THREE.Vector3(x + 0.95, 0.2, z + 0.55)]);
     this.c.b.geo('leatherBlack', new THREE.TubeGeometry(hose, 16, 0.012, 6));
+    this.c.interact.push({ id: 'cafe_hookah', k: 'bong', p: [x + 0.85, 0.8, z + 0.45], r: 1.35, label: 'Pitar del narguile' });
     // almohadones alrededor (se sientan jugadores)
     const cols = ['shroomPink', 'velvet', 'fabricGreen', 'yellow', 'fabricBlue', 'orange'];
     for (let k = 0; k < 6; k++) {
@@ -848,6 +849,14 @@ export class ClubWings {
     for (const y of [1.55, 1.95, 2.35]) this.modelM('b_rifle', mat4(bx, y, ar.z0 + 0.14, 0, 1));
     for (let k = 0; k < 3; k++) this.model('b_pistols', bx - 1.6 + k * 1.6, 0.94, bz + 0.05, (r() - 0.5) * 0.3);
     this.model('b_medbox', bx + 2.1, 0.94, bz, 0.3);
+    // A shielded task light makes the usable weapons readable against the rack.
+    this.deco('steel', bx, 2.68, bz + 0.05, 5.15, 0.12, 0.42);
+    this.deco('warmBulb', bx, 2.61, bz + 0.12, 4.65, 0.035, 0.16);
+    this.light(bx, 2.25, bz + 0.85, 0xffdcab, 16, 9, { priority: 1.7, decay: 1.25 });
+    for (const x of [28.7, 31.5]) {
+      this.model('b_sconce', x, 2.7, ar.z0 + 0.16);
+      this.light(x, 2.45, ar.z0 + 0.75, 0xe1eaff, 9, 7, { priority: 1.2, decay: 1.15 });
+    }
     this.c.use('club_pistol', [bx, 1.1, bz + 0.9], 2.2, 'Agarrar una pistola', { e: 'give', item: 'pistol' });
     this.anchors.sarge = new THREE.Vector3(37.4, 0, -457.6);
     this._range();
@@ -862,13 +871,19 @@ export class ClubWings {
     for (const [x, y, z, yaw] of [[30, 0, -456.7, 0], [31.4, 0, -456.7, 0], [30.7, 0.464, -456.7, 0.05], [43.6, 0, -457, 0], [43.6, 0.464, -457, -0.04]]) this.model('b_crate_wood', x, y, z, yaw);
     for (const [x, z] of [[27.5, -456.6], [27.9, -456.7], [41.2, -456.6]]) this.model('b_jerrycan', x, 0, z, r() * 0.4);
     for (const x of [37.6, 38.3]) this.model('b_shelf_steel', x, 0, -456.5, Math.PI);
+    // Stock stays against the walls, leaving the route to all four lanes clear.
+    for (const [x, y, z, yaw] of [[36.5, 0, -457.1, 0.05], [35.1, 0, -457.1, -0.04], [35.8, 0.47, -457.1, 0]]) this.model('b_crate_wood', x, y, z, yaw);
+    for (const y of [0.43, 0.95, 1.45]) for (const x of [37.6, 38.3]) this.model('b_ammo', x, y, -456.5, Math.PI / 2);
+    this.model('b_medbox', 36.5, 0.47, -457.1, -0.1);
+    this.light(34.7, 2.8, -458, 0xffd3a0, 10, 12, { priority: 1.1, decay: 1.25 });
+    this.model('b_sconce', 34.7, 3.1, ar.z1 - 0.15, Math.PI);
     // escritorio con la radio, máscaras de gas colgadas, tablero eléctrico, apliques y tubos
     this.box('blackWood', 27.5, 0.4, -459.2, 1.6, 0.8, 0.9);
     this.deco('olive', 27.5, 0.82, -459.2, 1.7, 0.04, 1.0);
     this.model('b_radio', 27.4, 0.84, -459.25, Math.PI);
     for (let k = 0; k < 4; k++) this.model('b_gasmask', 32.8 + k * 0.55, 0.85, -456.2, Math.PI);
     this.model('b_powerbox', 26.6, 1.3, ar.z0 + 0.25, 0);
-    for (const [x, z] of [[29, -472], [41, -472], [29, -461], [41, -461]]) { this.model('b_fluo', x, ar.h - 0.04, z, 0); this.light(x, ar.h - 0.6, z, 0xdfeeff, 11, 12, { priority: 1.05, decay: 1.2 }); }
+    for (const [x, z] of [[29, -472], [41, -472], [29, -461], [41, -461]]) { this.model('b_fluo', x, ar.h - 0.04, z, 0); this.light(x, ar.h - 0.9, z, 0xdfeeff, 16, 15, { priority: 1.05, decay: 1.2 }); }
     // baliza de alarma que gira (roja) arriba de la entrada
     this.cyl('redLamp', 24.65, 3.35, -475, 0.09, 0.09, 0.16, 12);
     const beacon = this.light(25.6, 3.2, -475, 0xff1a10, 0, 9, { priority: 1.3 });
@@ -893,6 +908,15 @@ export class ClubWings {
     // olor a pólvora: un poco de humo de reflector
     const fog = this.c.fog;
     if (fog) fog.add(35, 2.4, -466, 4, { radius: 5, height: 0.6, opacity: 0.03, speed: 0.02 });
+    // Lower wall protection, conduits and floor drains give the room a working scale.
+    for (const z of [-477.92, -456.08]) {
+      this.deco('olive', 35.2, 0.7, z, 21.1, 1.35, 0.045);
+      this.deco('iron', 35.2, 1.39, z, 21.1, 0.055, 0.06);
+    }
+    for (const x of [26.4, 34.2]) {
+      this.deco('black', x, 0.052, -460, 0.36, 0.016, 2.1);
+      for (let k = 0; k < 13; k++) this.deco('steel', x, 0.064, -460.94 + k * 0.155, 0.35, 0.02, 0.025);
+    }
   }
   // polígono de tiro: mostrador en la línea de tiro, cuatro calles con separadores y blancos de papel al fondo. Los
   // blancos se balancean con cada tiro, te dicen el puntaje y les quedan los agujeros (bunker-items.js: kind 'target').
@@ -908,7 +932,15 @@ export class ClubWings {
     }, 700, 190, 3.2, 0.87, x1 - 0.05, 3.25, -466.5, -Math.PI / 2);
     if (!HAS_DOM) return;
     this.targets = [];
-    for (const z of lanes) {
+    for (const [lane, z] of lanes.entries()) {
+      this.deco('steel', x1 - 1.7, 3.0, z, 0.35, 0.08, 1.15);
+      this.deco('warmBulb', x1 - 1.7, 2.95, z, 0.22, 0.025, 0.95);
+      this.light(x1 - 2.0, 2.65, z, 0xffe8bf, 7, 6, { priority: 1.3, decay: 1.15 });
+      this.sign((g, w, h) => {
+        g.fillStyle = '#202923'; g.fillRect(0, 0, w, h);
+        g.fillStyle = '#e1c36b'; g.font = 'bold 94px "Courier New", monospace';
+        g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(lane + 1).padStart(2, '0'), w / 2, h / 2);
+      }, 256, 128, 0.7, 0.35, x1 - 0.04, 2.75, z, -Math.PI / 2);
       const cv = canvas(256, 384), g = cv.getContext('2d');
       const draw = () => {
         g.fillStyle = '#efe6cf'; g.fillRect(0, 0, 256, 384);
@@ -1373,6 +1405,8 @@ export class ClubWings {
     for (const [id, w] of this.wings) {
       const on = see.includes(id);
       if (w.group.visible !== on) w.group.visible = on;
+      // Closed rooms cannot illuminate each other through their concrete walls.
+      for (const light of w.lights) light.visible = on;
       if (on) for (const a of w.anim) a(t, dt, B);
     }
   }

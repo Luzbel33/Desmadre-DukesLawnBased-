@@ -505,6 +505,19 @@ export class Haunt {
   play(e, remote = false, m = {}) {
     const c = this.castle, sfx = G.sfx;
     switch (e) {
+      case 'armillary': {
+        if (!c.armillary) break;
+        c.armillary.until = G.time + 12;
+        sfx?.trigger('clock-chime', c.anchors.armillary, 0.65, { full: 2, max: 20 });
+        break;
+      }
+      case 'archive': {
+        if (!c.archiveCabinet) break;
+        c.archiveCabinet.target = m.open === 0 || m.open === 1 ? m.open : 1 - c.archiveCabinet.target;
+        sfx?.trigger('door-creak', c.anchors.upperArchive, 0.65, { full: 2, max: 18 });
+        if (c.archiveCabinet.target) sfx?.trigger('whisper', c.anchors.upperArchive, 0.28, { full: 1, max: 8 });
+        break;
+      }
       case 'slam': { // portazo del torreón: las dos hojas se cierran de golpe; la puerta queda trabada unos segundos
         const d = this.doors.keep;
         d.target = 0; d.speed = 9;
@@ -760,7 +773,7 @@ export class Haunt {
   // X sobre un punto del castillo
   use(it) {
     const e = it.ev;
-    const cds = { lever: 4, bell: 20, clock: 25, chest: 25, tomb: 40, sheet: 15, cryptgate: 3, log: 5, well: 6 };
+    const cds = { lever: 4, bell: 20, clock: 25, chest: 25, tomb: 40, sheet: 15, cryptgate: 3, log: 5, well: 6, armillary: 3, archive: 1.2 };
     const t = G.time;
     if ((this.cool['use:' + e] ?? -1e9) + (cds[e] || 5) > t) {
       G.sfx?.trigger('ui-err', null, 0.4);
@@ -768,17 +781,19 @@ export class Haunt {
     }
     this.cool['use:' + e] = t;
     const s = Math.random();
-    this.play(e, false, { s });
-    this._send(e, { s });
+    const extra = { s };
+    if (e === 'archive') extra.open = 1 - (this.castle.archiveCabinet?.target || 0);
+    this.play(e, false, extra);
+    this._send(e, extra);
   }
 
   // un evento que arrancó otro jugador
   remote(m) {
     const e = String(m.e || '');
-    const ok = ['slam', 'dining', 'gallery', 'balcony', 'lever', 'bell', 'clock', 'chest', 'tomb', 'sheet', 'cryptgate', 'log', 'well'];
+    const ok = ['slam', 'dining', 'gallery', 'balcony', 'lever', 'bell', 'clock', 'chest', 'tomb', 'sheet', 'cryptgate', 'log', 'well', 'armillary', 'archive'];
     if (!ok.includes(e)) return;
     // los sustos solo se muestran a los que están cerca; lo que cambia el mundo, a todos
-    const world = ['lever', 'bell', 'clock', 'cryptgate', 'log', 'slam'];
+    const world = ['lever', 'bell', 'clock', 'cryptgate', 'log', 'slam', 'armillary', 'archive'];
     const anchors = { dining: this.castle.anchors.dining, gallery: this.castle.anchors.gallery, balcony: this.castle.anchors.hall, chest: this.castle.anchors.secret, tomb: this.castle.anchors.crypt, sheet: this.castle.anchors.kitchen, well: this.castle.anchors.well };
     if (!world.includes(e) && anchors[e] && !this._near(anchors[e], 22)) return;
     this.play(e, true, m);
@@ -789,6 +804,18 @@ export class Haunt {
     const t = G.time;
     const me = G.me?.pos;
     const storm = this.world.storm;
+    const armillary = this.castle.armillary;
+    if (armillary && (armillary.until > t || this._near(this.castle.anchors.armillary, 22))) {
+      const speed = armillary.until > t ? 1.15 * Math.min(1, (armillary.until - t) / 3) + 0.06 : 0.06;
+      armillary.phase += dt * speed;
+      armillary.root.rotation.y = armillary.phase;
+      armillary.root.children[2].rotation.z = 0.65 + Math.sin(armillary.phase * 0.7) * 0.5;
+    }
+    const cabinet = this.castle.archiveCabinet;
+    if (cabinet && Math.abs(cabinet.open - cabinet.target) > 0.001) {
+      cabinet.open = lerp(cabinet.open, cabinet.target, 1 - Math.exp(-dt * 5));
+      cabinet.pivot.rotation.y = -cabinet.open * 1.6;
+    }
     // el cráneo de carnero baja como una palanca y vuelve a su lugar
     const rs = this.ramSkull;
     if (rs) { const k = clamp((t - rs.t) / 1.3, 0, 1); rs.pivot.rotation.x = Math.sin(k * Math.PI) * 0.75; }

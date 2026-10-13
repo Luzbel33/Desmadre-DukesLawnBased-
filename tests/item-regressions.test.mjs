@@ -105,3 +105,39 @@ test('lo que se pide en el Búnker: cada cosa tiene modelo, versión física, n�
   }
   for (const m of [...BAR_MENU, ...CAFE_MENU]) assert.ok(m.item in ITEM_EQ, `${m.item} in a menu cannot be held`);
 });
+
+test('firearm contact feedback requires a target hit and never fires on a miss or wall', async () => {
+  const { BunkerItems } = await import('../public/js/game/bunker-items.js');
+  let hit = null, contacts = 0, punches = 0, targets = 0, kicks = 0;
+  const messages = [], local = { handPos: (_, out) => out.set(0, 1.5, 0), equipment: { shoot() {} } };
+  const items = new BunkerItems({ getLocal: () => local, getNet: () => ({ send: m => messages.push(m) }), kick: () => kicks++, contact: () => contacts++ });
+  items.tracer = () => {};
+  G.camera = new THREE.PerspectiveCamera(72); G.aimCam = null;
+  G.phys = { raycast: () => hit }; G.sfx = { trigger() {} }; G.fx = { sparks() {}, puff() {} };
+  G.time = 10;
+  assert.equal(items.shoot(local), true); assert.equal(contacts, 0);
+  hit = { x: 0, y: 1, z: -4, nx: 0, ny: 0, nz: 1, info: { kind: 'world' } };
+  G.time += 1; items.shoot(local); assert.equal(contacts, 0);
+  hit.info = { kind: 'target', ref: { hit() { targets++; } } };
+  G.time += 1; items.shoot(local); assert.equal(contacts, 1); assert.equal(targets, 1);
+  assert.equal(items.shoot(local), false); assert.equal(contacts, 1, 'cooldown cannot create a fake contact');
+  hit.info = { kind: 'bag', ref: { punch() { punches++; } } };
+  G.time += 1; items.shoot(local); assert.equal(contacts, 2); assert.equal(punches, 1);
+  assert.equal(kicks, 4, 'existing recoil must run for each actual shot');
+  assert.equal(messages.filter(m => m.k === 'shot').length, 4, 'feedback must preserve replicated shots');
+  G.phys = null; G.sfx = null; G.fx = null;
+});
+
+test('rapid contact feedback replaces its animation and reduced motion never scales the marker', async () => {
+  const { Hud } = await import('../public/js/ui/hud.js');
+  const animations = [];
+  const hud = Object.assign(Object.create(Hud.prototype), { el: { contact: { animate(frames, options) {
+    const animation = { frames, options, canceled: false, cancel() { this.canceled = true; } }; animations.push(animation); return animation;
+  } } } });
+  hud.contact(1); hud.contact(0.5, true);
+  assert.equal(animations.length, 2);
+  assert.equal(animations[0].canceled, true, 'feedback cannot pile up after rapid hits');
+  assert.ok(animations[1].frames.every(frame => frame.transform.endsWith('scale(1)')));
+  assert.equal(animations[1].frames.at(-1).opacity, 0);
+  assert.ok(animations[1].options.duration <= 210);
+});

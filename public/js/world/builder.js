@@ -50,7 +50,7 @@ const PBR = {
   velvet: { id: 'velour_velvet', tint: 0x9a1a24, size: 0.9 },
   cryptBrick: { id: 'mossy_brick', tint: 0x8c8c82, size: 2.2, ao: 1, disp: 0.03, weather: [0.6, 0.4, 0.6, 0.6], wet: 0 },
   // el búnker: hormigón gastado, ladrillo pintado de negro, chapa oxidada
-  bunkerConcrete: { id: 'concrete_floor_01', tint: 0x77777c, size: 3 },
+  bunkerConcrete: { id: 'concrete_floor_01', tint: 0x77777c, size: 2, rough: 1.4, normal: 0.45 },
   bunkerBrick: { id: 'brick_wall_001', tint: 0x3c3438, size: 2.6 },
   bunkerIron: { id: 'rusty_corrugated_iron', tint: 0x6e645c, size: 2 },
   // el ascensor: paneles de chapa gastada con juntas (paredes, techo y puertas) y piso de chapa semillada
@@ -105,7 +105,7 @@ function upgrade(m, key) {
   pbrMaps(d.id, rep, ({ map, normalMap, roughnessMap, aoMap, dispMap }) => {
     if (!map) return;
     m.map = map;
-    if (normalMap) { m.normalMap = normalMap; m.normalScale.set(1, 1); }
+    if (normalMap) { m.normalMap = normalMap; m.normalScale.setScalar(d.normal ?? 1); }
     if (roughnessMap) { m.roughnessMap = roughnessMap; m.roughness = d.rough ?? 1; }
     if (aoMap) { m.aoMap = aoMap; m.aoMapIntensity = 1; }
     if (dispMap) setSurfaceDisp(m, dispMap);

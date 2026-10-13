@@ -18,8 +18,9 @@ const FUSE = 2.8, BLAST = 7.5;
 const SHOT_GROUPS = groups(0xffff, GR.WORLD | GR.REMOTE | GR.PROP | GR.VEHICLE | GR.RAGDOLL);
 
 export class BunkerItems {
-  constructor({ getLocal, getNet, kick, shake }) {
+  constructor({ getLocal, getNet, kick, shake, contact }) {
     this.getLocal = getLocal; this.getNet = getNet; this.kick = kick; this.shake = shake;
+    this.contact = contact;
     this.bills = [];
     this.tracers = [];
     this.nades = [];
@@ -115,8 +116,10 @@ export class BunkerItems {
       G.fx?.blood(point.clone(), V1.copy(d).negate().add(UP).normalize(), 0.9);
     } else if (info?.kind === 'bag' && info.ref?.punch) {
       info.ref.punch(16, point, d.clone(), 1.6, true, 'bullet');
+      if (info.ref !== G.bag) this.contact?.(0.8); // The practice bag already confirms through its onHit callback.
     } else if (info?.kind === 'target' && info.ref?.hit) {
       info.ref.hit(point); // los blancos del polígono del Arsenal (club-wings.js)
+      this.contact?.(0.8);
       G.fx?.puff(point.clone(), V1.set(-d.x, 0.2, -d.z), 0.15, 0xd8ccb0);
     } else if (info?.kind === 'prop' && info.ref) {
       L._whack?.(info.ref, d.clone(), 12, point, { mass: 1 });

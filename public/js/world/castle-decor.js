@@ -3,7 +3,8 @@
 // murciélagos, cuervos y el espantapájaros. Todo lo repetido va instanciado.
 import * as THREE from 'three';
 import { G, rng } from '../core/G.js';
-import { whenAsset, assetModel, instanceModel, artwork, placeModel } from '../game/assets.js';
+import { whenAsset, assetModel, assetBounds, instanceModel, artwork, placeModel } from '../game/assets.js';
+import { supportedMatrix } from '../game/placement.js';
 import { Builder, getMat } from './builder.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CASTLE, CLUB } from '../shared/mapdata.js';
@@ -541,7 +542,9 @@ export class Decor {
         const k = 0.86;
         m.scale.setScalar(k);
         const top = new THREE.Box3().setFromObject(m).max.y; // punta de los remates de la vara
-        m.position.set(x, y - (top - 0.035 * k), z);
+        // Leave clearance for the baked cloth folds and the full wind amplitude.
+        // The gate's moulding protrudes beyond its nominal facade plane.
+        m.position.set(x, y - (top - 0.035 * k), z + 0.18);
         m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
         this.scene.add(m);
         m.updateMatrixWorld(true);
@@ -779,12 +782,19 @@ export class Decor {
     this.phys.box(bx, 0.6, bz, 1.2, 0.55, 0.95, yaw, { paint: false, mat: 'wood' });
     for (const sd of [-1, 1]) { const [wx, wz] = at(0, sd * 0.95); this.phys.cylinder(wx, 0.62, wz, 0.06, 0.62, { mat: 'wood' }); }
     if (!pumpkins) return;
-    const cart = [];
-    for (let i = 0; i < 7; i++) {
-      const [px, pz] = at(-0.65 + (i % 4) * 0.55, (Math.floor(i / 4) - 0.5) * 0.6 + (this.r() - 0.5) * 0.1);
-      cart.push(this.mat4(px, 0.92 + (i === 6 ? 0.25 : 0), pz, i * 1.3, 0.5 + this.r() * 0.12));
-    }
-    this.instances('c_pumpkin_b', cart);
+    // The source cart is tilted until its shafts touch the ground. Its deck is
+    // not horizontal at 0.92m: derive the support plane from that same geometry.
+    const tilt = Math.atan2(1.21, 3.55), deck = 0.62 + 0.7675 / Math.cos(tilt);
+    const pumpkinsAt = Array.from({ length: 7 }, (_, i) => ({ lx: -0.65 + (i % 4) * 0.55, lz: (Math.floor(i / 4) - 0.5) * 0.6, yaw: i * 1.3, scale: 0.5 + this.r() * 0.08 }));
+    whenAsset('c_pumpkin_b', () => {
+      const bounds = assetBounds('c_pumpkin_b');
+      if (!bounds) return;
+      const cart = pumpkinsAt.map(p => {
+        const [px, pz] = at(p.lx, p.lz);
+        return supportedMatrix(bounds, px, deck - p.lx * Math.tan(tilt) + 0.035, pz, p.yaw, p.scale);
+      });
+      this.instances('c_pumpkin_b', cart);
+    });
   }
   _gallows(x, z) {
     const Y0 = -0.13, DECK = 1.55 + Y0; // el modelo va un poco enterrado; arriba de la tarima a 1.42 m

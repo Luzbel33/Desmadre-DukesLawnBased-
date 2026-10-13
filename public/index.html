@@ -41,6 +41,7 @@
     <div id="killfeed"></div>
     <div id="bigmsg" class="hidden"></div>
     <div id="crosshair"></div>
+    <div id="hit-confirm" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
     <div id="hud-br">
       <div id="hints"></div>
       <div id="vehicle-hud" class="hidden">
@@ -237,6 +238,9 @@
           <label>Campo de visión <input type="range" id="o-fov" min="55" max="100" step="1"></label>
           <label>Cámara en tercera persona
             <select id="o-camera-shoulder"><option value="left">Hombro izquierdo</option><option value="center">Centrada</option><option value="right">Hombro derecho</option></select>
+          </label>
+          <label>Movimiento de cámara
+            <select id="o-camera-motion"><option value="auto">Según el sistema</option><option value="full">Completo</option><option value="reduced">Reducido (sin vibración ni balanceo)</option></select>
           </label>
           <label class="chk" title="Chrome solo deja frenar Ctrl+W, Ctrl+T, Ctrl+N en pantalla completa"><input type="checkbox" id="o-fullscreen"> Pantalla completa al jugar (bloquea Ctrl+W y otros atajos que cierran la pestaña)</label>
         </div>

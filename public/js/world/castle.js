@@ -12,6 +12,7 @@ import { Builder, getMat } from './builder.js';
 import { PROXY_LAYER } from './lightpool.js';
 import { rope, wellWater } from './rope.js';
 import { groundCastle } from './castle-ground.js';
+import { buildUpperCastle, buildTowerInterior } from './castle-expansion.js';
 import { rng } from '../core/G.js';
 import { CASTLE, STORM, MOON } from '../shared/mapdata.js';
 
@@ -205,11 +206,11 @@ export class Castle {
   build() {
     // torreón por cuartos: salón, retratos, comedor, cocina, biblioteca, cuarto secreto; y la cripta abajo
     this.room(-8, F0 - 0.2, -116.8, 8, KTOP, IZ1, 101);
-    this.room(-8, F0 - 0.2, IZ0, 8, KTOP, -116.8, 102);
-    this.room(IX0, F0 - 0.2, -115, -8, KTOP, IZ1, 103);
-    this.room(IX0, F0 - 0.2, IZ0, -8, KTOP, -115, 104);
-    this.room(8, F0 - 0.2, -115, IX1, KTOP, IZ1, 105);
-    this.room(8, F0 - 0.2, IZ0, IX1, KTOP, -115, 106);
+    this.room(-8, F0 - 0.2, IZ0, 8, F1, -116.8, 102);
+    this.room(IX0, F0 - 0.2, -115, -8, F1, IZ1, 103);
+    this.room(IX0, F0 - 0.2, IZ0, -8, F1, -115, 104);
+    this.room(8, F0 - 0.2, -115, IX1, F1, IZ1, 105);
+    this.room(8, F0 - 0.2, IZ0, IX1, F1, -115, 106);
     this.room(8.3, -0.5, IZ0, IX1, F0 - 0.25, IZ1, 201);
     this._grounds();
     groundCastle();
@@ -217,6 +218,7 @@ export class Castle {
     this._gatehouse();
     this._keep();
     this._keepInterior();
+    buildUpperCastle(this);
     this._crypt();
     this._keepStairs();
     this._courtyard();
@@ -299,15 +301,17 @@ export class Castle {
     // zócalo, cornisa y parapeto
     this.deco('castleStone', cx + nx * 0.2, 0.6, cz + nz * 0.2, WT + 0.4, 1.2, len, { yaw });
     this.deco('keepStone', cx + nx * 0.1, 8.2, cz + nz * 0.1, WT + 0.3, 0.35, len, { yaw, noShadow: true });
-    this.deco('castleStone', cx + nx * (WT / 2 - 0.35), WH + 0.15, cz + nz * (WT / 2 - 0.35), 0.7, 0.3, len, { yaw });
+    this.deco('castleStone', cx + nx * (WT / 2 - 0.35), WH + 0.45, cz + nz * (WT / 2 - 0.35), 0.7, 0.9, len, { yaw });
     const n = Math.floor(len / 2.1);
     for (let i = 0; i < n; i++) {
       const t = (i + 0.5) / n - 0.5;
       const px = cx + (x1 - x0) * t, pz = cz + (z1 - z0) * t;
       this.deco('castleStone', px + nx * (WT / 2 - 0.35), WH + 0.95, pz + nz * (WT / 2 - 0.35), 0.7, 1.3, 1.2, { yaw });
       // parapeto bajo del lado de adentro
-      this.deco('castleStone', px - nx * (WT / 2 - 0.25), WH + 0.3, pz - nz * (WT / 2 - 0.25), 0.5, 0.6, 2.1, { yaw });
+      this.deco('castleStone', px - nx * (WT / 2 - 0.25), WH + 0.45, pz - nz * (WT / 2 - 0.25), 0.5, 0.9, 2.1, { yaw });
     }
+    // Continuous collision guards keep the newly accessible wall walk safe.
+    for (const side of [-1, 1]) this.phys.box(cx + nx * side * (WT / 2 - 0.22), WH + 0.48, cz + nz * side * (WT / 2 - 0.22), 0.12, 0.48, len / 2, yaw, { paint: false });
     // troneras (aspilleras) en la cara de afuera
     const m = Math.floor(len / 7.5);
     for (let i = 0; i < m; i++) {
@@ -319,9 +323,7 @@ export class Castle {
   }
 
   _tower(x, z, r, h, roofH, { lit = false } = {}) {
-    this.cyl('castleStone', x, h / 2, z, r, r + 0.15, h, 28, { collide: true });
-    this.cyl('castleStone', x, 0.6, z, r + 0.5, r + 0.6, 1.2, 28, { mask: false });
-    this.cyl('keepStone', x, h * 0.62, z, r + 0.2, r + 0.2, 0.35, 28, { noShadow: true, mask: false });
+    buildTowerInterior(this, x, z, r, h);
     // matacanes: ménsulas bajo el parapeto
     const nC = Math.round(r * 4);
     for (let i = 0; i < nC; i++) {
@@ -358,7 +360,20 @@ export class Castle {
   }
   _litMat() {
     if (!this._lit) {
-      this._lit = new THREE.MeshStandardMaterial({ color: 0x140a04, emissive: 0xff9440, emissiveIntensity: 1.6, roughness: 0.6 });
+      let map = null;
+      if (typeof document !== 'undefined') {
+        const cv = document.createElement('canvas'); cv.width = 128; cv.height = 256;
+        const ctx = cv.getContext('2d'), glow = ctx.createRadialGradient(58, 147, 10, 64, 128, 170);
+        glow.addColorStop(0, '#c5ad83'); glow.addColorStop(1, '#5b564a'); ctx.fillStyle = glow; ctx.fillRect(0, 0, 128, 256);
+        for (let i = 0; i < 320; i++) { ctx.fillStyle = `rgba(225,210,166,${this.rand() * 0.16})`; ctx.fillRect(this.rand() * 128, this.rand() * 256, 3, 8); }
+        ctx.strokeStyle = '#211e1b'; ctx.lineWidth = 3;
+        for (let k = -8; k < 16; k++) {
+          ctx.beginPath(); ctx.moveTo(k * 32, 0); ctx.lineTo(k * 32 + 256, 256); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(k * 32 + 128, 0); ctx.lineTo(k * 32 - 128, 256); ctx.stroke();
+        }
+        map = new THREE.CanvasTexture(cv); map.colorSpace = THREE.SRGBColorSpace;
+      }
+      this._lit = new THREE.MeshStandardMaterial({ map, color: 0xbca57e, emissive: 0xffbb77, emissiveMap: map, emissiveIntensity: 1.4, roughness: 0.6 });
       this.windowsLit.push(this._lit);
     }
     return this._lit;
@@ -367,11 +382,12 @@ export class Castle {
   _curtain() {
     const ox = CX1 - WT / 2, fz = CZ1 - WT / 2, bz = CZ0 + WT / 2;
     // frente (con el portón al medio), fondo y costados
-    this._wallRun(-ox, fz, -8, fz, 0, 1);
-    this._wallRun(8, fz, ox, fz, 0, 1);
-    this._wallRun(-ox, bz, ox, bz, 0, -1);
-    this._wallRun(-ox, bz, -ox, fz, -1, 0);
-    this._wallRun(ox, bz, ox, fz, 1, 0);
+    // The curtain meets each hollow tower at its inner shell, never across its room.
+    this._wallRun(-40.6, fz, -8, fz, 0, 1);
+    this._wallRun(8, fz, 40.6, fz, 0, 1);
+    this._wallRun(-40.6, bz, 40.6, bz, 0, -1);
+    this._wallRun(-ox, -126.6, -ox, -83.4, -1, 0);
+    this._wallRun(ox, -126.6, ox, -83.4, 1, 0);
     // torres de las esquinas
     this._tower(-45, -79, 5.2, 17, 10, { lit: Math.PI * 0.75 });
     this._tower(45, -79, 5.2, 17, 10);
@@ -382,8 +398,15 @@ export class Castle {
   // ---------------------------------------------------------------- portón (con bóveda ojival y rastrillo)
   _gatehouse() {
     const z0 = -84.4, z1 = -74.6, zc = (z0 + z1) / 2, d = z1 - z0, H = 14, top = 8;
-    this.box('castleStone', -5.6, H / 2, zc, 4.8, H, d);
-    this.box('castleStone', 5.6, H / 2, zc, 4.8, H, d);
+    for (const s of [-1, 1]) {
+      this.box('castleStone', s * 5.6, (H + 3.4) / 2, zc, 4.8, H - 3.4, d);
+      this.wall('castleStone', s * 3.65, z0, s * 3.65, z1, 3.4, 0.9,
+        [{ a: -82.6, b: -80.2, y0: 0, y1: 3.1 }]);
+      this.wall('castleStone', s * 3.2, z0, s * 8, z0, 3.4, 0.8,
+        [{ a: s * 4.45, b: s * 6.75, y0: 0, y1: 3.1 }]);
+      this.box('castleStone', s * 5.6, 1.7, z1, 4.8, 3.4, 0.8);
+      this.room(s < 0 ? -8 : 3.2, 0, z0, s < 0 ? -3.2 : 8, 3.4, z1, s < 0 ? 411 : 412);
+    }
     this.box('castleStone', 0, (top + H) / 2, zc, 6.4, H - top, d);
     // bóveda ojival: relleno de las esquinas del vano en todo el largo del pasaje
     const fill = new THREE.ExtrudeGeometry(pointedFill(6.4, 4.0, 7.9, top), { depth: d, bevelEnabled: false });
@@ -485,10 +508,10 @@ export class Castle {
     const tx0 = -3.6, tx1 = 3.6, tz0 = -125, tz1 = -117.8, tcx = 0, tcz = (tz0 + tz1) / 2, tw = tx1 - tx0;
     const bel0 = 25.2, bel1 = 29.6;
     for (const [x0, z0, x1, z1] of [[tx0, tz1, tx1, tz1], [tx0, tz0, tx1, tz0]]) {
-      this.wall('keepStone', x0, z0, x1, z1, 32 - 12, 0.9, [{ a: -1.1, b: 1.1, y0: bel0, y1: bel1 }], { y0: 12, collide: false });
+      this.wall('keepStone', x0, z0, x1, z1, 32 - 16.2, 0.9, [{ a: -1.1, b: 1.1, y0: bel0, y1: bel1 }], { y0: 16.2, collide: false });
     }
     for (const [x0, z0, x1, z1] of [[tx0, tz0, tx0, tz1], [tx1, tz0, tx1, tz1]]) {
-      this.wall('keepStone', x0, z0, x1, z1, 32 - 12, 0.9, [{ a: tcz - 1.1, b: tcz + 1.1, y0: bel0, y1: bel1 }], { y0: 12, collide: false });
+      this.wall('keepStone', x0, z0, x1, z1, 32 - 16.2, 0.9, [{ a: tcz - 1.1, b: tcz + 1.1, y0: bel0, y1: bel1 }], { y0: 16.2, collide: false });
     }
     this.deco('keepStone', tcx, bel0 - 0.25, tcz, tw + 0.5, 0.5, tw + 0.5);
     this.deco('keepStone', tcx, 32.2, tcz, tw + 0.8, 0.5, tw + 0.8);
@@ -535,7 +558,7 @@ export class Castle {
     for (const x of [-20.5, -12.5, -4, 4]) add(x, 6.8, bz, 1.5, 3.6, 0, cold);
     for (const z of [-106.2, -112.8, -118.5]) add(wx, 6.8, z, 1.5, 3.6, Math.PI / 2, cold);
     add(ex, 6.8, -105.6, 1.5, 3.6, Math.PI / 2, cold);
-    // piso de arriba (no se entra): unas ventanas oscuras y otras con luz de vela...
+    // Upper rooms retain the original leaded windows and exterior silhouette.
     for (const [x, m] of [[-17.3, lit], [17.3, cold]]) add(x, 12.8, fz, 1.3, 3.2, 0, m);
     for (const [x, m] of [[12.5, cold], [20.5, lit]]) add(x, 12.8, bz, 1.3, 3.2, 0, m);
     add(wx, 12.8, -124, 1.3, 3.2, Math.PI / 2, lit);
@@ -612,11 +635,11 @@ export class Castle {
     floor('flagstone', 8, IZ0, 20.6, -115); // cuarto secreto
     // tabiques (revoque viejo con moho)
     const W1 = -8, W2 = 8;
-    this.wall('moldy', W1, IZ1, W1, IZ0, 16.2 - F0, PT, [{ a: -104.9, b: -107.1, y0: F0, y1: F0 + 3.2 }, { a: -120.4, b: -122.6, y0: F0, y1: F0 + 3.2 }].sort((p, q) => p.a - q.a).reverse(), { y0: F0 });
-    this.wall('moldy', W2, IZ1, W2, IZ0, 16.2 - F0, PT, [{ a: -108.4, b: -110.6, y0: F0, y1: F0 + 3.2 }], { y0: F0 });
+    this.wall('moldy', W1, IZ1, W1, IZ0, 16.2 - F0, PT, [{ a: -104.9, b: -107.1, y0: F0, y1: F0 + 3.2 }, { a: -120.4, b: -122.6, y0: F0, y1: 13.6 }].sort((p, q) => p.a - q.a).reverse(), { y0: F0 });
+    this.wall('moldy', W2, IZ1, W2, IZ0, 16.2 - F0, PT, [{ a: -108.4, b: -110.6, y0: F0, y1: F0 + 3.2 }, { a: -120.4, b: -122.6, y0: 10.3, y1: 13.6 }].sort((p, q) => p.a - q.a).reverse(), { y0: F0 });
     this.wall('moldy', IX0, -115, W1 - PT / 2, -115, F1 - F0, PT, [{ a: -17.1, b: -14.9, y0: F0, y1: F0 + 3.2 }], { y0: F0 });
     this.wall('moldy', W2 + PT / 2, -115, IX1, -115, F1 - F0, PT, [{ a: 15.7, b: 17.3, y0: F0, y1: F0 + 2.6 }], { y0: F0 });
-    this.wall('moldy', W1 + PT / 2, -116.8, W2 - PT / 2, -116.8, 16.2 - F0, PT, [{ a: 1.8, b: 4.2, y0: F0, y1: F0 + 3.2 }], { y0: F0 });
+    this.wall('moldy', W1 + PT / 2, -116.8, W2 - PT / 2, -116.8, 16.2 - F0, PT, [{ a: -6.0, b: -3.4, y0: 8, y1: 13.7 }, { a: 1.8, b: 4.2, y0: F0, y1: F0 + 3.2 }], { y0: F0 });
     // marcos de las puertas (madera oscura)
     const frame = (x, z, w, h, alongX) => {
       const sx = alongX ? w + 0.3 : PT + 0.1, sz = alongX ? PT + 0.1 : w + 0.3;
@@ -627,12 +650,15 @@ export class Castle {
     frame(-16, -115, 2.2, 3.2, true); frame(3, -116.8, 2.4, 3.2, true);
     // cielorrasos (madera oscura con vigas) y el del salón, alto
     const ceil = (x0, z0, x1, z1, y) => {
-      this.box('woodDark', (x0 + x1) / 2, y + 0.15, (z0 + z1) / 2, x1 - x0, 0.3, z1 - z0, { mask: false, noShadow: true });
-      for (let x = x0 + 1.6; x < x1 - 0.5; x += 2.2) this.deco('blackWood', x, y - 0.18, (z0 + z1) / 2, 0.3, 0.36, z1 - z0, { mask: false, noShadow: true });
+      this.box('woodDark', (x0 + x1) / 2, y + 0.15, (z0 + z1) / 2, x1 - x0, 0.3, Math.abs(z1 - z0), { mask: false, noShadow: true });
+      for (let x = x0 + 1.6; x < x1 - 0.5; x += 2.2) this.deco('blackWood', x, y - 0.18, (z0 + z1) / 2, 0.3, 0.36, Math.abs(z1 - z0), { mask: false, noShadow: true });
     };
     ceil(IX0, IZ1, W1 - PT / 2, IZ0, F1);
     ceil(W2 + PT / 2, IZ1, IX1, IZ0, F1);
-    ceil(W1 + PT / 2, -117.1, W2 - PT / 2, IZ0, F1);
+    // The stairwell is a real opening through the gallery ceiling.
+    ceil(-7.7, -117.1, -6, IZ0, F1);
+    ceil(-3.4, -117.1, 7.7, IZ0, F1);
+    ceil(-6, -121.2, -3.4, IZ0, F1);
     ceil(W1 + PT / 2, IZ1, W2 - PT / 2, -116.5, 16.2);
     // zócalo de madera (boiserie) en el comedor, la biblioteca y los retratos
     const wains = (x0, z0, x1, z1) => this.deco('blackWood', (x0 + x1) / 2, F0 + 0.6, (z0 + z1) / 2, Math.max(0.06, x1 - x0), 1.2, Math.max(0.06, z1 - z0), { mask: false, noShadow: true });
@@ -669,11 +695,9 @@ export class Castle {
     rail.translate(sx1 + 0.1, F0 + rise / 2 + 1.0, (sz0 + sz1) / 2);
     this.geo('blackWood', rail);
     this.phys.box(sx1 + 0.1, F0 + rise / 2 + 0.5, (sz0 + sz1) / 2, 0.06, 0.55, L / 2, 0, { rot: { x: rq.x, y: rq.y, z: rq.z, w: rq.w }, paint: false });
-    // puertas clausuradas del piso de arriba (con tablas clavadas): algún día se abren...
-    for (const x of [-2.6, 4.6]) {
-      this.deco('doorWood', x, by + 1.35, -116.45, 1.5, 2.7, 0.08, { mask: false });
-      for (const [y, r] of [[by + 0.8, 0.35], [by + 1.5, -0.3], [by + 2.1, 0.2]]) this.deco('woodDark', x, y, -116.36, 1.9, 0.18, 0.05, { rz: r, mask: false });
-    }
+    // One boarded door remains as a haunt; the west doorway now leads upstairs.
+    this.deco('doorWood', 4.6, by + 1.35, -116.45, 1.5, 2.7, 0.08, { mask: false });
+    for (const [y, r] of [[by + 0.8, 0.35], [by + 1.5, -0.3], [by + 2.1, 0.2]]) this.deco('woodDark', 4.6, y, -116.36, 1.9, 0.18, 0.05, { rz: r, mask: false });
     this.anchors.upperDoors = new THREE.Vector3(1, by + 1.4, -116);
     // anclas de los cuartos
     this.anchors.hall = new THREE.Vector3(0, F0, -110);
@@ -718,11 +742,11 @@ export class Castle {
     run('z', KZ0, KZ1, KX0, IX0, 0, KTOP);
     run('z', KZ0, KZ1, IX1, KX1, 0, KTOP, [[-109.4, -107.4, 0, 2.6]]);
     // tabiques con sus puertas
-    run('z', IZ0, IZ1, -8.3, -7.7, F0, 16.2, [D(-107.1, -104.9), D(-122.6, -120.4)]);
-    run('z', IZ0, IZ1, 7.7, 8.3, F0, 16.2, [D(-110.6, -108.4)]);
+    run('z', IZ0, IZ1, -8.3, -7.7, F0, 16.2, [D(-107.1, -104.9), [-122.6, -120.4, F0, 13.6]]);
+    run('z', IZ0, IZ1, 7.7, 8.3, F0, 16.2, [D(-110.6, -108.4), [-122.6, -120.4, 10.3, 13.6]]);
     run('x', IX0, -8.3, -115.3, -114.7, F0, F1, [D(-17.1, -14.9)]);
     run('x', 8.3, IX1, -115.3, -114.7, F0, F1, [D(15.7, 17.3, 2.6)]);
-    run('x', -7.7, 7.7, -117.1, -116.5, F0, 16.2, [D(1.8, 4.2)]);
+    run('x', -7.7, 7.7, -117.1, -116.5, F0, 16.2, [D(1.8, 4.2), [-6, -3.4, 8, 13.7]]);
     // losa del piso (la luz del salón no baja a la cripta) y cielorrasos de los cuartos bajos
     B(IX0, F0 - 0.3, IZ0, IX1, F0, IZ1);
     B(IX0, F1, IZ0, -8, F1 + 0.3, IZ1);

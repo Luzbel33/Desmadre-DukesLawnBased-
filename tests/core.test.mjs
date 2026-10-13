@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import * as THREE from 'three';
 import { Physics, RAPIER, GR, groups } from '../public/js/core/physics.js';
 import { G, clamp, dampAngle } from '../public/js/core/G.js';
+import { CameraBoom } from '../public/js/core/camera-boom.js';
 import { LocalPlayer } from '../public/js/game/player.js';
 import { World } from '../public/js/world/world.js';
 import { TEX } from '../public/js/world/textures.js';
@@ -59,8 +60,8 @@ function cameraFunction(){
  return src.slice(src.indexOf('function updateCamera(dt)'),src.indexOf('function updateHud(dt)'));
 }
 test('first person camera comes from head anchor, not 1.32m chest height',()=>{
- const root=new THREE.Group();const local={pos:new THREE.Vector3(),renderPos:new THREE.Vector3(),char:{root,headWorld:o=>o.set(0,1.72,0),setVisibleHead:()=>{}}};
- const ctx={THREE,G:{camera:new THREE.PerspectiveCamera(),phys:{raycast:()=>null}},state:{local,viewYaw:0,viewPitch:0,cameraMode:2},tmpV:new THREE.Vector3(),tmpV2:new THREE.Vector3(),clamp,GR,groups};
+ const root=new THREE.Group();const local={state:'active',pos:new THREE.Vector3(),renderPos:new THREE.Vector3(),char:{root,headWorld:o=>o.set(0,1.72,0),setVisibleHead:()=>{}}};
+ const ctx={THREE,G:{camera:new THREE.PerspectiveCamera(),opts:{...G.opts,reducedCameraMotion:false},time:0},state:{mode:'game',local,viewYaw:0,viewPitch:0,cameraMode:2},cameraBoom:new CameraBoom(),tmpV:new THREE.Vector3(),tmpV2:new THREE.Vector3(),clamp,GR,groups};
  vm.createContext(ctx);vm.runInContext(cameraFunction()+';updateCamera(1/60);',ctx);
  assert.ok(Math.abs(ctx.G.camera.position.y-1.72)<.06,`Camera y=${ctx.G.camera.position.y}`);
 });

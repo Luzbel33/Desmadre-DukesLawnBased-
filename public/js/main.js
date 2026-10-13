@@ -1,7 +1,8 @@
 // DESMADRE — cliente jugable integrado.
 import * as THREE from 'three';
 import { SocialPanel, setupMaskPicker, enhanceMedia } from './ui/social.js';
-import { setupCameraShoulder, setCameraShoulder } from './ui/camera-options.js';
+import { setupCameraShoulder, setCameraShoulder, setupCameraMotion } from './ui/camera-options.js';
+import { CameraBoom } from './core/camera-boom.js';
 import { G, clamp } from './core/G.js';
 import { Physics, GR, groups } from './core/physics.js';
 import { Input } from './core/input.js';
@@ -80,6 +81,7 @@ const loadingText = $('loading-text');
 const status = (t) => { loadingText.textContent = t; };
 const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
+const cameraBoom = new CameraBoom();
 
 const state = {
   mode: 'boot', // boot | menu | game | pause | chat | media | emotes | palette
@@ -258,6 +260,7 @@ function setupMenuDefaults() {
   $('o-sens').value = G.opts.sens;
   $('o-fov').value = G.opts.fov;
   setupCameraShoulder($('o-camera-shoulder'), G.opts, localStorage);
+  setupCameraMotion($('o-camera-motion'), G.opts, localStorage);
   $('o-vol').value = G.opts.vol;
   $('o-music').value = G.opts.volMusic;
   $('o-voice').value = G.opts.volVoice;
@@ -1330,6 +1333,7 @@ function onLocalEvent(type, d) {
         camKick.v.z += (Math.random() - 0.5) * 0.9 * Math.min(1.5, s);
       }
       state.shake = Math.min(1, (state.shake || 0) + clamp(d.dv / 40, 0.03, 0.15));
+      contactFeedback(clamp(d.dv / 12, 0.3, 1));
       net?.send({ t: 'ev', k: 'hc', to: d.id, p: d.part, s: +d.dv.toFixed(2), x: +d.x.toFixed(2), y: +d.y.toFixed(2), z: +d.z.toFixed(2), w: d.w || 0, a: d.a || 'p' });
       break;
     }
@@ -1347,6 +1351,7 @@ function onLocalEvent(type, d) {
     }
     case 'whack':
       G.sfx?.trigger(d.metal ? 'metal' : 'wood', new THREE.Vector3(d.x, d.y, d.z), clamp(d.s / 14, 0.3, 0.9));
+      contactFeedback(clamp(d.s / 14, 0.3, 1));
       break;
     case 'throwrelease':
       doThrowRelease(d.side);
@@ -1951,6 +1956,7 @@ function cctvStep(d) {
 function updateCamera(dt) {
   const L = state.local; if (!L) return;
   if (state.mode === 'cctv' && state.cctvOn && G.cctv) {
+    cameraBoom.reset();
     // mirando una cámara de seguridad: la vista es la de la cámara (el cuerpo queda en la silla)
     G.cctv.pose(state.cctv, G.camera, G.time);
     L.char.setVisibleHead(true);
@@ -1964,10 +1970,12 @@ function updateCamera(dt) {
   const mode = down ? 0 : state.cameraMode;
   state.shake = Math.max(0, (state.shake || 0) - dt * 2.5);
   stepCamKick(dt);
-  const sh = state.shake * 0.08, tt = G.time || 0;
+  const motion = G.opts.reducedCameraMotion ? 0 : 1;
+  const sh = state.shake * 0.08 * motion, tt = G.time || 0;
   const shx = sh * (Math.sin(tt * 43.1) * 0.6 + Math.sin(tt * 67.7 + 1.3) * 0.4) * 0.6;
   const shy = sh * (Math.sin(tt * 51.3 + 2.1) * 0.6 + Math.sin(tt * 79.1) * 0.4) * 0.6;
   if (mode === 2) {
+    cameraBoom.reset();
     // primera persona: los ojos del cuerpo. Se suaviza solo el bamboleo de la cabeza RESPECTO del cuerpo
     // (antes se suavizaba la posición absoluta y a velocidad la cámara quedaba atrás, dentro del torso)
     const head = L.char.headWorld(tmpV2);
@@ -1979,13 +1987,13 @@ function updateCamera(dt) {
     state.eyeOff.lerp(off, 1 - Math.exp(-30 * dt));
     state.eye = (state.eye || new THREE.Vector3()).copy(base).add(state.eyeOff);
     G.camera.position.copy(state.eye);
-    G.camera.position.x += shx; G.camera.position.y += shy + (G.club?.camBob || 0);
+    G.camera.position.x += shx; G.camera.position.y += shy + (G.club?.camBob || 0) * motion;
     G.camera.lookAt(state.eye.clone().addScaledVector(fwd, 10));
-    G.camera.rotateX(camKick.a.x); G.camera.rotateY(camKick.a.y); G.camera.rotateZ(camKick.a.z);
+    // Pitch/yaw recoil still affects aim; reduced motion only removes cosmetic roll.
+    G.camera.rotateX(camKick.a.x); G.camera.rotateY(camKick.a.y); G.camera.rotateZ(camKick.a.z * motion);
     L.char.setVisibleHead(false);
     return;
   }
-  L.char.setVisibleHead(true);
   // tercera persona: pivote en el cuerpo (si está tirado, sigue a la pelvis)
   let pivot;
   if (down) {
@@ -1996,7 +2004,7 @@ function updateCamera(dt) {
     pivot = L.renderPos.clone().add(new THREE.Vector3(0, L.seat || L.vehicle ? 1.3 : 1.62 * (L.char.meta?.height || 1.8) / 1.8 - state.eyeDrop, 0));
   }
   // el ascensor que arranca y frena: el cuerpo se queda atrás un instante (lo calcula game/club.js)
-  pivot.y += G.club?.camBob || 0;
+  pivot.y += (G.club?.camBob || 0) * motion;
   let dist = mode === 0 ? 4.2 : mode === 3 ? 2.1 : 2.4;
   if (L.vehicle) dist += 1.8;
   if (down) dist = 3.6;
@@ -2007,14 +2015,30 @@ function updateCamera(dt) {
   // de frente: la cámara va adelante (hacia donde mirás) y te mira a vos; un poco más baja que los ojos
   if (mode === 3) pivot.y -= 0.25;
   const desired = pivot.clone().addScaledVector(fwd, mode === 3 ? dist : -dist).addScaledVector(right, -side);
-  const dir = desired.clone().sub(pivot); const len = dir.length(); dir.normalize();
-  const hit = G.phys.raycast(pivot.x, pivot.y, pivot.z, dir.x, dir.y, dir.z, len, groups(0xffff, GR.WORLD));
-  if (hit && hit.dist < len) desired.copy(pivot).addScaledVector(dir, Math.max(0.45, hit.dist - 0.18));
-  const k = 1 - Math.exp(-16 * dt);
-  G.camera.position.lerp(desired, k);
-  G.camera.position.x += shx; G.camera.position.y += shy;
-  G.camera.lookAt(pivot.clone().addScaledVector(right, -side));
-  G.camera.rotateX(camKick.a.x); G.camera.rotateY(camKick.a.y); G.camera.rotateZ(camKick.a.z);
+  cameraBoom.update(G.camera, pivot, desired, G.phys, dt, mode, shx, shy);
+  const boomDistance = G.camera.position.distanceTo(pivot);
+  // Compress the shoulder aim with the boom, otherwise close walls turn the
+  // camera sideways. At zero clearance keep the body-facing direction stable.
+  const look = boomDistance < 0.02
+    ? G.camera.position.clone().addScaledVector(fwd, mode === 3 ? -1 : 1)
+    : pivot.clone().addScaledVector(right, -side * Math.min(1, boomDistance / desired.distanceTo(pivot)));
+  let eyeBlend = 0;
+  if (!down && mode !== 3 && boomDistance < 1.15) {
+    // When a wall pushes the camera into the back, continue into the eyes instead
+    // of showing the inside of the torso. World collision still constrains it.
+    const eyes = L.char.headWorld(tmpV2).addScaledVector(fwd, 0.1);
+    eyes.y += 0.03;
+    look.sub(G.camera.position).normalize();
+    eyeBlend = cameraBoom.focusAtEyes(G.camera, pivot, eyes, G.phys);
+    look.lerp(fwd, eyeBlend).normalize().add(G.camera.position);
+  }
+  L.char.setVisibleHead(eyeBlend < 0.1 && boomDistance > 0.6);
+  G.camera.lookAt(look);
+  G.camera.rotateX(camKick.a.x); G.camera.rotateY(camKick.a.y); G.camera.rotateZ(camKick.a.z * motion);
+}
+
+function contactFeedback(strength) {
+  if (state.mode === 'game' && state.cameraMode !== 3) G.hud?.contact(strength, G.opts.reducedCameraMotion);
 }
 
 // Sacudón de la cámara: resorte en cabeceo (x), giro (y) y rolido (z) que los golpes patean
@@ -2271,6 +2295,7 @@ async function boot() {
     G.bag.onHit = (speed, at) => {
       G.sfx?.trigger(speed > 6 ? 'hit' : 'hit-soft', at, Math.min(1, 0.3 + speed / 12));
       showHitMeter(speed);
+      contactFeedback(clamp(speed / 12, 0.3, 1));
     };
     G.fx.onBloodLand = (x, z, size) => G.blood.add(x, z, size);
     G.input = new Input(canvas); G.input.enabled = false; keys.load(); G.input.map = (c) => keys.map(c);
@@ -2323,6 +2348,7 @@ async function boot() {
     G.items = new BunkerItems({
       getLocal: () => state.local, getNet: () => state.net,
       kick: (k) => { camKick.v.x -= k * 12; }, shake: (k) => { state.shake = Math.max(state.shake || 0, k); },
+      contact: contactFeedback,
     });
     G.sfx.ambientHook = (dt, sfx) => {
       const st = G.world?.storm;

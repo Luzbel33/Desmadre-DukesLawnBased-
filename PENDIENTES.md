@@ -14,26 +14,59 @@ Fuente única de trabajo pendiente.
 
 ---
 
-## 0. Tanda 02/10 — PRIORITARIO (pedido de Luz)
+## 0. Tanda 13/10 — pedido de Luz (todo esto)
 
-- [ ] Seguir amueblando el Búnker: hecho 12/10 relleno de luz por sala, bañadores de pared, LED en columnas, lámparas
-      del lounge y la antesala (cartel, reglas, plantas) — SIN verificar en pantalla. Falta el arsenal (más props, mejor luz).
-- [ ] Cabeza gigante del Diablo en el Infierno (`hell_head.glb`, `assets/blender/demon/build_hell_head.py`): verificar
-      en pantalla el último ajuste (escala 9.5 sobre la cornisa, ojos y humo de la nariz) y que no flote.
+### Castillo
+- [ ] Terminar la expansión del castillo: piso de arriba, torres, más habitaciones y mejor hechas (trabajo de Codex
+      sin commitear integrado el 13/10: `world/castle-expansion.js`).
+- [ ] Jumpscares mejores y con más variaciones; ruidos nuevos.
+- [ ] La silla de ruedas de la sala de los retratos atraviesa la pared; el fantasma se mueve re random: arreglarlos.
+- [ ] Ajedrez jugable en el castillo (y quizás en otros lugares).
+
+### Humor físico estilo POSTAL 2 (fácil de usar, en los gestos)
+- [ ] Mear, vomitar, eructar, tirarse pedos, cagarse (con su sonido, partículas y manchas).
+- [ ] Encendedor como arma: el ataque es tirarse un pedo y prenderlo → lanzallamas.
+
+### Admin
+- [ ] Espectar jugadores, congelarlos, mutearlos globalmente, darles objetos/plata, cambiar parámetros globales o de
+      un jugador (velocidad, tamaño, gravedad...), todo lo que haga falta.
+
+### Personajes / juego
+- [ ] Playermodel mosca diminuta (para el dueño): vuela, zumba, se la puede aplastar, voz súper aguda por el mic; no
+      puede tomar, pero sí jugar al póker y fumar mini cigarritos.
+- [ ] Apostar en las peleas del bar y del búnker; que la plata tenga un uso real.
+- [ ] Pool jugable.
+- [ ] Cyber con PCs/maquinitas: minijuegos de plataformas de a uno o cooperativos.
+- [ ] Skates con ollies y trucos.
+- [ ] Escobas voladoras / vehículos voladores y un minijuego con eso.
+
+### Mapa
+- [ ] Expandir el mapa: más lugares, edificios, ascensores, abismos con pinchos, una prisión, más atmósfera,
+      easter eggs, pasadizos secretos.
+- [ ] Museo para colgar pinturas nuestras.
+- [ ] Cavar en el suelo y construir (tipo minecraft pero orgánico, sin cubos).
+
+### Búnker
+- [ ] Cámaras de vigilancia: ver mejor la imagen, hablar por las cámaras (altavoz que oigan los de ahí) y poner
+      música de YouTube por los altavoces.
+
+---
+
+## 0b. Tanda 02/10
+
 - [ ] Sala psicodélica (opcional): cuadros de arte libre (Haeckel, Hilma af Klint, Kandinsky, Louis Wain). Arte de
       terceros solo con permiso del artista. (Ya tiene DJ de psytrance, ilusiones ópticas y gente en trance.)
 - [ ] Circuito del Desmadre (hecho 12/10, `world/circuit.js`, `game/race.js`, `shared/circuit-traps.js`): probarlo
       con gente real (carrera de 3 vueltas desde el poste del semáforo) y ajustar velocidades/trampas si hace falta.
-- [ ] Panel de admin (F9, `ui/admin.js`, servidor `onAdmin`): probarlo en multiplayer real (echar, traer, hacer admin).
-      La clave del dueño está escrita en los tests públicos: en Render poner la variable OWNER_KEY con una clave nueva.
+- [ ] Panel de admin (F9, `ui/admin.js`): completar prueba de interfaz con personas reales. Permisos, expulsión,
+      traslado, promociones y revocaciones ya pasan una prueba con ocho conexiones WebSocket al servidor real.
 
 ---
 
 ## 1. Personajes y NPC — prioridad alta
 
 ### Apariencia de personajes no protegidos
-- [ ] **Portero:** la “cara de chancho” no se ve correctamente; parece invisible o con geometría/material roto. Revisar orientación de normales, culling, materiales, jerarquía y anclaje del accesorio/capucha.
-- [ ] **Sombreros y accesorios de NPC:** varios se ven invisibles, huecos, atravesados o directamente mal colocados. Revisarlos personaje por personaje.
+- [ ] **Sombreros y accesorios de NPC:** continuar la revisión de los restantes personajes; guardia y granjero ya tienen corregido el pelo que atravesaba sus sombreros.
 - [ ] **Caras de NPC/playermodels que NO sean las bailarinas:** corregir ojos ausentes, bigotes/manchas/colores extraños, UV/materiales incorrectos y geometrías faciales rotas.
 - [ ] Hacer una pasada visual de cerca y de lejos a cada personaje no protegido después de los arreglos para evitar accesorios flotantes, invertidos o que desaparezcan por culling.
 
@@ -77,7 +110,7 @@ un poco en la pantalla) y laberinto de espejos con tres espejos deformantes real
 modelos cargados al acercarse.
 
 - [ ] Probar en el juego la coreografía de caño (giro, ondas, apoyada, trepada, de cabeza) y ajustar distancias al caño.
-- [ ] Narguile del coffeeshop usable (hoy decorativo) y bongs/pipas de la decoración agarrables.
+- [ ] Bongs/pipas de la decoración del coffeeshop agarrables (el narguile ya tiene interacción).
 - [ ] Más sustancias con efectos distintos (hoy: línea, pastilla, hongos, y en el coffeeshop blunt, habano, pipa, bong,
       brownie; en la barra fernet, whisky, Sangre del Diablo y absenta). Bongs/pipas de la decoración agarrables.
 - Todo optimizado (culling por sala, luces del pool, instancias) y con buenas prácticas.
@@ -91,12 +124,9 @@ modelos cargados al acercarse.
 
 ## 5. Castillo y mundo — bugs visuales concretos
 
-- [ ] Banderas de la fachada que atraviesan el castillo.
 - [ ] Mejorar el cartel de la fachada.
 - [ ] Palanca afuera y adentro para subir/bajar el rastrillo metálico del portón.
-- [ ] Carro de calabazas: evitar que las calabazas atraviesen el carro.
 - [ ] Tierra del calabazar y del espantapájaros más orgánica/redondeada; eliminar aspecto de caja.
-- [ ] Ampliar el piso superior con más espacios utilizables.
 - [ ] Corregir calaveras/props flotantes de la sala secreta y otros objetos flotantes que sigan apareciendo.
 
 ### Pase visual general

@@ -106,6 +106,14 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; border-radius: 5
 #crosshair { position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 50%;
   background: rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.45); transition: all 0.12s; }
 #crosshair.use { width: 14px; height: 14px; margin: -7px 0 0 -7px; background: transparent; box-shadow: 0 0 0 2px rgba(255, 204, 51, 0.9), 0 0 0 3.5px rgba(0, 0, 0, 0.35); }
+#hit-confirm { position: absolute; left: 50%; top: 50%; width: 23px; height: 23px; transform: translate(-50%, -50%); opacity: 0; }
+#hit-confirm i { position: absolute; width: 2px; height: 6px; background: #fff0ce; border-radius: 1px; box-shadow: 0 0 2px #000; }
+#hit-confirm i:nth-child(1) { left: 2px; top: 1px; transform: rotate(-45deg); }
+#hit-confirm i:nth-child(2) { right: 2px; top: 1px; transform: rotate(45deg); }
+#hit-confirm i:nth-child(3) { right: 2px; bottom: 1px; transform: rotate(-45deg); }
+#hit-confirm i:nth-child(4) { left: 2px; bottom: 1px; transform: rotate(45deg); }
+[data-camera-motion="reduced"] #hitmeter { transform: translate(-50%, 0); transition: opacity 0.2s; }
+[data-camera-motion="reduced"] #crosshair { transition: none; }
 
 #hud-br { position: absolute; right: 18px; bottom: 16px; width: 230px; display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
 #hints { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
