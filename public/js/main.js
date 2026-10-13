@@ -1824,6 +1824,8 @@ function snapHeldToFists() {
 function openCctv() {
   if (!G.cctv) return;
   state.cctv = state.cctv ?? 0;
+  // sentarse a mirar prende la pared de monitores (si estaba apagada) para todos
+  if (!G.cctv.power) { G.cctv.setPower(true); state.net?.send({ t: 'ev', k: 'club', e: 'cctv', on: 1 }); }
   setMode('cctv'); G.input.unlock();
   cctvStep(0);
 }

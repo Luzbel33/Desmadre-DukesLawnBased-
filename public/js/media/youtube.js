@@ -23,7 +23,8 @@ export function mediaPosition(cur, now) {
 }
 export function screenGain(screen, pos) {
   if (!pos) return 0;
-  const zone=ZONES[screen.zone];
+  // box: the room it plays in (the Búnker dance floors); zone: a map zone
+  const zone=screen.box||ZONES[screen.zone];
   let d;
   if(zone) {
     // Distance to the room, NOT the wall-mounted screen; the whole cinema is audible.

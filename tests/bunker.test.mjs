@@ -57,3 +57,24 @@ test('el baile de caño y el de jaula son continuos: sin saltos de pose ni de lu
     p = c;
   }
 });
+
+test('cada pista del Búnker tiene su pantalla, su cabina y se oye solo en su sala', async () => {
+  const { SCREENS, INTERACT } = await import('../public/js/shared/mapdata.js');
+  const { BUNKER_SCREENS } = await import('../public/js/world/club-screens.js');
+  const { screenGain } = await import('../public/js/media/youtube.js');
+  const ids = Object.keys(BUNKER_SCREENS);
+  assert.deepEqual(ids.sort(), ['bunker', 'bunker_cafe', 'bunker_hell', 'bunker_psico', 'bunker_vip']);
+  for (const id of ids) {
+    const s = SCREENS.find((x) => x.id === id);
+    assert.ok(s?.box && s.idle, `${id}: falta la pantalla con su sala`);
+    const [x, , z] = s.c;
+    assert.ok(x >= s.box.x0 - 0.3 && x <= s.box.x1 + 0.3 && z >= s.box.z0 - 0.3 && z <= s.box.z1 + 0.3, `${id}: la pantalla no está en su sala`);
+    assert.ok(INTERACT.some((it) => it.k === 'media' && it.screen === id), `${id}: no hay cabina que la maneje`);
+    const mid = { x: (s.box.x0 + s.box.x1) / 2, y: 1.7, z: (s.box.z0 + s.box.z1) / 2 };
+    assert.equal(screenGain(s, mid), 1, `${id}: en el medio de su sala se tiene que oír entero`);
+  }
+  // lo del VIP no se oye en el medio del coffeeshop ni en la psicodélica
+  const vip = SCREENS.find((x) => x.id === 'bunker_vip');
+  assert.equal(screenGain(vip, { x: -24, y: 1.7, z: -489 }), 0);
+  assert.equal(screenGain(vip, { x: -36, y: 1.7, z: -464 }), 0);
+});

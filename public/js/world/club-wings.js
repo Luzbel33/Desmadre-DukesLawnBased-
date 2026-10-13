@@ -15,6 +15,7 @@ import { plantField } from './cannabis.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { G } from '../core/G.js';
 import { psyArtKit, PSY_ART } from './psy-art.js';
+import { bunkerScreen } from './club-screens.js';
 
 const HAS_DOM = typeof document !== 'undefined';
 const W = CLUB.wings, H = CLUB.hall, WT = 0.4;
@@ -270,13 +271,12 @@ export class ClubWings {
       const items = [['Faso', 'clásico'], ['Blunt', 'gordo y lento'], ['Habano', 'de capo'], ['Pipa', 'con tabaco'], ['Bong', 'para valientes'], ['Brownie', 'pega tarde']];
       items.forEach(([a, b], i) => { const y = 130 + i * 46; g.fillStyle = ['#7dff6a', '#ffe066', '#ff7b5c'][i % 3]; g.fillText('• ' + a, 50, y); g.fillStyle = '#c8c4b0'; g.fillText(b, 330, y); g.fillText('gratis', w - 170, y); });
     }, 1024, 420, 4.4, 1.8, (x0 + x1) / 2, 3.25, zN + 0.03);
-    // el tocadiscos en la punta del mostrador, con su cajón de vinilos (suena dub: audio/clubmix.js)
-    this.cyl('black', x0 + 0.55, 1.15, zc, 0.17, 0.17, 0.02, 20);
-    this.deco('woodDark', x0 + 0.55, 1.12, zc, 0.46, 0.04, 0.38);
-    this.cyl('chrome', x0 + 0.55, 1.17, zc, 0.012, 0.012, 0.03, 6);
-    this.deco('chrome', x0 + 0.7, 1.17, zc + 0.08, 0.02, 0.02, 0.2, { yaw: 0.5 });
-    this.box('woodDark', x0 + 1.25, 1.27, zc, 0.36, 0.3, 0.36);
-    for (let k = 0; k < 7; k++) this.deco(['red', 'gold', 'green', 'black'][k % 4], x0 + 1.12 + k * 0.035, 1.47, zc, 0.012, 0.3, 0.31);
+    // la caja registradora y un frasco de propinas en la punta del mostrador
+    this.box('darkgray', x0 + 0.7, 1.24, zc, 0.42, 0.28, 0.36);
+    this.deco('black', x0 + 0.7, 1.4, zc + 0.08, 0.36, 0.06, 0.16, { rx: -0.5 });
+    this.cyl('glass', x0 + 1.35, 1.2, zc + 0.1, 0.07, 0.07, 0.2, 12);
+    this.cyl('fabricGreen', x0 + 1.35, 1.14, zc + 0.1, 0.06, 0.06, 0.07, 10);
+    this._hifi(-25.2, W.cafe.z1);
     // máquina de café y la gente que atiende
     this.model('b_coffeecart', -15.6, 0, zN + 0.62);
     this.anchors.budtender = new THREE.Vector3(-24, 0, zN + 0.95);
@@ -373,6 +373,40 @@ export class ClubWings {
     }
     const fog = this.c.fog;
     if (fog) fog.add(x, 0.9, z, 4, { radius: 0.5, height: 1.8, opacity: 0.07, speed: 0.06 });
+  }
+  // el equipo de música del coffeeshop contra el muro sur, mirando al norte, debajo de la tele (suena dub:
+  // audio/clubmix.js; desde acá se pone YouTube en la tele): mueble bajo, bandeja, amplificador con vúmetros que
+  // brillan, dos bafles de madera y el cajón de vinilos en el piso
+  _hifi(x, zWall) {
+    const z = zWall - 0.04 - 0.26, top = 0.74, fz = z - 0.26;
+    this.box('woodDark', x, top / 2, z, 2.6, top, 0.52);
+    this.deco('blackWood', x, top + 0.015, z, 2.64, 0.03, 0.55);
+    this.deco('black', x, 0.04, fz + 0.02, 2.5, 0.08, 0.02);
+    for (const s of [-1, 1]) this.deco('blackWood', x + s * 0.43, 0.38, fz - 0.003, 0.02, 0.56, 0.01); // puertitas
+    // bandeja
+    this.deco('woodDark', x - 0.55, top + 0.065, z, 0.48, 0.07, 0.38);
+    this.cyl('black', x - 0.58, top + 0.11, z, 0.155, 0.155, 0.018, 24);
+    this.cyl('red', x - 0.58, top + 0.121, z, 0.05, 0.05, 0.004, 14);
+    this.cyl('chrome', x - 0.38, top + 0.12, z + 0.12, 0.014, 0.014, 0.04, 6);
+    this.deco('chrome', x - 0.46, top + 0.135, z + 0.04, 0.012, 0.012, 0.2, { yaw: 0.6 });
+    // amplificador con dos vúmetros y perillas
+    this.box('darkgray', x + 0.2, top + 0.08, z, 0.56, 0.16, 0.36);
+    for (const s of [-1, 1]) this.deco('warmBulb', x + 0.2 + s * 0.12, top + 0.1, z - 0.181, 0.15, 0.06, 0.004);
+    for (let k = 0; k < 4; k++) this.cyl('chrome', x + 0.02 + k * 0.12, top + 0.035, z - 0.185, 0.016, 0.016, 0.02, 8, { rx: Math.PI / 2 });
+    // bafles
+    for (const s of [-1, 1]) {
+      const bx = x + s * 1.06;
+      this.box('woodDark', bx, top + 0.29, z, 0.36, 0.58, 0.3);
+      this.cyl('darkgray', bx, top + 0.2, z - 0.152, 0.12, 0.12, 0.01, 18, { rx: Math.PI / 2 });
+      this.cyl('black', bx, top + 0.2, z - 0.156, 0.045, 0.045, 0.012, 12, { rx: Math.PI / 2 });
+      this.cyl('darkgray', bx, top + 0.45, z - 0.152, 0.045, 0.045, 0.01, 12, { rx: Math.PI / 2 });
+    }
+    // cajón de vinilos al costado
+    const cx = x + 1.72, cz = z - 0.02;
+    this.box('woodDark', cx, 0.17, cz, 0.42, 0.34, 0.4);
+    for (let k = 0; k < 9; k++) this.deco(['red', 'gold', 'green', 'black', 'leatherBlack'][k % 5], cx - 0.16 + k * 0.04, 0.38, cz, 0.012, 0.31, 0.34, { rz: (k % 3 - 1) * 0.05 });
+    this.light(x, 1.5, z - 0.9, 0xffc890, 2.4, 4.5, { priority: 0.9, decay: 1.6 });
+    bunkerScreen(this.c, 'bunker_cafe');
   }
   _bong(x, y, z) {
     this.cyl('bongGlass', x, y + 0.16, z, 0.035, 0.035, 0.32, 10);
@@ -588,6 +622,8 @@ export class ClubWings {
       this.light(s * 5.4, sh + 1.6, z0 + 5.2, 0xff5a1a, 12, 14, { flicker: true, priority: 1.8, decay: 1.2 });
     }
     this.c.party.push(this.light(0, 7.5, (hl.z0 + hl.z1) / 2, 0xff2010, 18, 30, { priority: 1.9, decay: 1.0 }));
+    // la frente del Diablo: la pantalla entre los cuernos, arriba de los ojos (se maneja desde la cabina)
+    bunkerScreen(this.c, 'bunker_hell');
   }
   // piso de basalto con grietas de lava que laten con la música (sin luces: emisivo puro)
   _lavaFloor(hl) {
@@ -714,6 +750,8 @@ export class ClubWings {
     for (const x of [21.6, 26.4]) this._speaker(x, 0, vp.z0 + 0.5, 1.9);
     this.anchors.vipDj = new THREE.Vector3(24, 0, vp.z0 + 0.66);
     this.light(24, 2.3, vp.z0 + 1.9, 0xff40c0, 5, 6, { priority: 1.2 });
+    // la pantalla en el muro este, arriba de los reservados (se maneja desde la cabina)
+    bunkerScreen(this.c, 'bunker_vip');
   }
   // cabina de DJ mirando al sur (+z): mueble, dos bandejas, mixer con lucecitas y la tira de neón al frente
   _djBooth(x, y, z, neon = 'neonPink') {
@@ -949,7 +987,7 @@ export class ClubWings {
     }
     // hongos gigantes que brillan (los sombreros son emisivos)
     const caps = [['shroomPink'], ['shroomCyan'], ['shroomLime']];
-    const shrooms = [[-45.5, -475.5, 3.2, 1.6], [-43, -467.5, 2.2, 1.1], [-31, -476, 2.6, 1.3], [-27.5, -466.5, 1.6, 0.8], [-39.5, -475.8, 1.2, 0.7], [-33.5, -466.2, 1.0, 0.6]];
+    const shrooms = [[-45.5, -475.5, 3.2, 1.6], [-43, -467.5, 2.2, 1.1], [-31, -476, 2.6, 1.3], [-27.5, -466.5, 1.6, 0.8], [-46.2, -470.4, 1.2, 0.7], [-33.5, -466.2, 1.0, 0.6]];
     shrooms.forEach(([x, z, h, rr], i) => {
       const cap = caps[i % 3][0];
       this.cyl('shroomStem', x, h / 2, z, rr * 0.22, rr * 0.3, h, 14, { collide: true });
@@ -1035,6 +1073,13 @@ export class ClubWings {
     for (let k = 0; k < 6; k++) { this.cyl('bongGlass', -31.5 + k * 0.4, 1.04, ps.z0 + 2.2, 0.05, 0.05, 0.18, 10); this.cyl(['shroomPink', 'shroomCyan', 'shroomLime'][k % 3], -31.5 + k * 0.4, 0.99, ps.z0 + 2.2, 0.042, 0.042, 0.07, 8); }
     for (let k = 0; k < 4; k++) { const cx = -31.9 + k * 0.9; this.cyl('wax', cx, 1.0, ps.z0 + 2.45, 0.025, 0.03, 0.14, 8); this.world().flames?.add(cx, 1.09, ps.z0 + 2.45, 0.02, 0.05); }
     this.c.use('club_shaman', [-30.5, 1.0, ps.z0 + 2.7], 2.2, 'Hablar con La Chamana', { e: 'shaman' });
+    // el DJ de psytrance contra el muro norte (oeste de la espiral): cabina con neón violeta, dos bafles y la pantalla
+    // arriba; desde la cabina se pone YouTube en la pantalla (y el psytrance sintetizado se calla)
+    this._djBooth(-41.8, 0, ps.z0 + 1.4, 'neonPurple');
+    for (const x of [-44.2, -39.4]) this._speaker(x, 0, ps.z0 + 0.5, 1.6);
+    this.anchors.psyDj = new THREE.Vector3(-41.8, 0, ps.z0 + 0.62);
+    this.light(-41.8, 2.2, ps.z0 + 2.0, 0xa040ff, 4, 6, { priority: 1.1 });
+    bunkerScreen(this.c, 'bunker_psico');
     this.light(-41, 3.6, -471, 0x8a3cff, 10, 16, { priority: 1.2, decay: 1.0 });
     this.light(-30, 3.6, -471, 0xff3cc8, 9, 15, { priority: 1.2, decay: 1.0 });
     const fog = this.c.fog;

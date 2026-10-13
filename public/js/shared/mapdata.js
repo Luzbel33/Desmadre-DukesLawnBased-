@@ -239,10 +239,28 @@ export const SCREENS = [
     id: 'fogon', name: 'Pantalla del Fogón', c: [-38.35, 3.2, -92.5], yaw: Math.PI / 2, w: 7, h: 3.9375,
     zone: null, hearFull: 9, hearMax: 32, // se escucha alrededor del fuego (y un poco en el patio)
   },
+  // El Búnker: una pantalla por pista (se elige desde la cabina de cada sala). Se oye en su sala (box) y poquito al
+  // lado; si pasa algo, la música sintetizada de esa sala se calla (no se pisan). idle: sin video se ve el
+  // visualizador propio de la sala (world/club-screens.js) en vez del cartel de YouTube.
   {
-    // arriba del escenario del Búnker: si pasa algo acá, la música del club se calla (no se pisan)
     id: 'bunker', name: 'Pantalla del Búnker', c: [0, 4.2, -477.6], yaw: 0, w: 8, h: 4.5,
-    zone: 'bunker', hearFull: 30, hearMax: 48,
+    box: CLUB.hall, hearFull: 0, hearMax: 9, idle: true,
+  },
+  {
+    id: 'bunker_cafe', name: 'Tele del Coffeeshop', c: [-25.2, 2.62, -478.5], yaw: Math.PI, w: 2.8, h: 1.575,
+    box: CLUB.wings.cafe, hearFull: 0, hearMax: 7, idle: true,
+  },
+  {
+    id: 'bunker_vip', name: 'Pantalla de la VIP', c: [35.86, 3.85, -488], yaw: -Math.PI / 2, w: 2.88, h: 1.62,
+    box: CLUB.wings.vip, hearFull: 0, hearMax: 7, idle: true,
+  },
+  {
+    id: 'bunker_hell', name: 'Pantalla del Infierno', c: [0, 10.45, -521.84], yaw: 0, w: 4.8, h: 2.7,
+    box: CLUB.wings.hell, hearFull: 0, hearMax: 8, idle: true,
+  },
+  {
+    id: 'bunker_psico', name: 'Pantalla de La Mente', c: [-41.8, 3.0, -477.9], yaw: 0, w: 3.2, h: 1.8,
+    box: CLUB.wings.psico, hearFull: 0, hearMax: 7, idle: true,
   },
 ];
 export const SCREEN_BY_ID = Object.fromEntries(SCREENS.map((s) => [s.id, s]));
@@ -366,6 +384,11 @@ export const INTERACT = [
   { id: 'fogon_proyector', k: 'media', screen: 'fogon', p: [-17.4, 1.0, -91.3], r: 2.0, label: 'Elegir video o historia de terror' },
   { id: 'futbol', k: 'football', p: [0, 1.0, 15.4], r: 2.6, label: 'Iniciar / reiniciar el partido de fútbol' },
   { id: 'bunker_dj', k: 'media', screen: 'bunker', p: [-7.2, 1.5, -470.4], r: 2.6, label: 'Pasar música o un video en el Búnker' },
+  // las cabinas de las otras pistas del Búnker (world/club-wings.js): cada una maneja la pantalla de su sala
+  { id: 'cafe_dj', k: 'media', screen: 'bunker_cafe', p: [-25.2, 1.0, -479.6], r: 1.7, label: 'Poner música en el equipo del coffeeshop' },
+  { id: 'vip_dj', k: 'media', screen: 'bunker_vip', p: [24, 1.0, -497.5], r: 2.0, label: 'Pasar música o un video en la VIP' },
+  { id: 'hell_dj', k: 'media', screen: 'bunker_hell', p: [0, 2.2, -518.3], r: 2.3, label: 'Pasar música o un video en el Infierno' },
+  { id: 'psico_dj', k: 'media', screen: 'bunker_psico', p: [-41.8, 1.0, -475.4], r: 2.0, label: 'Pasar música o un video en La Mente' },
 ];
 
 // Botiquines: curan, cortan el sangrado y devuelven sangre (cada uno se repone solo). yaw: hacia dónde mira

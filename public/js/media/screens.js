@@ -103,10 +103,12 @@ export class YouTubeScreenManager {
       const projected=e.projected.copy(e.center).project(camera);
       const facing=toCamera.dot(e.normal)>0;
       const visible=facing&&projected.z>-1&&projected.z<1&&Math.abs(projected.x)<1.7&&Math.abs(projected.y)<1.7&&toCamera.lengthSq()<160*160;
-      const showLayer=active&&(focused||visible);
+      // idle screens (the Búnker floors) show their own WebGL visualizer until someone queues a video
+      const idle=!!e.def.idle&&!e.control.state.cur;
+      const showLayer=active&&(focused||(visible&&!idle));
       const gain=focused?1:screenGain(e.def,pos);
       const playing=active&&pageVisible&&(focused||(!this.focused&&(visible||gain>.01)));
-      e.hole.visible=active&&!focused;
+      e.hole.visible=active&&!focused&&!idle;
       e.layer.style.display=showLayer?'':'none';
       e.object.visible=true;
       let w=innerWidth,h=innerHeight;

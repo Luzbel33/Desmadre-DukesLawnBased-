@@ -18,6 +18,7 @@ import { clubBeat, BPM } from '../world/club.js';
 import { polePlace } from '../char/pole-dance.js';
 import { getMat } from '../world/builder.js';
 import { ClubMix } from '../audio/clubmix.js';
+import { BUNKER_SCREENS } from '../world/club-screens.js';
 
 const HAS_DOM = typeof document !== 'undefined';
 const F0 = CASTLE.keep.floor;
@@ -102,7 +103,7 @@ export class ClubGame {
     this.ritualUse2 = { id: 'club_ritual2', k: 'club', e: 'ritual', p: [P2.x, 1, P2.z], r: P2.r, label: '⛧ Ritual: volver al castillo', when: () => this._ownerOnPentagram() === 'bunker' };
     INTERACT.push(this.tombUse, this.ritualUse, this.ritualUse2);
     // el portero y el ascensor ya los registró world/club.js (k: 'club')
-    for (const it of this.club.interact) { if (it.e === 'ride') this.rideUse = it; if (it.e === 'bell') this.bellUse = it; }
+    for (const it of this.club.interact) { if (it.e === 'ride') this.rideUse = it; if (it.e === 'bell') this.bellUse = it; if (it.e === 'cctvPower') this.cctvUse = it; }
   }
 
   use(it) {
@@ -131,7 +132,12 @@ export class ClubGame {
         if (!this.pick?.(DRUG_MENU, (m) => { const P = this.getLocal(); if (P) { this._drug(P, m.drug); this.shaman?.say(lines[Math.floor(Math.random() * lines.length)], 2.6); } })) this._drug(L, 'acid');
         break;
       }
-      case 'monitors': this.notify('📺 Las cámaras de seguridad todavía no están conectadas.'); break;
+      case 'cctvPower': {
+        // la pared de monitores: apagada no dibuja nada (cada pantalla es un render más de la escena)
+        const m = { e: 'cctv', on: G.cctv?.power ? 0 : 1 };
+        G.cctv?.setPower(!!m.on); this._send(m);
+        break;
+      }
       case 'bell': { const m = { e: 'bell', on: this.truceUntil > G.time ? 0 : 1 }; this._bellApply(m); this._send(m); break; }
       case 'ritual': this._openRitual(); break;
       default: break;
@@ -188,6 +194,7 @@ export class ClubGame {
     else if (m.e === 'lift') this._liftApply(m);
     else if (m.e === 'auth' && m.id) this.authIds.add(m.id);
     else if (m.e === 'bell') this._bellApply(m);
+    else if (m.e === 'cctv') G.cctv?.setPower(!!m.on);
   }
 
   // ---------------------------------------------------------------- la tumba y la escalera
@@ -615,6 +622,12 @@ export class ClubGame {
     (A.npcSeats || []).forEach((s, i) => { const p = people[i]; if (p) add(s.wing, { name: p[1], look: { model: p[0] }, pos: new THREE.Vector3(s.x, s.y - 0.46, s.z), yaw: s.yaw, role: this._loungeRole(p[2], s) }); });
     // la sala de cultivo y el arsenal
     if (A.shaman) this.shaman = add('psico', { name: 'La Chamana', look: { model: 'v_bruja' }, pos: A.shaman.clone(), yaw: 0, role: this._keeperRole(['¿Venís a ver más allá?', 'Tengo lo que buscás, viajero.', 'Las puertas de la percepción están abiertas.'], 4.5) });
+    // La Mente: el DJ de psytrance y gente en trance en la mitad sur (lejos de los hongos y los pufs)
+    if (A.psyDj) add('psico', { name: 'DJ Ayahuasca', look: { model: 'raver' }, pos: A.psyDj.clone(), yaw: 0, role: this._djRole(8, 2) });
+    for (const [m, name, x, z] of [['v_corredora', 'Luna', -37, -463.2], ['metalero', 'El Chamán Metal', -33.4, -461.4], ['v_aldeana', 'Índigo', -40.2, -459.8], ['v_hincha', 'El Iluminado', -30.6, -458.6]]) {
+      const h = new THREE.Vector3(x, 0, z);
+      add('psico', { name, look: { model: m }, pos: h.clone(), role: this._dancerRole(h, 2, 'trance') });
+    }
     if (A.gardener) add('grow', { name: 'El Jardinero', look: { model: 'v_granjero' }, pos: A.gardener.clone(), yaw: Math.PI, role: this._keeperRole(['Despacito con las nenas, que están floreciendo.', 'Cortá uno, nomás. Bueno, dos.', 'Las riego con las lágrimas de los que pierden al póker.'], 4.5) });
     if (A.sarge) add('arsenal', { name: 'El Sargento', look: { model: 'v_guardia' }, pos: A.sarge.clone(), yaw: -Math.PI / 2, role: this._keeperRole(['¡Firmes, recluta!', 'Se agarra una y se usa con cabeza.', 'Acá no se fuma. Andá al coffeeshop, hippie.', 'Si le tirás a una bailarina, te fusilo.'], 6) });
   }
@@ -998,6 +1011,7 @@ export class ClubGame {
     tb.open += clamp(tb.target - tb.open, -dt * 0.5, dt * 0.7);
     if (tb.lid) { tb.lid.position.x = tb.x0 + tb.open * 0.85; tb.lid.rotation.y = tb.open * 0.25; }
     if (this.tombUse) this.tombUse.label = tb.open > 0.85 ? 'Bajar por la escalera de la tumba' : 'Correr la tapa de la tumba';
+    if (this.cctvUse) this.cctvUse.label = G.cctv?.power ? 'Apagar los monitores' : 'Prender los monitores';
     this._liftStep(dt);
     this._doorStep();
     this._ritualStep(dt);
@@ -1025,8 +1039,10 @@ export class ClubGame {
       if (room) this._musicRoom = room; // en el marco de una puerta (fuera de toda sala) sigue lo de antes
       mix = roomMusic(this._musicRoom, p, this.club.doors.blast.open);
     }
-    const scr = G.media?.screens?.get?.('bunker')?.control?.state?.cur;
-    if (scr && !scr.paused) delete mix.techno;
+    // cada pista tiene su pantalla (world/club-screens.js): con algo puesto ahí, la música sintetizada de esa sala se calla
+    const playing = (id) => { const c = G.media?.screens?.get?.(id)?.control?.state?.cur; return c && !c.paused ? c : null; };
+    for (const id in BUNKER_SCREENS) if (playing(id)) delete mix[BUNKER_SCREENS[id]];
+    const scr = playing('bunker');
     this.musicLevel = mix.techno?.[0] || 0;
     if (G.sfx) {
       if (!this.mix && G.sfx.ctx) this.mix = new ClubMix(G.sfx);

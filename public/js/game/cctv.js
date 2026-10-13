@@ -1,9 +1,10 @@
 // Cámaras de seguridad: repartidas por el mapa (afuera, cámaras de circuito cerrado con su lucecita roja; en el
 // castillo, OJOS de verdad, con venas, que siguen al que pasa cerca y parpadean). En el Búnker, la sala de monitores:
 // una pared de seis pantallas que van rotando las vistas, y en el escritorio (X) se mira una a pantalla completa
-// (A/D o click cambian de cámara, Esc sale).
-// Rendimiento: las pantallas se dibujan solo si estás cerca de la pared, de a una por cuadro (cada una ~4 veces por
-// segundo), chiquitas y sin recalcular sombras.
+// (A/D o click cambian de cámara, Esc sale). La pared tiene un interruptor (la perilla roja del escritorio): arranca
+// apagada y apagada no dibuja nada; prenderla o apagarla le llega a toda la sala (game/club.js, evento 'cctv').
+// Rendimiento: prendidas, las pantallas se dibujan solo si estás cerca de la pared y mirándola, de a una por cuadro
+// (cada una ~4 veces por segundo), chiquitas y sin recalcular sombras.
 import * as THREE from 'three';
 import { G } from '../core/G.js';
 
@@ -62,6 +63,20 @@ export class Cctv {
     this.slot = 0;
     this.rot = 0;
     this.frame = 0;
+    this.power = false;
+    this.boot = 0; // 0..1: el encendido (la imagen se abre desde una línea, como un tubo viejo)
+  }
+
+  // prender/apagar la pared de monitores (con su clic y el zumbido del tubo)
+  setPower(on) {
+    on = !!on;
+    if (on === this.power) return;
+    this.power = on;
+    if (!on) for (const s of this.screens) s.m.material.uniforms.uOn.value = 0;
+    if (this.ledMat) this.ledMat.emissive.setHex(on ? 0x20ff40 : 0xff1010);
+    const at = this.wallPos;
+    G.sfx?.trigger('ui-select', at, 0.6, { full: 3, max: 14 });
+    if (on) G.sfx?.trigger('ui-ok', at, 0.35, { full: 3, max: 14, rate: 0.8 });
   }
 
   build() {
@@ -118,11 +133,11 @@ export class Cctv {
     const A = this.world.club?.anchors?.monitors;
     if (!A) return;
     const mat = (rt, label) => new THREE.ShaderMaterial({
-      uniforms: { tFeed: { value: rt.texture }, tLabel: { value: label }, uT: { value: 0 }, uOn: { value: 0 } },
+      uniforms: { tFeed: { value: rt.texture }, tLabel: { value: label }, uT: { value: 0 }, uOn: { value: 0 }, uBoot: { value: 0 } },
       toneMapped: false,
       vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
       fragmentShader: /* glsl */ `
-        uniform sampler2D tFeed, tLabel; uniform float uT, uOn; varying vec2 vUv;
+        uniform sampler2D tFeed, tLabel; uniform float uT, uOn, uBoot; varying vec2 vUv;
         float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
         void main(){
           vec3 c = texture2D(tFeed, vUv).rgb;
@@ -135,6 +150,10 @@ export class Cctv {
           col = mix(vec3(h(vUv * 300.0 + uT) * 0.4), col, uOn);   // sin señal: estática
           vec4 lb = texture2D(tLabel, vUv);
           col = mix(col, lb.rgb, lb.a);
+          // encendido / apagado: la imagen se abre desde una línea horizontal brillante; apagada, vidrio negro
+          float open = smoothstep(0.0, 0.6, uBoot), band = abs(vUv.y - 0.5) * 2.0;
+          col = col * step(band, open) + vec3(0.6, 1.0, 0.7) * smoothstep(0.03, 0.0, abs(band - open)) * (1.0 - smoothstep(0.6, 1.0, uBoot)) * step(0.001, uBoot);
+          col += vec3(0.012, 0.014, 0.016) * (1.0 - vUv.y);
           gl_FragColor = vec4(col, 1.0);
         }`,
     });
@@ -149,6 +168,14 @@ export class Cctv {
       this.screens.push({ m, rt, cv, label, cam: -1 });
     }
     this.wallPos = A.clone();
+    // la lucecita del interruptor (roja apagada, verde prendida)
+    const LA = this.world.club?.anchors?.cctvLed;
+    if (LA) {
+      this.ledMat = new THREE.MeshStandardMaterial({ color: 0x100000, emissive: 0xff1010, emissiveIntensity: 2.4 });
+      const led = new THREE.Mesh(new THREE.SphereGeometry(0.014, 10, 8), this.ledMat);
+      led.position.copy(LA);
+      this.world.club.group.add(led);
+    }
     this._assign();
   }
   _assign() {
@@ -203,8 +230,16 @@ export class Cctv {
       c.lids[0].rotation.x = -open;
       c.lids[1].rotation.x = Math.PI + open;
     }
-    // pared de monitores: solo si estás cerca
-    if (!this.screens.length || !camera || camera.position.distanceTo(this.wallPos) > 16) return;
+    // pared de monitores: solo prendida y si estás cerca
+    if (!this.screens.length || !camera) return;
+    const boot = this.power ? Math.min(1, this.boot + dt * 1.6) : Math.max(0, this.boot - dt * 3);
+    if (boot !== this.boot) {
+      this.boot = boot;
+      for (const s of this.screens) s.m.material.uniforms.uBoot.value = boot;
+      const glow = this.world.club?.anchors?.monitorGlow;
+      if (glow) glow.intensity = glow.base = 5 * boot;
+    }
+    if (!this.power || camera.position.distanceTo(this.wallPos) > 16) return;
     camera.getWorldDirection(V1);
     V2.copy(this.wallPos).sub(camera.position).normalize();
     if (V1.dot(V2) < 0.1) return; // no actualizar feeds si ni estás mirando la pared

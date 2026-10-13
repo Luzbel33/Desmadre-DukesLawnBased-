@@ -14,6 +14,7 @@ import { loadAssetsLater } from '../game/assets.js';
 import { BUNKER_MANIFEST } from '../game/asset-manifest.js';
 import { ClubWings, HALL_DOORS } from './club-wings.js';
 import { Smoke } from '../fx/flame.js';
+import { bunkerScreen } from './club-screens.js';
 
 const HAS_DOM = typeof document !== 'undefined';
 const C = CLUB, H = C.hall;
@@ -444,6 +445,8 @@ export class Club {
       for (const y of [0.8, 2.0]) { this.cyl('darkgray', x, sh + y, z1 - 0.58, 0.45, 0.45, 0.04, 24, { rx: Math.PI / 2 }); this.cyl('black', x, sh + y, z1 - 0.55, 0.18, 0.18, 0.05, 16, { rx: Math.PI / 2 }); }
     }
     this.anchors.stage = new THREE.Vector3(0, sh, (z0 + z1) / 2);
+    // la pantalla grande sobre la cortina (visualizador propio hasta que alguien pase algo desde la cabina)
+    bunkerScreen(this, 'bunker');
   }
 
   _bar() {
@@ -627,7 +630,29 @@ export class Club {
     this.box('black', H.x0 + 0.1, 2.6, z, 0.12, 2.6, 4.6);
     this.cyl('leatherBlack', x + 1.2, 0.3, z, 0.3, 0.3, 0.6, 12);
     this.seat(x + 1.2, 0.62, z, -Math.PI / 2);
-    this.use('club_monitors', [x + 0.9, 1.0, z], 2.2, 'Mirar las cámaras', { e: 'monitors' });
+    this.use('club_monitors', [x + 0.9, 1.0, z + 0.4], 2.0, 'Mirar las cámaras', { e: 'monitors' });
+    // el interruptor de la pared de monitores (punta norte del escritorio): perilla roja con su lucecita (game/cctv.js)
+    const bz = z - 1.3;
+    this.box('black', x + 0.35, 0.92, bz, 0.3, 0.16, 0.26);
+    this.deco('darkgray', x + 0.35, 1.0, bz, 0.26, 0.01, 0.22);
+    this.cyl('red', x + 0.42, 1.03, bz, 0.045, 0.05, 0.05, 14);
+    this.anchors.cctvLed = new THREE.Vector3(x + 0.28, 1.012, bz + 0.06);
+    this.use('club_cctv_power', [x + 0.9, 1.0, bz], 0.95, 'Prender los monitores', { e: 'cctvPower' });
+    // lo del escritorio: teclado, mouse, lámpara de escritorio, el mate del guardia y papeles
+    this.deco('black', x + 0.3, 0.855, z + 0.25, 0.2, 0.025, 0.55);
+    this.deco('darkgray', x + 0.32, 0.87, z + 0.25, 0.16, 0.01, 0.5);
+    this.deco('black', x + 0.32, 0.86, z + 0.78, 0.1, 0.03, 0.06);
+    this.cyl('black', x - 0.2, 0.86, z + 1.2, 0.09, 0.1, 0.03, 14);
+    this.cyl('chrome', x - 0.2, 1.05, z + 1.2, 0.012, 0.012, 0.38, 6);
+    this.cyl('black', x - 0.12, 1.24, z + 1.2, 0.07, 0.1, 0.12, 14, { rz: 0.6 });
+    this.cyl('warmBulb', x - 0.09, 1.2, z + 1.2, 0.05, 0.05, 0.01, 12, { rz: 0.6 });
+    this.light(x - 0.05, 1.1, z + 1.2, 0xffcc88, 1.6, 3.2, { priority: 0.9, decay: 1.8 });
+    this.cyl('leatherRed', x + 0.1, 0.9, z + 0.95, 0.04, 0.035, 0.09, 10);
+    this.cyl('chrome', x + 0.1, 0.97, z + 0.95, 0.004, 0.004, 0.08, 4, { rz: 0.3 });
+    this.deco('white', x + 0.05, 0.846, z - 0.45, 0.3, 0.004, 0.22, { yaw: 0.3 });
+    this.deco('white', x + 0.1, 0.849, z - 0.55, 0.3, 0.004, 0.22, { yaw: -0.2 });
+    // el resplandor verde de la pared de monitores (lo prende game/cctv.js con el interruptor)
+    this.anchors.monitorGlow = this.light(H.x0 + 1.4, 2.3, z, 0x70ff90, 0, 7, { priority: 1.1, decay: 1.5 });
   }
 
   // ---------------------------------------------------------------- armería, la plata y la mesa de las drogas
