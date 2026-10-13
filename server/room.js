@@ -7,6 +7,7 @@ import {
   PROTOCOL, GRASSMAP, GRASS, SURFACES, SURFACE_BY_ID, SCREENS, VEHICLES, PROPS, FIELD, PAINT, parsePatch, grassAllowed, CLUB, CASTLE, playableAt,
   CHESS_BOARDS, POOL_TABLE,
 } from '../public/js/shared/mapdata.js';
+import { START_MONEY, MAX_MONEY, priceOf, RINGS, BET_AMOUNTS, BET_OPEN_S, PURSE } from '../public/js/shared/economy.js';
 import { rack as poolRack, simulate as poolSimulate, judge as poolJudge } from '../public/js/shared/pool.js';
 import { initial as chessInitial, isLegal as chessLegal, apply as chessApply, status as chessStatus } from '../public/js/shared/chess.js';
 import { applyDots, cutRect, growAll, fieldMask, mowField, DOT_BYTES } from '../public/js/shared/raster.js';
@@ -70,6 +71,8 @@ export class Room {
       });
     }
     for (const s of SCREENS) this.media.set(s.id, { queue: [], cur: null });
+    this.wallets = new Map(); // nombre (en minúsculas) -> plata (ver shared/economy.js)
+    this.fights = new Map(RINGS.map((r) => [r.id, { phase: 'idle', fighters: new Set(), bets: new Map(), openUntil: 0, since: 0, purse: new Map() }]));
     this.chess = new Map(CHESS_BOARDS.map((b) => [b.id, { ...this._chessNew(), seats: { w: 0, b: 0 }, ai: null }]));
     this.pool = { players: [0, 0], ...this._poolNew(true) };
     this.poker = new PokerTable('bar', 6, {
@@ -215,6 +218,8 @@ export class Room {
     }
     this.poker.leave(p.id);
     for (const id of this.chess.keys()) this._chessLeave(p, id);
+    this.wallets.set(p.name.toLowerCase(), p.money ?? START_MONEY);
+    for (const [id, f] of this.fights) { f.fighters.delete(p.id); if (f.bets.has(p.id) && f.phase !== 'live') this._refundBet(f, p.id); }
     this._poolLeave(p);
     this.broadcast({ t: 'pleave', id: p.id });
     if (p.ready) this.sys(p.name + ' se fue del lobby.');
@@ -227,6 +232,7 @@ export class Room {
       return;
     }
     p.name = clampStr(msg.name, 20) || 'Anónimo';
+    p.money = this.wallets.get(p.name.toLowerCase()) ?? START_MONEY;
     // SmokePyro es el dueño: el nombre está reservado y solo entra con la clave (y ahí tiene al Diablo y sus poderes)
     if (isOwnerName(p.name)) {
       if (!allowTry(p.ws.ip || '') || !checkOwnerKey(msg.key)) {
@@ -255,7 +261,7 @@ export class Room {
     const media = {};
     for (const [id, m] of this.media) media[id] = m;
     this.send(p, {
-      t: 'welcome', id: p.id, color: p.color, now: Date.now(), room: this.name, owner: p.owner ? 1 : 0, admin: p.admin ? 1 : 0,
+      t: 'welcome', money: p.money, id: p.id, color: p.color, now: Date.now(), room: this.name, owner: p.owner ? 1 : 0, admin: p.admin ? 1 : 0,
       npcs: { list: this.adminNpcs, hidden: this.hiddenNpcs },
       players, props, vehicles, media, settings: this.settings, gtick: this.grass.tick,
       chatHistory: this.chatHistory,
@@ -417,7 +423,7 @@ export class Room {
         if (isOwnerName(nn) && !p.owner) { this.send(p, { t: 'sys', m: 'El nombre SmokePyro está reservado.' }); break; }
         p.lastRename = now;
         const old = p.name;
-        p.name = nn;
+        this.wallets.delete(old.toLowerCase()); p.name = nn; this.wallets.set(nn.toLowerCase(), p.money); // la plata se viene con vos
         this.broadcast({ t: 'name', id: p.id, name: nn });
         this.sys(old + ' ahora se llama ' + nn + '.');
         break;
@@ -446,6 +452,8 @@ export class Room {
       case 'adm': this.onAdmin(p, msg); break;
       case 'chess': this.onChess(p, msg); break;
       case 'pool': this.onPool(p, msg); break;
+      case 'buy': this.onBuy(p, msg); break;
+      case 'bet': this.onBet(p, msg); break;
       case 'pk':
         if (msg.a === 'sit') this.poker.sit(p.id, p.name, msg.seat | 0);
         else if (msg.a === 'leave') this.poker.leave(p.id);
@@ -821,6 +829,108 @@ export class Room {
     this.broadcast({ t: 'chess', ...this._chessPub(msg.b) });
   }
 
+  // ------------------------------------------------------------------ la plata (shared/economy.js)
+  _pay(p, delta, why = '') { // suma o resta (nunca baja de 0 ni pasa del máximo); avisa al dueño de la billetera
+    const before = p.money ?? 0;
+    p.money = Math.max(0, Math.min(MAX_MONEY, before + Math.round(delta)));
+    this.wallets.set(p.name.toLowerCase(), p.money);
+    if (p.money !== before) this.send(p, { t: 'money', m: p.money, d: p.money - before, why });
+    return p.money - before;
+  }
+  onBuy(p, msg) { // un puesto del mapa te vende algo: el servidor cobra y avisa si se pudo
+    const id = typeof msg.id === 'string' ? msg.id.slice(0, 32) : '', price = priceOf(id), now = Date.now();
+    if (now - (p.buyT || 0) < 250) return;
+    p.buyT = now;
+    const ok = price <= p.money;
+    if (ok && price) this._pay(p, -price, 'compra');
+    this.send(p, { t: 'bought', id, ok: ok ? 1 : 0, price, m: p.money, n: msg.n | 0 });
+  }
+
+  // ------------------------------------------------------------------ peleas y apuestas
+  // Cuando hay dos o más peleando en el ring (o la jaula) se abren las apuestas unos segundos; cuando empiezan los
+  // golpes se cierran y gana el último que queda parado adentro. Pozo compartido (parimutuel): los que apostaron al
+  // ganador se reparten todo lo apostado en proporción a lo que puso cada uno. El ganador se lleva además un premio.
+  _fighterIn(ring, p) {
+    const at = p.st?.p;
+    return !!at && Array.isArray(at) && ring.inside(at[0], at[2]) && Math.abs(at[1]) < 2.5 && (p.st.s | 0) < 2 && (p.st.hp ?? 100) > 0;
+  }
+  _fightPub(f, ring) {
+    const pools = {};
+    for (const b of f.bets.values()) pools[b.on] = (pools[b.on] || 0) + b.amt;
+    return {
+      t: 'fight', ring: ring.id, phase: f.phase, left: f.phase === 'open' ? Math.max(0, Math.ceil((f.openUntil - Date.now()) / 1000)) : 0,
+      fighters: [...f.fighters].map((id) => ({ id, name: this.players.get(id)?.name || '?', in: this.players.get(id) ? this._fighterIn(ring, this.players.get(id)) : false })),
+      pools, bets: [...f.bets].map(([pid, b]) => [pid, b.on, b.amt]),
+    };
+  }
+  _fightSend(f, ring) { this.broadcast(this._fightPub(f, ring)); }
+  _refundBet(f, pid) {
+    const b = f.bets.get(pid), p = this.players.get(pid);
+    f.bets.delete(pid);
+    if (b && p) this._pay(p, b.amt, 'apuesta devuelta');
+  }
+  _fightTick(now) {
+    if (now - (this._fightT || 0) < 300) return;
+    this._fightT = now;
+    for (const ring of RINGS) {
+      const f = this.fights.get(ring.id);
+      const inside = [...this.players.values()].filter((o) => o.ready && this._fighterIn(ring, o));
+      if (f.phase === 'idle') {
+        if (inside.length < 2 || now - (f.cool || 0) < 8000) continue;
+        f.phase = 'open'; f.fighters = new Set(inside.map((o) => o.id)); f.openUntil = now + BET_OPEN_S * 1000; f.since = now;
+        this.sys(`🥊 Pelea en ${ring.name}: ${inside.map((o) => o.name).join(' vs ')}. ¡Apuestas abiertas ${BET_OPEN_S} s!`, '#ffd98a');
+        this._fightSend(f, ring);
+      } else if (f.phase === 'open') {
+        for (const o of inside) f.fighters.add(o.id);
+        const alive = [...f.fighters].filter((id) => inside.some((o) => o.id === id));
+        if (alive.length < 2) { this._fightEnd(f, ring, null, 'se fueron'); continue; }
+        // se cierra al vencerse el tiempo o apenas alguien recibió un golpe de verdad
+        const hurt = inside.some((o) => (o.st.hp ?? 100) < 92);
+        if (now >= f.openUntil || hurt) { f.phase = 'live'; this.sys(`🥊 ¡Empezó! Apuestas cerradas en ${ring.name}.`, '#ffd98a'); this._fightSend(f, ring); }
+        else if (now - (f.lastSend || 0) > 2000) { f.lastSend = now; this._fightSend(f, ring); }
+      } else if (f.phase === 'live') {
+        const alive = [...f.fighters].filter((id) => inside.some((o) => o.id === id));
+        if (alive.length === 1) this._fightEnd(f, ring, alive[0], 'ganó la pelea');
+        else if (alive.length === 0) this._fightEnd(f, ring, null, 'no quedó nadie en pie');
+        else if (now - f.since > 5 * 60 * 1000) this._fightEnd(f, ring, null, 'se alargó demasiado');
+      }
+    }
+  }
+  _fightEnd(f, ring, winner, why) {
+    const w = winner ? this.players.get(winner) : null;
+    const pot = [...f.bets.values()].reduce((s, b) => s + b.amt, 0);
+    const onWinner = [...f.bets.values()].filter((b) => b.on === winner).reduce((s, b) => s + b.amt, 0);
+    if (w && pot > 0 && onWinner > 0) {
+      for (const [pid, b] of f.bets) {
+        const o = this.players.get(pid);
+        if (o && b.on === winner) this._pay(o, Math.floor((b.amt / onWinner) * pot), 'ganó la apuesta');
+      }
+    } else for (const pid of [...f.bets.keys()]) this._refundBet(f, pid); // sin ganador (o nadie le apostó): todos recuperan
+    if (w) {
+      const now = Date.now();
+      // el premio del que gana, con un enfriamiento (no vale pelearse con un amigo para cobrar sin parar)
+      const prize = now - (w.purseT || 0) > 90000 ? PURSE + Math.round(pot * 0.1) : 0;
+      if (prize) { w.purseT = now; this._pay(w, prize, 'premio de la pelea'); }
+      this.sys(`🥊 ${w.name} ${why} en ${ring.name}${pot ? ` (pozo $${pot})` : ''}.`, '#ffd98a');
+    } else this.sys(`🥊 Pelea terminada en ${ring.name} (${why}).`, '#ffd98a');
+    f.phase = 'idle'; f.fighters = new Set(); f.bets = new Map(); f.cool = Date.now();
+    this._fightSend(f, ring);
+  }
+  onBet(p, msg) {
+    const ring = RINGS.find((r) => r.id === msg.ring), f = ring && this.fights.get(ring.id);
+    if (!f) return;
+    if (msg.a === 'info') { this.send(p, this._fightPub(f, ring)); return; }
+    if (msg.a !== 'place' || f.phase !== 'open') return;
+    const on = msg.on | 0, amt = msg.amt | 0;
+    if (!f.fighters.has(on) || !BET_AMOUNTS.includes(amt) || amt > p.money) return;
+    const prev = f.bets.get(p.id);
+    if (prev && prev.on !== on) { this.send(p, { t: 'sys', m: 'Ya apostaste por otro: no se puede cambiar.' }); return; }
+    if (prev && prev.amt + amt > 1000) return;
+    this._pay(p, -amt, 'apuesta');
+    f.bets.set(p.id, { on, amt: (prev?.amt || 0) + amt });
+    this._fightSend(f, ring);
+  }
+
   // ------------------------------------------------------------------ pool (game/pool.js; física y reglas en shared/pool.js)
   // El servidor simula cada tiro (es la verdad) y manda la posición de antes y el tiro: los clientes repiten la
   // misma simulación para verla y al final quedan donde dijo el servidor.
@@ -955,6 +1065,12 @@ export class Room {
         const k = typeof msg.k === 'string' && /^[a-z_0-9]{1,24}$/.test(msg.k) ? msg.k : null;
         if (!k || !canTouch(target)) return;
         this.send(target, { t: 'adm', a: 'give', k, by: p.name });
+        break;
+      }
+      case 'money': { // plata de regalo (o se la saca con un valor negativo)
+        const v = Math.max(-100000, Math.min(100000, msg.v | 0));
+        if (!canTouch(target) || !v) return;
+        this._pay(target, v, p.name + (v > 0 ? ' te regaló' : ' te sacó'));
         break;
       }
       case 'tune': { // la física de un jugador: velocidad, salto y gravedad (1 = normal)
@@ -1127,6 +1243,7 @@ export class Room {
       this.broadcast({ t: 'snap', ts: now, P, R, V, B: this.football.packet() });
     }
     this.poker.tick(now);
+    this._fightTick(now);
     // crecimiento del pasto
     while (now - this.lastGrow >= GRASS.growTickMs) {
       this.lastGrow += GRASS.growTickMs;

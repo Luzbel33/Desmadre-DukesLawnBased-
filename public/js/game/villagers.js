@@ -9,6 +9,7 @@ import { Npc } from './npc.js';
 import { startNpcDefense } from './npc-defense.js';
 import { SCREEN_BY_ID } from '../shared/mapdata.js';
 import { whenAsset, assetModel } from './assets.js';
+import { priceOf } from '../shared/economy.js';
 
 const V1 = new THREE.Vector3();
 const V2 = new THREE.Vector3();
@@ -430,7 +431,8 @@ export class Villagers {
       const b = document.createElement('button');
       b.type = 'button';
       b.innerHTML = `<span class="ic">${item.icon}</span><span class="t"></span><span class="d"></span>`;
-      b.querySelector('.t').textContent = item.name;
+      const price = priceOf(item.id);
+      b.querySelector('.t').textContent = item.name + (price ? ` · $${price}` : '');
       b.querySelector('.d').textContent = item.desc;
       b.addEventListener('click', () => this.buy(item.id));
       list.appendChild(b);
@@ -443,8 +445,13 @@ export class Villagers {
   buy(id) {
     const sh = this.shop;
     if (!sh) return;
-    const s = SHOPS[sh.id], v = sh.v, L = this.getLocal();
     this.close();
+    // primero se cobra (el servidor lleva la billetera: shared/economy.js); sin precio, se entrega directo
+    const pay = G.money?.pay(id) ?? Promise.resolve(true);
+    pay.then((ok) => { if (ok) this._deliver(id, sh); });
+  }
+  _deliver(id, sh) {
+    const s = SHOPS[sh.id], v = sh.v, L = this.getLocal();
     if (!L || L.dead) return;
     // el que atiende te lo alcanza (se da vuelta, estira el brazo) y te dice algo
     v.lookAt = L.pos; v.emote = 'point'; v.emoteT = 0;

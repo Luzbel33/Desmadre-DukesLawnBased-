@@ -37,7 +37,10 @@ Fuente única de trabajo pendiente.
 ### Personajes / juego
 - [ ] Playermodel mosca diminuta (para el dueño): vuela, zumba, se la puede aplastar, voz súper aguda por el mic; no
       puede tomar, pero sí jugar al póker y fumar mini cigarritos.
-- [ ] Apostar en las peleas del bar y del búnker; que la plata tenga un uso real.
+- [ ] Plata (hecho 13/10, `shared/economy.js`, `game/money.js`): billetera de $300 por nombre (la lleva el servidor mientras la sala
+      siga abierta), precios en los puestos y la barra del Búnker, apuestas a las peleas del ring del bar y la jaula con
+      pozo compartido y premio para el que gana, y el admin puede regalar. Falta: más usos (comprar skins/autos, premio
+      del circuito, propinas a los bailarines), guardar la plata entre reinicios del servidor y probar con gente.
 - [ ] Pool (hecho 13/10: mesa en el bar, bola 8 de a dos o práctica solo; `game/pool.js`, física en `shared/pool.js`).
       Falta: probar entre dos personas, efecto a la blanca (retroceso/corrido) y bola en mano después de una falta.
 - [ ] Cyber con PCs/maquinitas: minijuegos de plataformas de a uno o cooperativos.

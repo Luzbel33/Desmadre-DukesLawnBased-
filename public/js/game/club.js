@@ -9,6 +9,7 @@
 //    entre fuego, risas y humo.
 //  - El trono: el que se sienta sale en la pantalla de atrás, en vivo, con su nombre escrito en sangre y fuego.
 import { BAR_MENU, CAFE_MENU, DRUG_MENU, SLOT_KIND } from '../shared/consumables.js';
+import { priceOf } from '../shared/economy.js';
 import * as THREE from 'three';
 import { G, clamp } from '../core/G.js';
 import { CLUB, CASTLE, INTERACT } from '../shared/mapdata.js';
@@ -151,10 +152,15 @@ export class ClubGame {
   _order(menu, who, lines) {
     const give = (m) => {
       const L = this.getLocal(); if (!L) return;
-      L.giveItem(m.item); G.sfx?.trigger('pickup'); this.onItems?.();
-      who?.say(lines[Math.floor(Math.random() * lines.length)], 2.4);
+      // la barra cobra (shared/economy.js); el coffeeshop invita la casa
+      (G.money?.pay(m.item) ?? Promise.resolve(true)).then((ok) => {
+        if (!ok || !this.getLocal()) return;
+        this.getLocal().giveItem(m.item); G.sfx?.trigger('pickup'); this.onItems?.();
+        who?.say(lines[Math.floor(Math.random() * lines.length)], 2.4);
+      });
     };
-    if (!this.pick?.(menu, give)) give(menu[0]);
+    const priced = menu.map((m) => (priceOf(m.item) ? { ...m, label: `${m.label} · $${priceOf(m.item)}` } : m));
+    if (!this.pick?.(priced, give)) give(menu[0]);
   }
   _drug(L, kind) {
     const now = G.time;

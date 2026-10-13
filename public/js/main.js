@@ -30,6 +30,8 @@ import { Cctv } from './game/cctv.js';
 import { Gags, GAGS } from './game/gags.js';
 import { ChessGame } from './game/chess.js';
 import { PoolGame } from './game/pool.js';
+import { Money } from './game/money.js';
+import { priceOf } from './shared/economy.js';
 import { BunkerItems } from './game/bunker-items.js';
 import { pbrReady } from './world/builder.js';
 import { yieldToBrowser, prepareScene } from './core/startup.js';
@@ -136,6 +138,7 @@ function setMode(mode) {
   show($('shop'), mode === 'shop');
   show($('cctv'), mode === 'cctv');
   show($('admin'), mode === 'admin');
+  show($('bets'), mode === 'bets');
   // sentado al póker no hay HUD del juego (zona, barras, etc.): solo la mesa
   show($('hud'), ingame && mode !== 'menu' && mode !== 'poker' && mode !== 'cctv');
   show($('chat'), ingame);
@@ -677,6 +680,7 @@ function interact() {
     if (it.k === 'football') { state.net.send({ t: 'fbctl', a: 'start' }); G.sfx?.trigger('ui-ok'); return; }
     if (it.k === 'race') { G.race?.start(); return; }
     if (it.k === 'pool') { G.pool?.use(); return; }
+    if (it.k === 'bets') { G.money?.openBets(it.ring); return; }
     if (it.k === 'haunt') { G.haunt?.use(it); return; }
     if (it.k === 'club' && it.e === 'monitors') { openCctv(); return; }
     if (it.k === 'club') { G.club?.use(it); return; }
@@ -1516,6 +1520,7 @@ function setupNetHandlers(net) {
   net.on('welcome', (m) => {
     G.owner?.reset();
     G.myId = m.id; G.settings = { ...G.settings, ...(m.settings || {}) };
+    G.money?.welcome(m.money);
     state.welcome = m; state.media = m.media || {}; G.media?.applyAll(state.media);
     for (const old of G.players.values()) old.dispose(); G.players.clear(); clearNameTags();
     state.isOwner = !!m.owner;
@@ -1596,6 +1601,9 @@ function setupNetHandlers(net) {
   net.on('adm', onAdmin);
   net.on('chess', (m) => G.chess?.sync(m));
   net.on('pool', (m) => G.pool?.sync(m));
+  net.on('money', (m) => G.money?.changed(m));
+  net.on('bought', (m) => G.money?.bought(m));
+  net.on('fight', (m) => G.money?.fight(m));
   net.on('poolaim', (m) => G.pool?.aimFrom(m));
   net.on('close', () => {
     if (!G.inGame) return;
@@ -1885,6 +1893,7 @@ function setupUIEvents() {
     }
     if (state.mode === 'activities' && (e.key === 'Escape' || kc === 'KeyJ')) { e.preventDefault(); closeOverlayToGame(e.key === 'Escape'); return; }
     // panel de admin: F9 (configurable) lo abre y lo cierra; Esc también lo cierra
+    if (state.mode === 'bets' && (e.key === 'Escape' || kc === 'KeyX')) { e.preventDefault(); G.money?.close(); state.escT = performance.now(); return; }
     if (state.mode === 'admin' && (e.key === 'Escape' || kc === 'F9')) { e.preventDefault(); closeOverlayToGame(e.key === 'Escape'); return; }
     if (kc === 'F9' && !typing && state.mode === 'game') { e.preventDefault(); G.admin?.open(); G.input.unlock(); return; }
     if (state.mode === 'pool' && (e.key === 'Escape' || kc === 'KeyX')) { e.preventDefault(); state.escT = performance.now(); G.pool?.stopAim(); return; }
@@ -2521,6 +2530,9 @@ async function boot() {
       onSit: (seat) => { const L = state.local; if (!L) return; if (L.vehicle) state.vehicles?.exitCurrent(); L.sitAt(seat); setMode('chess'); G.input.unlock(); },
       onLeave: () => { if (state.local?.seat?.chess) state.local.standUp(); if (state.mode === 'chess') { setMode('game'); setTimeout(() => G.input.lock(), 0); } },
     }).build(G.world?.seats || (G.world.seats = []));
+    // la plata y las apuestas (game/money.js)
+    G.money = new Money({ getNet: () => state.net, notify: (h) => G.hud?.notify(h, 3000), setMode, closeToGame: () => closeOverlayToGame() });
+    $('bets')?.addEventListener('click', (e) => G.money.clickBets(e));
     // pool en el bar (game/pool.js)
     G.pool = new PoolGame({ scene: G.scene, getLocal: () => state.local, getNet: () => state.net, setMode, getMode: () => state.mode, teleport: teleportLocal, bigMessage }).build();
     G.items = new BunkerItems({
@@ -2624,7 +2636,7 @@ async function boot() {
         }
         G.poker?.update(G.camera, dt);
         updateNameTags(); updatePrompt(); updateHud(dt); updatePost();
-        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.club?.update(dt); G.villagers?.update(dt, G.camera); G.adminNpcs?.update(dt, G.camera); G.circuit?.update(dt, G.camera); G.race?.update(dt); G.cctv?.update(dt, G.camera); G.chess?.update(dt); G.pool?.update(dt); G.items?.update(dt); G.owner?.update(dt);
+        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.club?.update(dt); G.villagers?.update(dt, G.camera); G.adminNpcs?.update(dt, G.camera); G.circuit?.update(dt, G.camera); G.race?.update(dt); G.cctv?.update(dt, G.camera); G.chess?.update(dt); G.pool?.update(dt); G.money?.tick(dt); G.items?.update(dt); G.owner?.update(dt);
         { const hide = (G.world.storm?.indoor || 0) > 0.95; for (const m of G.grass.meshes) m.visible = !hide; }
         G.fx.update(dt, G.camera); G.gags?.update(dt); G.blood.update(dt); G.football?.update(dt); G.gore?.update(dt); state.graffiti?.flush();
         G.bag?.update(dt);

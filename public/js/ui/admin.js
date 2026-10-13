@@ -111,7 +111,8 @@ export class AdminPanel {
     const rows = Object.entries(TUNE).map(([k, opts]) => `<div class="adm-tune"><span>${TUNE_LABEL[k]}</span>${opts.map(([v, l]) =>
       `<button data-act="tune" data-id="${id}" data-k="${k}" data-v="${v}" class="${(t[k] ?? 1) === v ? 'sel' : ''}">${l}</button>`).join('')}</div>`).join('');
     const give = HAND.map(([k, l]) => `<button data-act="giveto" data-id="${id}" data-k="${k}">${esc(l)}</button>`).join('');
-    return `<div class="adm-more">${rows}<h3>Darle en la mano</h3><div class="adm-chips">${give}</div></div>`;
+    const cash = [100, 1000, 10000, -100].map((v) => `<button data-act="moneyto" data-id="${id}" data-v="${v}">${v > 0 ? '+' : '−'}$${Math.abs(v).toLocaleString('es-AR')}</button>`).join('');
+    return `<div class="adm-more">${rows}<h3>Plata</h3><div class="adm-chips">${cash}</div><h3>Darle en la mano</h3><div class="adm-chips">${give}</div></div>`;
   }
   _world() {
     const S = G.settings || {};
@@ -177,6 +178,7 @@ export class AdminPanel {
       case 'mute': this.send({ a: 'mute', to: id, on: b.dataset.on === '1' }); return;
       case 'more': this.more = this.more === id ? 0 : id; this.render(); return;
       case 'giveto': this.send({ a: 'give', to: id, k: b.dataset.k }); this.notify(`🎁 Le diste ${esc(b.textContent)}.`); return;
+      case 'moneyto': this.send({ a: 'money', to: id, v: Number(b.dataset.v) }); return;
       case 'tune': {
         const cur = { speed: 1, jump: 1, grav: 1, ...(G.adminFlags?.get(id)?.tune || {}) };
         cur[b.dataset.k] = Number(b.dataset.v);
