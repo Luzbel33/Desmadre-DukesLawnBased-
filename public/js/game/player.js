@@ -642,6 +642,8 @@ export class LocalPlayer {
   }
 
   // Curarse (choripán, botiquín, birra): opts.blood, opts.stopBleed
+  // física que toca el admin (ui/admin.js): la de todos (settings) por la tuya (tune); 1 = normal
+  tuned(k) { return (G.settings?.[k] ?? 1) * (this.tune?.[k] ?? 1); }
   heal(amount, opts = {}) {
     if (this.dead) return;
     this.hp = Math.min(100, this.hp + amount);
@@ -2181,7 +2183,8 @@ export class LocalPlayer {
     this.viewYaw = viewYaw;
     const st = this.state;
     const input = G.input;
-    const active = input.enabled && input.locked;
+    // congelado por un admin o espectando a otro: el cuerpo no responde
+    const active = input.enabled && input.locked && !this.frozen && !G.spectating;
     if (st !== 'driving') { this._gripPull(dt); this._gripTug(dt); }
     if (st === 'active' || st === 'stun' || st === 'getup') {
       const f = active ? (input.key('KeyW') ? 1 : 0) - (input.key('KeyS') ? 1 : 0) : 0;
@@ -2227,7 +2230,7 @@ export class LocalPlayer {
       // la cápsula se achica de verdad (pasás por abajo de las cosas); al pararte, solo si hay lugar arriba
       this._crouch(this.crouching || mo.slideT > 0 || mo.dive === 2 || mo.dive === 3);
       if (this.crouched && !mo.slideT && !mo.dive) this.crouching = true; // bajo un techo sigue agachado aunque sueltes C
-      const targetSpeed = (walk && !this.crouching ? 1.75 : run && !this.guard && !legGone && !this.crouching ? 6.8 : 3.9) * (this.crouching ? 0.5 : 1) * (1 + 0.35 * clamp(this.speedHigh || 0, 0, 1)) * (1 - clamp(this.drunk, 0, 1) * 0.2) * (1 - 0.45 * clamp(this.keta || 0, 0, 1)) * slow * load * limp;
+      const targetSpeed = this.tuned('speed') * (walk && !this.crouching ? 1.75 : run && !this.guard && !legGone && !this.crouching ? 6.8 : 3.9) * (this.crouching ? 0.5 : 1) * (1 + 0.35 * clamp(this.speedHigh || 0, 0, 1)) * (1 - clamp(this.drunk, 0, 1) * 0.2) * (1 - 0.45 * clamp(this.keta || 0, 0, 1)) * slow * load * limp;
       const blend = 1 - Math.exp(-(length ? 14 : 20) * dt);
       this.velocity.x += (dx * targetSpeed - this.velocity.x) * blend;
       this.velocity.y += (dz * targetSpeed - this.velocity.y) * blend;
@@ -2265,9 +2268,9 @@ export class LocalPlayer {
       this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
       if (active && this.coyote > 0 && this.jumpBuffer > 0 && st === 'active' && !mo.dive) {
         mo.slideT = 0;
-        this.vy = (this.jumpBoostT > 0 ? 9.4 : 5.6); this.grounded = false; this.coyote = 0; this.jumpBuffer = 0; // poción de salto: más alto
+        this.vy = (this.jumpBoostT > 0 ? 9.4 : 5.6) * Math.sqrt(this.tuned('jump')); this.grounded = false; this.coyote = 0; this.jumpBuffer = 0; // poción de salto: más alto
       }
-      this.vy = Math.max(-22, this.vy - 15.5 * dt);
+      this.vy = Math.max(-22, this.vy - 15.5 * this.tuned('grav') * dt);
       // peso: el cuerpo se inclina al acelerar/frenar y hacia adentro al girar
       const ax = (this.velocity.x - (this._pvx ?? this.velocity.x)) / dt, az = (this.velocity.y - (this._pvz ?? this.velocity.y)) / dt;
       this._pvx = this.velocity.x; this._pvz = this.velocity.y;
@@ -2309,8 +2312,10 @@ export class LocalPlayer {
         // corriendo se amortigua con las piernas y sigue (antes se doblaba entero y parecía un tropezón)
         if (!wasGrounded && this.fallPeak < -2.5) this.landV += Math.min(6.5, -this.fallPeak * 0.9) * (this.speed > 4.5 ? 0.45 : 1);
         // caída fuerte: aturde o desmaya
-        if (!wasGrounded && this.fallPeak < (this.jumpBoostT > 0 ? -15 : -11)) {
-          const sev = (-this.fallPeak - 11) / 5;
+        // con los saltos del admin la vara sube (caer de tu propio salto no lastima)
+        const fallK = Math.sqrt(Math.max(1, this.tuned('jump'))), fallMin = (this.jumpBoostT > 0 ? 15 : 11) * fallK;
+        if (!wasGrounded && this.fallPeak < -fallMin) {
+          const sev = (-this.fallPeak - fallMin) / 5;
           this.damage(sev * 25);
           if (!this.dead) this._vocal(sev > 0.6 ? 'scream' : 'hurt');
           if (sev > 0.6) this.knockout(2 + sev * 2); else this.stun(0.6);

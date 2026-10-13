@@ -38,7 +38,7 @@ export class Room {
     this.chatSequence = 0;
     this.chatEpoch = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     this.firePatches = []; // temporary; never persisted with the world
-    this.settings = { desmadre: false, tod: 0, godAll: false }; // tod: hora del día (0 día, 0.5 atardecer, 1 noche)
+    this.settings = { desmadre: false, tod: 0, godAll: false, speed: 1, jump: 1, grav: 1 }; // tod: hora del día (0 día, 0.5 atardecer, 1 noche); speed/jump/grav: física de todos (panel de admin)
     this.adminNpcs = []; // NPC que agregó un admin: { id, model, name, p, yaw, mode }
     this.hiddenNpcs = []; // nombres de NPC del mapa que un admin sacó
     this.npcSeq = 1;
@@ -256,6 +256,7 @@ export class Room {
       poker: this.poker.publicState(),
       fb: this.football.state(),
     });
+    if ([...this.players.values()].some((o) => o.muted || o.frozen || o.tune)) this._adminRoles();
     // pasto (binario)
     this.send(p, this._grassPacket());
     // graffiti (binario, solo superficies pintadas)
@@ -460,6 +461,7 @@ export class Room {
 
   onChat(p, msg) {
     const now = Date.now();
+    if (p.muted) { if (now - (p.lastMuteNote || 0) > 3000) { p.lastMuteNote = now; this.send(p, { t: 'sys', m: '🔇 Un admin te muteó: no podés hablar ni escribir.' }); } return; }
     if (now - p.lastChat < 350) return;
     p.lastChat = now;
     const m = clampStr(msg.m, 240);
@@ -744,7 +746,7 @@ export class Room {
   // durante la partida. Un admin no puede echar ni tocar al dueño ni a otros admins, ni nombrar admins.
   _adminRoles() {
     const roles = [];
-    for (const o of this.players.values()) if (o.ready) roles.push([o.id, o.owner ? 2 : o.admin ? 1 : 0]);
+    for (const o of this.players.values()) if (o.ready) roles.push([o.id, o.owner ? 2 : o.admin ? 1 : 0, o.muted ? 1 : 0, o.frozen ? 1 : 0, o.tune || null]);
     this.broadcast({ t: 'adm', a: 'roles', roles });
   }
   _npcSync() { this.broadcast({ t: 'adm', a: 'npcs', list: this.adminNpcs, hidden: this.hiddenNpcs }); }
@@ -788,6 +790,35 @@ export class Room {
         setTimeout(() => target.ws.close(1000), 200);
         break;
       }
+      case 'freeze': { // dejarlo quieto (no se mueve, no pega, no salta)
+        if (!canTouch(target) || target === p) return;
+        target.frozen = !!msg.on;
+        this.send(target, { t: 'adm', a: 'freeze', on: target.frozen, by: p.name });
+        this._adminRoles();
+        break;
+      }
+      case 'mute': { // muteo global: ni voz ni chat (todos dejan de escucharlo)
+        if (!canTouch(target) || target === p) return;
+        target.muted = !!msg.on;
+        this._adminRoles();
+        this.sys((target.muted ? '🔇 ' + p.name + ' muteó a ' : '🔊 ' + p.name + ' desmuteó a ') + target.name + '.', '#ffd98a');
+        break;
+      }
+      case 'give': { // algo a la mano de otro (o plata)
+        const k = typeof msg.k === 'string' && /^[a-z_0-9]{1,24}$/.test(msg.k) ? msg.k : null;
+        if (!k || !canTouch(target)) return;
+        this.send(target, { t: 'adm', a: 'give', k, by: p.name });
+        break;
+      }
+      case 'tune': { // la física de un jugador: velocidad, salto y gravedad (1 = normal)
+        if (!canTouch(target)) return;
+        const n = (v, lo, hi) => (Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v * 100) / 100)) : 1);
+        const t = { speed: n(msg.speed, 0.25, 3), jump: n(msg.jump, 0.5, 3), grav: n(msg.grav, 0.15, 2.5) };
+        target.tune = t.speed === 1 && t.jump === 1 && t.grav === 1 ? null : t;
+        this.send(target, { t: 'adm', a: 'tune', ...t, by: p.name });
+        this._adminRoles();
+        break;
+      }
       case 'admin': { // solo el dueño nombra o saca admins
         if (lvl < 2 || !target || target.owner) return;
         target.admin = !!msg.on;
@@ -800,12 +831,18 @@ export class Room {
         if (msg.k === 'tod') S.tod = [0, 0.5, 1].includes(msg.v) ? msg.v : 0;
         else if (msg.k === 'godAll') S.godAll = !!msg.v;
         else if (msg.k === 'desmadre') S.desmadre = !!msg.v;
+        else if (msg.k === 'speed') S.speed = [0.5, 1, 1.6, 2.5].includes(msg.v) ? msg.v : 1;
+        else if (msg.k === 'jump') S.jump = [1, 1.6, 2.5].includes(msg.v) ? msg.v : 1;
+        else if (msg.k === 'grav') S.grav = [0.25, 0.5, 1, 1.8].includes(msg.v) ? msg.v : 1;
         else return;
         this.broadcast({ t: 'set', settings: S });
         const said = {
           tod: ['☀️ Es de día.', '🌇 Cae el atardecer.', '🌙 Se hizo de noche.'][[0, 0.5, 1].indexOf(S.tod)],
           godAll: S.godAll ? '😇 Nadie se puede morir (por ahora).' : '💀 Se terminó la inmortalidad.',
           desmadre: S.desmadre ? '☠ MODO DESMADRE: PvP y gore en todo el mapa.' : '☮ Modo desmadre apagado.',
+          speed: S.speed === 1 ? '🚶 Todos caminan normal otra vez.' : S.speed < 1 ? '🐢 Todo el mundo va en cámara lenta.' : '🐇 ¡Todos más rápidos! (x' + S.speed + ')',
+          jump: S.jump === 1 ? '🦘 Saltos normales.' : '🦘 ¡Saltos de canguro para todos! (x' + S.jump + ')',
+          grav: S.grav === 1 ? '🌍 Gravedad normal.' : S.grav < 1 ? '🌙 Gravedad de luna (x' + S.grav + ').' : '🪨 Gravedad aplastante (x' + S.grav + ').',
         };
         this.sys(said[msg.k] + ' (' + p.name + ')', '#ffd98a');
         break;

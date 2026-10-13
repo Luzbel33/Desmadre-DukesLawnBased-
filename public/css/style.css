@@ -511,6 +511,9 @@ button.big:hover { filter: brightness(1.06); }
 .adm-tag { font-size: 11px; padding: 1px 6px; border-radius: 6px; background: rgba(107, 156, 255, 0.25); color: #cfe0ff; margin-left: 6px; }
 .adm-tag.own { background: rgba(255, 204, 51, 0.25); color: var(--accent); }
 .adm-login { display: flex; gap: 8px; }
+.adm-more { padding: 8px 10px 10px; margin: 0 0 4px; border-radius: 10px; background: rgba(255, 255, 255, 0.03); border: 1px dashed var(--line); }
+.adm-tune { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.adm-tune span { width: 78px; color: var(--dim); font-size: 12px; }
 .adm-login input { flex: 1; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line-strong); background: rgba(0, 0, 0, 0.35); color: #fff; font: 15px var(--ui); }
 
 /* cronómetro del circuito (game/race.js): chiquito, arriba al centro, solo manejando en la pista */

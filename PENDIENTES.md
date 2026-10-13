@@ -28,8 +28,9 @@ Fuente única de trabajo pendiente.
       búnker): probar en multiplayer real y ajustar. Los sonidos son sintetizados: si Luz quiere, buscar grabaciones CC0.
 
 ### Admin
-- [ ] Espectar jugadores, congelarlos, mutearlos globalmente, darles objetos/plata, cambiar parámetros globales o de
-      un jugador (velocidad, tamaño, gravedad...), todo lo que haga falta.
+- [ ] Hecho 13/10: espectar, congelar, muteo global (voz y chat), darle cosas/plata a otro, velocidad/salto/gravedad de
+      uno o de todos. Falta: **tamaño** del jugador (escalar cuerpo + cápsula + ragdoll juntos; va con la mosca) y
+      probarlo con gente real.
 
 ### Personajes / juego
 - [ ] Playermodel mosca diminuta (para el dueño): vuela, zumba, se la puede aplastar, voz súper aguda por el mic; no

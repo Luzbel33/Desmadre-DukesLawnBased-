@@ -194,3 +194,39 @@ test('admin: la clave hace dueño con cualquier nombre; el dueño nombra admins 
   say(own, { t: 'adm', a: 'kick', to: 3 });
   assert.ok(b.sent.some((m) => m.t === 'err'), 'al echado le llega el aviso');
 });
+
+test('admin: congelar, mutear (voz y chat), dar cosas y la física de uno o de todos', () => {
+  const room = new Room('test-admin2', fs.mkdtempSync(path.join(os.tmpdir(), 'desmadre-')));
+  const own = fakeWs(); room.accept(own); join(own, 'Luz', {});
+  const a = fakeWs(); room.accept(a); join(a, 'Ana', {});
+  // un jugador común no congela a nadie
+  say(a, { t: 'adm', a: 'freeze', to: 1, on: true });
+  assert.ok(!own.sent.some((m) => m.t === 'adm' && m.a === 'freeze'));
+  say(own, { t: 'adm', a: 'login', key: TEST_OWNER_KEY });
+  a.sent.length = 0;
+  say(own, { t: 'adm', a: 'freeze', to: 2, on: true });
+  assert.ok(a.sent.some((m) => m.t === 'adm' && m.a === 'freeze' && m.on), 'le llega que está congelado');
+  say(own, { t: 'adm', a: 'mute', to: 2, on: true });
+  const roles = a.sent.filter((m) => m.t === 'adm' && m.a === 'roles').pop();
+  assert.deepEqual(roles.roles.find(([id]) => id === 2).slice(2, 4), [1, 1], 'todos saben que está muteado y congelado');
+  // muteado: el chat no sale
+  own.sent.length = 0;
+  room.players.get(2).lastChat = 0;
+  say(a, { t: 'chat', m: 'hola' });
+  assert.ok(!own.sent.some((m) => m.t === 'chat'), 'el muteado no escribe');
+  // dar: solo nombres de cosas; la física queda acotada
+  say(own, { t: 'adm', a: 'give', to: 2, k: '<script>' });
+  say(own, { t: 'adm', a: 'give', to: 2, k: 'cash' });
+  assert.deepEqual(a.sent.filter((m) => m.a === 'give').map((m) => m.k), ['cash']);
+  say(own, { t: 'adm', a: 'tune', to: 2, speed: 99, jump: 2, grav: -5 });
+  assert.deepEqual(room.players.get(2).tune, { speed: 3, jump: 2, grav: 0.15 });
+  say(own, { t: 'adm', a: 'tune', to: 2, speed: 1, jump: 1, grav: 1 });
+  assert.equal(room.players.get(2).tune, null, 'todo en 1 = normal');
+  say(own, { t: 'adm', a: 'set', k: 'grav', v: 0.25 });
+  say(own, { t: 'adm', a: 'set', k: 'speed', v: 7 });
+  assert.equal(room.settings.grav, 0.25);
+  assert.equal(room.settings.speed, 1, 'valores fuera de la lista vuelven a normal');
+  // el que entra después se entera de quién está muteado
+  const late = fakeWs(); room.accept(late); join(late, 'Tardío', {});
+  assert.ok(late.sent.some((m) => m.a === 'roles' && m.roles.some(([id, , mu]) => id === 2 && mu === 1)));
+});

@@ -1243,7 +1243,9 @@ function onAdmin(m) {
   switch (m.a) {
     case 'roles': {
       const before = state.adminLvl || 0;
-      for (const [id, lvl] of m.roles || []) { G.roles?.set(id, lvl); const rp = G.players.get(id); if (rp) rp.owner = lvl === 2; }
+      G.adminFlags = new Map();
+      for (const [id, lvl, mu, fr, tune] of m.roles || []) { G.roles?.set(id, lvl); G.adminFlags.set(id, { muted: !!mu, frozen: !!fr, tune: tune || null }); const rp = G.players.get(id); if (rp) rp.owner = lvl === 2; }
+      applyAdminMutes();
       state.adminLvl = G.roles?.get(G.myId) || 0;
       state.isOwner = state.adminLvl === 2;
       if (state.adminLvl > before) { G.sfx?.trigger('ui-ok', null, 0.7); G.hud?.notify(state.adminLvl === 2 ? '👑 Sos el dueño de la sala. <b>F9</b> abre el panel.' : '🛡️ Ahora sos admin. <b>F9</b> abre el panel.', 5000); }
@@ -1262,7 +1264,71 @@ function onAdmin(m) {
       if (G.owner?.patches) { for (const sl of G.owner.patches.slots) sl.life = 0; G.owner.patches.update(0); }
       break;
     case 'npcs': G.adminNpcs?.sync(m); if (state.mode === 'admin') G.admin?.render(); break;
+    case 'freeze':
+      if (!L) break;
+      L.frozen = !!m.on;
+      frozenFx(L.frozen);
+      G.sfx?.trigger(m.on ? 'ui-err' : 'ui-ok', null, 0.7);
+      G.hud?.notify(m.on ? `🧊 ${escapeHtml(m.by)} te congeló. Quieto ahí.` : `🔥 ${escapeHtml(m.by)} te descongeló.`, 3000);
+      break;
+    case 'give':
+      if (!L || L.dead) break;
+      L.giveItem(m.k); updateHotbar(); G.sfx?.trigger('pickup');
+      G.hud?.notify(`🎁 ${escapeHtml(m.by)} te dio ${m.k === 'cash' ? 'un fajo de dólares' : 'algo'}.`, 2500);
+      break;
+    case 'tune': {
+      if (!L) break;
+      const t = { speed: +m.speed || 1, jump: +m.jump || 1, grav: +m.grav || 1 };
+      L.tune = t.speed === 1 && t.jump === 1 && t.grav === 1 ? null : t;
+      const said = [t.speed !== 1 && (t.speed < 1 ? '🐢 más lento' : `🐇 x${t.speed} de velocidad`), t.jump !== 1 && `🦘 saltos x${t.jump}`, t.grav !== 1 && (t.grav < 1 ? '🌙 gravedad de luna' : '🪨 más pesado')].filter(Boolean);
+      G.hud?.notify(said.length ? `⚙️ ${escapeHtml(m.by)} te cambió: ${said.join(', ')}.` : `⚙️ ${escapeHtml(m.by)} te dejó normal.`, 3000);
+      break;
+    }
   }
+}
+// muteo global (panel de admin): no salís por la voz ni por el chat, y nadie oye a los muteados
+function applyAdminMutes() {
+  const V = G.voice; if (!V) return;
+  V.adminMuted = new Set([...(G.adminFlags || new Map())].filter(([, f]) => f.muted).map(([id]) => id));
+  const me = V.adminMuted.has(G.myId);
+  if (me !== !!V.blocked) {
+    V.blocked = me; V._applyTrackEnabled?.(); V.onState?.();
+    G.hud?.notify(me ? '🔇 Un admin te muteó: ni voz ni chat.' : '🔊 Ya podés hablar de nuevo.', 3500);
+  }
+}
+// congelado: un velo celeste con escarcha en los bordes
+function frozenFx(on) {
+  let el = document.getElementById('frozen-fx');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'frozen-fx';
+    el.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:5;opacity:0;transition:opacity .5s;box-shadow:inset 0 0 140px 30px rgba(170,220,255,.75);background:radial-gradient(ellipse at center,rgba(0,0,0,0) 55%,rgba(200,235,255,.28) 100%)';
+    document.body.appendChild(el);
+  }
+  el.style.opacity = on ? '1' : '0';
+}
+// espectar (panel de admin): la cámara sigue a otro jugador; click izquierdo/derecho cambia de jugador, F9 vuelve
+function startSpectate(id) {
+  if (!G.players.get(id)) return;
+  state.spectate = id; G.spectating = true;
+  let el = document.getElementById('spec-tag');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'spec-tag';
+    el.style.cssText = 'position:fixed;left:16px;top:14px;z-index:6;pointer-events:none;font:600 13px system-ui,sans-serif;color:#fff;background:rgba(10,10,14,.55);padding:6px 10px;border-radius:8px;letter-spacing:.02em';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `👁️ Espectando a <b>${escapeHtml(G.players.get(id).name)}</b> <span style="opacity:.6;font-weight:400">· click cambia · F9 vuelve</span>`;
+  el.style.display = '';
+}
+function stopSpectate() {
+  if (!state.spectate) return;
+  state.spectate = 0; G.spectating = false;
+  const el = document.getElementById('spec-tag'); if (el) el.style.display = 'none';
+}
+function cycleSpectate(dir) {
+  const ids = [...G.players.keys()];
+  if (!ids.length) { stopSpectate(); return; }
+  const i = ids.indexOf(state.spectate);
+  startSpectate(ids[(i + dir + ids.length) % ids.length]);
 }
 
 function handleEvent(m) {
@@ -1974,7 +2040,8 @@ function updateInput(dt) {
   const cashSide = L.hands.r.item === 'cash' ? 'r' : L.hands.l.item === 'cash' ? 'l' : null;
   const cashStream = (side) => cashSide && !driving && !down && (side === cashSide || (!L.hands[side].item && !L.hands[side].prop && !L.hands[side].joint));
   for (const [btn, side] of [[0, 'r'], [2, 'l']]) {
-    if (down || L.combatBlocked) { L.armControl(side, false); state.press[side] = -1e9; continue; }
+    if (state.spectate && inp.btnHit(btn)) { cycleSpectate(btn === 0 ? 1 : -1); continue; }
+    if (down || L.combatBlocked || L.frozen || state.spectate) { L.armControl(side, false); state.press[side] = -1e9; continue; }
     if (inp.btnHit(btn)) state.press[side] = now;
     if (cashStream(side) && inp.btn(btn) && now - state.press[side] > 170) {
       state.cashT = (state.cashT ?? 0) - dt;
@@ -2075,6 +2142,18 @@ function updateCamera(dt) {
   const pitch = state.viewPitch;
   const cp = Math.cos(pitch);
   const fwd = tmpV.set(Math.sin(state.viewYaw) * cp, Math.sin(pitch), Math.cos(state.viewYaw) * cp).normalize();
+  if (state.spectate) {
+    const rp = G.players.get(state.spectate);
+    if (!rp?.pos) stopSpectate();
+    else {
+      // tercera persona detrás del otro; el mouse gira la cámara alrededor
+      L.char.setVisibleHead(true);
+      const pivot = rp.pos.clone(); pivot.y += 1.5;
+      cameraBoom.update(G.camera, pivot, pivot.clone().addScaledVector(fwd, -4.4), G.phys, dt, 10);
+      G.camera.lookAt(pivot);
+      return;
+    }
+  }
   const down = L.state === 'ko' || L.state === 'dead';
   const mode = down ? 0 : state.cameraMode;
   state.shake = Math.max(0, (state.shake || 0) - dt * 2.5);
@@ -2443,6 +2522,7 @@ async function boot() {
       giveItem: (item) => { const L = state.local; if (!L) return; L.giveItem(item); updateHotbar(); G.sfx?.trigger('pickup'); },
       spawnProp: (type, pos) => { state.props?.spawnThrow(type, pos, { x: 0, y: 0, z: 0 }, null, true); G.fx?.puff(pos, new THREE.Vector3(0, 1, 0), 0.8, 0xd8d0c0); },
       setMode, closeToGame: () => closeOverlayToGame(), roleOf: (id) => G.roles?.get(id) || 0, npcs: G.adminNpcs,
+      spectate: startSpectate, unspectate: stopSpectate,
     });
     // la gente del mapa (vendedores, parroquianos, guardias...): ver game/villagers.js
     try {

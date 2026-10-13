@@ -31,7 +31,8 @@ export class VoiceChat {
   }
 
   get transmitting() {
-    return this.enabled && (this.opts.voiceMode === 'open' || this.ptt);
+    // blocked: un admin te muteó (no sale nada aunque tengas el micrófono abierto)
+    return this.enabled && !this.blocked && (this.opts.voiceMode === 'open' || this.ptt);
   }
 
   _ensureBus() {
@@ -312,7 +313,7 @@ export class VoiceChat {
         // paredes: si uno está adentro y el otro afuera (o en otro edificio), se escucha amortiguado
         const theirZone = zoneAt(rp.pos.x, rp.pos.z);
         const wall = spatial && myZone !== theirZone && (INTERIOR.has(myZone) || INTERIOR.has(theirZone));
-        n.gain.gain.value = peer.muted ? 0 : wall ? 0.3 : 1;
+        n.gain.gain.value = peer.muted || this.adminMuted?.has(peer.id) ? 0 : wall ? 0.3 : 1;
       }
     }
     if (this.myAnalyser && this.transmitting) {
