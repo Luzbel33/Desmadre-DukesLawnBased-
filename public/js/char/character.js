@@ -687,7 +687,25 @@ export class Character {
       J.hipL[2] = 0.08; J.hipR[2] = -0.08;
       hipsY = -0.45;
       J.spine[0] = st.drive ? 0.12 : st.table ? 0.17 : -0.08;
-      if (st.drive) {
+      if (st.drive && st.vtype === 'moto') {
+        // a caballo de la moto: piernas abiertas con los pies en las estriberas, inclinado al manubrio
+        J.hipL[0] = J.hipR[0] = -1.0; J.kneeL[0] = J.kneeR[0] = 1.9;
+        J.hipL[2] = 0.32; J.hipR[2] = -0.32;
+        J.spine[0] = 0.42;
+        J.shoulderL[0] = J.shoulderR[0] = -1.15; J.elbowL[0] = J.elbowR[0] = -0.5;
+        J.shoulderL[2] = -0.42; J.shoulderR[2] = 0.42;
+        const steer = st.steer || 0;
+        J.shoulderL[0] += steer * 0.2; J.shoulderR[0] -= steer * 0.2;
+      } else if (st.drive && st.vtype === 'racecar') {
+        // acostado en la cabina: piernas estiradas para adelante, manos al volante chiquito
+        J.hipL[0] = J.hipR[0] = -1.42; J.kneeL[0] = J.kneeR[0] = 0.25;
+        J.hipL[2] = 0.05; J.hipR[2] = -0.05;
+        J.spine[0] = -0.28;
+        J.shoulderL[0] = J.shoulderR[0] = -1.05; J.elbowL[0] = J.elbowR[0] = -0.95;
+        J.shoulderL[2] = -0.18; J.shoulderR[2] = 0.18;
+        const steer = st.steer || 0;
+        J.shoulderL[0] += steer * 0.25; J.shoulderR[0] -= steer * 0.25;
+      } else if (st.drive) {
         J.shoulderL[0] = J.shoulderR[0] = -1.0;
         J.elbowL[0] = J.elbowR[0] = -0.6;
         J.shoulderL[2] = -0.25; J.shoulderR[2] = 0.25;

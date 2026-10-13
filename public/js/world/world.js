@@ -8,7 +8,7 @@ import { ATMOSPHERES, configureSky } from '../core/atmosphere.js';
 import { Builder, pbrMaps } from './builder.js';
 import { TEX } from './textures.js';
 import { Forest } from './trees.js';
-import { FURNITURE, MAP_BOUNDS, LAWN, INTERACT, NO_GRASS, MEDKITS, STORM, inClub } from '../shared/mapdata.js';
+import { FURNITURE, MAP_BOUNDS, LAWN, INTERACT, NO_GRASS, MEDKITS, STORM, inClub, circuitDist, circuitSamples, CIRCUIT } from '../shared/mapdata.js';
 import { Club } from './club.js';
 import { buildFurniture, WATER_T } from './furniture.js';
 import { makeFarSun } from './shadows.js';
@@ -357,6 +357,9 @@ export class World {
     const ok = (x, z, pad) => {
       if (x > LAWN.x0 - 4 && x < LAWN.x1 + 4 && z > LAWN.z0 - 4 && z < LAWN.z1 + 4) return false;
       for (const h of HARD) if (x > h[0] - pad && x < h[2] + pad && z > h[1] - pad && z < h[3] + pad) return false;
+      // el circuito: ni en la pista ni pegado (deja lugar a las gomas y a la tribuna)
+      if (x < -26 && z > 4 && circuitDist(x, z) < CIRCUIT.width / 2 + 4 + pad) return false;
+      if (x > -126 && x < -62 && z > 126) return false; // la calle de boxes y la tribuna
       return true;
     };
     let tries = 0;
@@ -368,7 +371,8 @@ export class World {
       pts.push({ x, z, s: 0.8 + r() * 0.45, rot: r() * Math.PI * 2, v: Math.floor(r() * 4) });
     }
     // árboles cerca del Gran Pasto (como en la foto de referencia)
-    for (const [x, z] of [[-76, -30], [-77, 25], [77, 30], [76, -35], [-60, 66], [60, 66], [-30, 68], [30, 68]]) {
+    for (const [x, z] of [[-76, -30], [-77, 25], [77, 30], [76, -35], [-66, 63], [60, 66], [-24, 69], [30, 68]]) {
+      if (x < -26 && z > 4 && circuitDist(x, z) < CIRCUIT.width / 2 + 4) continue;
       pts.push({ x, z, s: 1.15, rot: r() * 6, v: Math.floor(r() * 4) });
     }
     this.treePts = pts;
@@ -391,6 +395,12 @@ export class World {
     x.fillStyle = '#000';
     const rect = (x0, z0, x1, z1) => x.fillRect((x0 - MAP_BOUNDS.x0) * 2, (z0 - MAP_BOUNDS.z0) * 2, (x1 - x0) * 2, (z1 - z0) * 2);
     for (const h of HARD) rect(...h);
+    // el circuito: la pista con su banquina (trazo a lo largo de la línea del medio) y la tribuna
+    x.strokeStyle = '#000'; x.lineJoin = 'round'; x.lineWidth = (CIRCUIT.width + 3.2) * 2;
+    x.beginPath();
+    circuitSamples().forEach(([px, pz], i) => { const u = (px - MAP_BOUNDS.x0) * 2, v = (pz - MAP_BOUNDS.z0) * 2; if (i) x.lineTo(u, v); else x.moveTo(u, v); });
+    x.closePath(); x.stroke();
+    rect(-125, 127.4, -63, 135); // la calle de boxes y la tribuna
     // cerca de los setos y árboles, pasto más bajo
     x.filter = 'blur(2px)';
     x.drawImage(c, 0, 0);

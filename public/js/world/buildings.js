@@ -273,9 +273,8 @@ export function buildAutocine(b, scene) {
   scene.add(s);
 }
 
-export function buildStuntPark(b) {
-  b.box('dirt', -108, 0.008, 38, 40, 0.05, 48, { collide: false, noShadow: true });
-}
+// la vieja pista de saltos ahora es el Circuito del Desmadre (world/circuit.js): su explanada de tierra ya no va
+export function buildStuntPark() {}
 
 export function buildPerimeter(b) {
   const B = 135, H = 2.2;

@@ -17,7 +17,7 @@ import { installFarShadowChunk } from './world/shadows.js';
 import { Post } from './fx/post.js';
 import { FX, Decals } from './fx/particles.js';
 import { LocalPlayer, RemotePlayer, predictHit, CASH_BUNDLES, CASH_PER_BUNDLE } from './game/player.js';
-import { VehicleManager } from './game/entities.js';
+import { VehicleManager, VTYPE } from './game/entities.js';
 import { PropManager, defOf } from './game/props.js';
 import { releaseEquipped } from './game/held-release.js';
 import { consumable } from './shared/consumables.js';
@@ -72,6 +72,8 @@ import { ZONES, zoneAt, isPvpAt, INTERACT, SCREENS, SCREEN_BY_ID, FIELD, STORM, 
 import { relic, PROPHECIES } from './shared/relics.js';
 import { AdminPanel } from './ui/admin.js';
 import { AdminNpcs } from './game/admin-npcs.js';
+import { Circuit } from './world/circuit.js';
+import { RaceGame } from './game/race.js';
 
 const $ = (id) => document.getElementById(id);
 const loadingText = $('loading-text');
@@ -568,7 +570,8 @@ function updatePrompt() {
   if (L.vehicle) {
     state.promptAction = { kind: 'exitVehicle', item: L.vehicle, dist: 0 };
     H.hint('veh-exit', keys.label('use'), 'Bajarse');
-    if (L.vehicle.type !== 'cart') H.hint('veh-blades', keys.label('jump'), L.vehicle.blades ? 'Apagar cuchillas' : 'Prender cuchillas: cortá y cobrá');
+    if (VTYPE[L.vehicle.type]?.blades) H.hint('veh-blades', keys.label('jump'), L.vehicle.blades ? 'Apagar cuchillas' : 'Prender cuchillas: cortá y cobrá');
+    else if (L.vehicle.type !== 'cart') H.hint('veh-hand', keys.label('jump'), 'Freno de mano (derrapar)');
     H.hint('veh-horn', keys.label('horn'), 'Bocina');
     itemHint();
     H.crosshair(false);
@@ -597,7 +600,7 @@ function updatePrompt() {
   if (x) {
     state.promptAction = x;
     canUse = true;
-    if (x.kind === 'vehicle') H.hint('use-veh', keys.label('use'), `Subir a ${x.item.type === 'tractor' ? 'el tractor' : x.item.type === 'cart' ? 'el carrito' : 'la cortadora'}`);
+    if (x.kind === 'vehicle') H.hint('use-veh', keys.label('use'), `Subir a ${({ tractor: 'el tractor', cart: 'el carrito', racecar: 'el auto de carrera', moto: x.item.seats?.[0] ? 'la moto (atrás)' : 'la moto' })[x.item.type] || 'la cortadora'}`);
     else if (x.kind === 'seat') H.hint('use-seat', keys.label('use'), x.item.poker ? 'Sentarse a jugar al póker' : 'Sentarse');
     else H.hint('use-' + x.item.k, keys.label('use'), x.item.label);
   }
@@ -664,6 +667,7 @@ function interact() {
       return;
     }
     if (it.k === 'football') { state.net.send({ t: 'fbctl', a: 'start' }); G.sfx?.trigger('ui-ok'); return; }
+    if (it.k === 'race') { G.race?.start(); return; }
     if (it.k === 'haunt') { G.haunt?.use(it); return; }
     if (it.k === 'club' && it.e === 'monitors') { openCctv(); return; }
     if (it.k === 'club') { G.club?.use(it); return; }
@@ -1128,8 +1132,9 @@ function doTap(side) {
 function applyGod() {
   const L = state.local;
   if (!L) return;
-  if (G.settings?.godAll || state.adminGod) { L.immortal = true; L.bleedRate = 0; state.godApplied = true; }
-  else if (state.godApplied) { L.immortal = false; state.godApplied = false; }
+  // godOther: la inmortalidad no es la del Diablo (owner.js no la apaga)
+  if (G.settings?.godAll || state.adminGod) { L.immortal = true; L.godOther = true; L.bleedRate = 0; state.godApplied = true; }
+  else if (state.godApplied) { L.immortal = false; L.godOther = false; state.godApplied = false; }
 }
 function onAdmin(m) {
   const L = state.local;
@@ -1235,6 +1240,9 @@ function handleEvent(m) {
       }
       break;
     }
+    case 'race': case 'lap': case 'raceFin': case 'mine': // el circuito: largada, vueltas, llegadas y minas (game/race.js)
+      G.race?.remote(m);
+      break;
     case 'relic': // otro usó una reliquia del laberinto: se oye (y el silbato asusta)
       if (rp && relic(m.r)) relicFx(m.r, rp, false);
       break;
@@ -1395,10 +1403,12 @@ function onCrash(v, speed, other) {
   state.shake = Math.min(1, (state.shake || 0) + speed / 10);
   state.net?.send({ t: 'ev', k: 'crash', x: +v.pos.x.toFixed(2), z: +v.pos.z.toFixed(2), s: +speed.toFixed(1) });
   if (!L || L.vehicle !== v) return;
-  if (speed > 7.5) {
+  // a partir de qué velocidad salís despedido (en la moto enseguida; en el auto de carrera hace falta un palo fuerte)
+  const lim = VTYPE[v.type]?.crash ?? 7.5;
+  if (speed > lim) {
     // salir despedido
     const dir = new THREE.Vector3(Math.sin(v.yaw), 0.4, Math.cos(v.yaw)).multiplyScalar(speed * 0.9);
-    L.damage((speed - 7) * 6);
+    L.damage((speed - lim + 0.5) * (v.type === 'racecar' ? 3.5 : 6));
     L.eject(dir);
     state.vehicles.exitCurrent();
     bigMessage('¡PALO!', 'Saliste volando del vehículo', 1800);
@@ -2230,6 +2240,15 @@ async function boot() {
     // con un preset liviano el mundo se arma liviano (menos lluvia, sin la luz de sombra cúbica): subir de preset
     // después mejora todo menos eso, que vuelve al recargar
     G.world = new World(G.scene, G.phys); await G.world.build(renderer, GRAPHICS[G.opts.graphics].vol ? 'media' : 'baja');
+    // el Circuito del Desmadre (world/circuit.js) y lo que pasa en él: vueltas, largada y trampas (game/race.js)
+    try {
+      G.circuit = new Circuit(G.world).build();
+      G.race = new RaceGame({
+        circuit: G.circuit, getLocal: () => state.local, getNet: () => state.net,
+        notify: (h) => G.hud?.notify(h, 3500), big: (t, s, ms) => bigMessage(t, s, ms),
+        shake: (k) => { state.shake = Math.max(state.shake || 0, k); }, chat: (t) => addChat(t),
+      });
+    } catch (e) { console.warn('circuito', e); }
     await yieldToBrowser();
     G.grass = new Grass(G.scene); G.grass.setMask(G.world.mask); G.grass.makeLawnGround(); G.grass.build(G.opts.grass);
     await yieldToBrowser();
@@ -2397,7 +2416,7 @@ async function boot() {
         }
         G.poker?.update(G.camera, dt);
         updateNameTags(); updatePrompt(); updateHud(dt); updatePost();
-        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.club?.update(dt); G.villagers?.update(dt, G.camera); G.adminNpcs?.update(dt, G.camera); G.cctv?.update(dt, G.camera); G.items?.update(dt); G.owner?.update(dt);
+        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.club?.update(dt); G.villagers?.update(dt, G.camera); G.adminNpcs?.update(dt, G.camera); G.circuit?.update(dt, G.camera); G.race?.update(dt); G.cctv?.update(dt, G.camera); G.items?.update(dt); G.owner?.update(dt);
         { const hide = (G.world.storm?.indoor || 0) > 0.95; for (const m of G.grass.meshes) m.visible = !hide; }
         G.fx.update(dt, G.camera); G.blood.update(dt); G.football?.update(dt); G.gore?.update(dt); state.graffiti?.flush();
         G.bag?.update(dt);

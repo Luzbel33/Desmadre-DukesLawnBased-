@@ -2,11 +2,11 @@
 // colisionador lleva su material), y si es el suelo, según la zona (pasto, barro de la huerta y el cementerio,
 // tierra de la explanada, empedrado del castillo, el piso de madera del bar...). Devuelve el sonido y su tono.
 import { G } from '../core/G.js';
-import { zoneAt } from '../shared/mapdata.js';
+import { zoneAt, circuitDist, CIRCUIT } from '../shared/mapdata.js';
 import { GR, groups } from '../core/physics.js';
 
 const GROUND = {
-  bar: 'wood', cine: 'carpet', pasto: 'grass', saltos: 'grass', autocine: 'grass', cancha: 'grass',
+  bar: 'wood', cine: 'carpet', pasto: 'grass', circuito: 'grass', circuito_sur: 'grass', autocine: 'grass', cancha: 'grass',
   huerta: 'mud', cementerio: 'mud', fogon: 'stone', castillo: 'stone', torreon: 'stone', callejon: 'stone',
   estacionamiento: 'stone', galpon: 'stone', bunker: 'stone',
 };
@@ -26,6 +26,8 @@ export function surfaceAt(x, y, z) {
       if (h?.info) return h.info.mat || (h.info.kind === 'prop' ? 'wood' : 'stone');
     } catch { /* física no lista */ }
   }
+  // el asfalto del circuito suena duro (el pasto de adentro, a pasto)
+  if (x < -26 && z > 6 && circuitDist(x, z) < CIRCUIT.width / 2 + 0.3) return 'stone';
   const zone = zoneAt(x, z);
   if (zone) return GROUND[zone] || 'grass';
   // la explanada del castillo es tierra; el resto de afuera, pasto

@@ -25,7 +25,8 @@ export const ZONES = {
   callejon: { x0: 95, z0: -20, x1: 123, z1: -12, name: 'Callejón del Aerosol' },
   estacionamiento: { x0: 95, z0: 18, x1: 123, z1: 44, name: 'Estacionamiento' },
   galpon: { x0: -102, z0: -22, x1: -86, z1: -6, name: 'El Galpón' },
-  saltos: { x0: -128, z0: 14, x1: -88, z1: 62, name: 'Pista de Saltos' },
+  circuito: { x0: -132, z0: 8, x1: -88, z1: 132, name: 'Circuito del Desmadre' },
+  circuito_sur: { x0: -88, z0: 62, x1: -28, z1: 132, name: 'Circuito del Desmadre' },
   torreon: { x0: -25, z0: -127, x1: 25, z1: -103, name: 'Castillo del Terror' },
   fogon: { x0: -40, z0: -101, x1: -14, z1: -84, name: 'El Fogón' },
   cementerio: { x0: 25, z0: -130, x1: 43, z1: -103, name: 'Cementerio' },
@@ -37,6 +38,52 @@ export const ZONES = {
 };
 
 export const MAP_BOUNDS = { x0: -135, z0: -135, x1: 135, z1: 135 };
+
+// ---------------------------------------------------------------- Circuito del Desmadre (ex pista de saltos)
+// Pista cerrada de 9 m de ancho en el rincón suroeste: largada en la recta del sur (hacia el este), curvas por el
+// sur y el este, y al norte el tramo "Guts and Glory" (dos rectas paralelas con trampas mortales, ver
+// world/circuit.js y game/race.js). pts: puntos de control (x, z) de una curva cerrada (Catmull-Rom).
+export const CIRCUIT = {
+  width: 9,
+  pts: [[-100, 122], [-62, 124], [-43, 116], [-36, 98], [-40, 80], [-54, 72], [-70, 78], [-86, 71], [-100, 60], [-103.5, 42],
+    [-104.5, 26], [-110, 16], [-120, 15], [-125, 24], [-125, 46], [-124.5, 70], [-126, 96], [-121, 115]],
+  start: { x: -96, z: 122 }, // la línea de largada (se cruza hacia +X)
+  laps: 3,
+  // el tramo Guts and Glory: rectas al norte (x de cada carril) y dónde está cada trampa (z)
+  gg: { east: -103.9, west: -125, axe: 55, ramp: 45, spikes: [40.5, 34], saws: 26, crusher: 30, mines: [42, 52], ball: 63 },
+};
+// Muestras de la línea del medio cada ~`step` m: [x, z, tx, tz, s] (tangente unitaria y distancia recorrida)
+let _circuitSamples = null;
+export function circuitSamples() {
+  if (_circuitSamples) return _circuitSamples;
+  const P = CIRCUIT.pts, n = P.length, out = [];
+  const at = (i) => P[((i % n) + n) % n];
+  for (let i = 0; i < n; i++) {
+    const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
+    const seg = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]), k = Math.max(2, Math.ceil(seg));
+    for (let j = 0; j < k; j++) {
+      const t = j / k, t2 = t * t, t3 = t2 * t;
+      const f = (a, b, c, d) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+      out.push([f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])]);
+    }
+  }
+  let s = 0;
+  _circuitSamples = out.map((p, i) => {
+    const q = out[(i + 1) % out.length], r = out[(i - 1 + out.length) % out.length];
+    const tx = q[0] - r[0], tz = q[1] - r[1], l = Math.hypot(tx, tz) || 1;
+    const row = [p[0], p[1], tx / l, tz / l, s];
+    s += Math.hypot(q[0] - p[0], q[1] - p[1]);
+    return row;
+  });
+  CIRCUIT.length = s;
+  return _circuitSamples;
+}
+// distancia (aproximada) de un punto a la línea del medio (para el pasto, los árboles y saber si estás en la pista)
+export function circuitDist(x, z) {
+  let best = Infinity;
+  for (const [px, pz] of circuitSamples()) { const d = (px - x) ** 2 + (pz - z) ** 2; if (d < best) best = d; }
+  return Math.sqrt(best);
+}
 
 // ---------------------------------------------------------------- Castillo del Terror (ex mansión)
 // Muralla con torres, portón al sur, patio con el fogón y un torreón elevado (la casa del terror) con cripta abajo.
@@ -115,7 +162,7 @@ GRASSMAP.h = Math.round((GRASSMAP.z1 - GRASSMAP.z0) / GRASSMAP.cell);
 export const NO_GRASS = [
   [95, -42, 123, 16], [95, -20, 123, -12], [95, 18, 123, 44], [82, -125, 95, 125],
   [-40, -77, 40, -52], [-62, -135, 62, -74], [40, -56, 82, -52], [-82, -56, -40, -52],
-  [-84, -56, -80, -4], [-102, -22, -86, -6], [-86, -25, -74, 7], [-128, 14, -88, 62], [-20, 60, 20, 78],
+  [-84, -56, -80, -4], [-102, -22, -86, -6], [-86, -25, -74, 7], [-20, 60, 20, 78],
 ];
 // 1 = puede haber pasto, 0 = piso duro (se calcula una vez; lo usan servidor y cliente)
 let _grassAllowed = null;
@@ -129,6 +176,16 @@ export function grassAllowed() {
       let ok = x > G.x0 + 1.2 && x < G.x1 - 1.2 && z > G.z0 + 1.2 && z < G.z1 - 1.2;
       if (ok) for (const r of NO_GRASS) if (x > r[0] && x < r[2] && z > r[1] && z < r[3]) { ok = false; break; }
       m[j * G.w + i] = ok ? 1 : 0;
+    }
+  }
+  // el asfalto del circuito (con su banquina): se estampa a lo largo de la línea del medio
+  const R = CIRCUIT.width / 2 + 1.2, rc = Math.ceil(R / G.cell);
+  for (const [cx, cz] of circuitSamples()) {
+    const ci = Math.floor((cx - G.x0) / G.cell), cj = Math.floor((cz - G.z0) / G.cell);
+    for (let dj = -rc; dj <= rc; dj++) for (let di = -rc; di <= rc; di++) {
+      const i = ci + di, j = cj + dj;
+      if (i < 0 || j < 0 || i >= G.w || j >= G.h || (di * di + dj * dj) * G.cell * G.cell > R * R) continue;
+      m[j * G.w + i] = 0;
     }
   }
   _grassAllowed = m;
@@ -276,6 +333,15 @@ export const VEHICLES = [
   { id: 7, type: 'tractor', color: 0x7a1f2b, p: [30, 0, -55], yaw: 0 },
   { id: 8, type: 'mower', color: 0x8e44ad, p: [60, 0, -55], yaw: 0 },
   { id: 9, type: 'cart', color: 0xf2f2ee, p: [86, 0, -8], yaw: 0 },
+  // Circuito del Desmadre: los autos en la calle de boxes (al sur, afuera de la pista, mirando al este: se sale a la
+  // recta antes de la tribuna) y las motos en el pasto de adentro de la largada
+  { id: 10, type: 'racecar', color: 0xd81e1e, p: [-103, 0, 130.2], yaw: Math.PI / 2 },
+  { id: 11, type: 'racecar', color: 0x1e5ad8, p: [-108.5, 0, 130.2], yaw: Math.PI / 2 },
+  { id: 12, type: 'racecar', color: 0xf2c21b, p: [-114, 0, 130.2], yaw: Math.PI / 2 },
+  { id: 13, type: 'racecar', color: 0x1b9a3a, p: [-119.5, 0, 130.2], yaw: Math.PI / 2 },
+  { id: 14, type: 'moto', color: 0xff7a10, p: [-88, 0, 113.4], yaw: Math.PI / 2 },
+  { id: 15, type: 'moto', color: 0x8a2be2, p: [-85.5, 0, 113.4], yaw: Math.PI / 2 },
+  { id: 16, type: 'moto', color: 0x111111, p: [-83, 0, 113.4], yaw: Math.PI / 2 },
 ];
 
 // ---------------------------------------------------------------- Muebles estáticos (render + colliders + asientos)
@@ -363,11 +429,7 @@ F('fuelpump', -84.5, 0, -24.5, Math.PI / 2);
 F('workbench', -100.5, 0, -14, Math.PI / 2, { len: 5 });
 
 // --- Pista de saltos
-F('ramp', -100, 0, 25, 0, { w: 5, l: 7, h: 1.6 });
-F('ramp', -112, 0, 34, Math.PI / 2, { w: 5, l: 9, h: 2.6 });
-F('ramp', -100, 0, 50, Math.PI, { w: 6, l: 8, h: 2.0 });
-F('ramp', -118, 0, 52, -Math.PI / 4, { w: 4, l: 6, h: 1.2 });
-F('ramp', -95, 0, 38, Math.PI / 2 + 0.3, { w: 4, l: 5, h: 1.0 });
+F('ramp', -103.3, 0, 45, Math.PI, { w: 7.6, l: 5, h: 1.7 }); // Circuito: el salto sobre la cama de pinchos
 
 // Puntos de interacción (se completan en el cliente con los muebles que tienen id)
 export const INTERACT = [

@@ -159,6 +159,8 @@ const VSEAT = {
   mower: { top: 0.955, at: [[0, -0.34], [-0.62, -0.45]] },
   tractor: { top: 1.355, at: [[0, -0.53], [-0.68, -0.45]] },
   cart: { top: 1.06, at: [[0.28, -0.2], [-0.28, -0.2]] },
+  racecar: { top: 0.22, at: [[0, -0.02]] }, // metido en la cabina: asoman el casco y los hombros
+  moto: { top: 0.93, at: [[0, -0.1], [0, -0.56]] }, // piloto y acompañante
 };
 const ITEM_MASS = { beer: 0.45, smoke: 0.02, spray: 0.4 };
 // "articulación" de un objeto tomado firme (no hay resorte: la mano lleva el objeto, ver props.heldQuat)
@@ -2365,6 +2367,14 @@ export class LocalPlayer {
     this.rig.resetShoulders();
     if (this.land > 1e-3 && this.grounded && this.state !== 'seated' && this.state !== 'driving') base = V2.copy(base).setY(base.y - this.land * 0.11);
     this.rig.place(base, this.yaw);
+    // en la moto el cuerpo se inclina con ella (gira alrededor de donde las ruedas tocan el piso)
+    const lean = this.state === 'driving' ? this.vehicle?.lean || 0 : 0;
+    if (lean) {
+      const up = base.y - this.vehicle.pos.y, c = Math.cos(this.yaw), s = Math.sin(this.yaw), lx = -up * Math.sin(lean);
+      this.rig.root.position.set(base.x + c * lx, this.vehicle.pos.y + up * Math.cos(lean), base.z - s * lx);
+      this.rig.root.rotateZ(lean);
+      this.rig.root.updateMatrixWorld(true);
+    }
     this._overrides();
     // agarrado: la parte que me tienen va hacia la mano del otro (la cabeza se dobla, la pierna se levanta)
     if (this.grabbedBy.size && this.physMode === 'anim') {
@@ -2563,6 +2573,7 @@ export class LocalPlayer {
       sit: this.state === 'seated',
       table: !!this.seat?.poker, // sentado a la mesa: torso apenas hacia adelante (las manos van con IK a la mesa)
       steer: this.vehicle?.steer || 0,
+      vtype: this.state === 'driving' ? this.vehicle?.type : null,
       emote: this.emote,
       emoteT: this.emoteT,
     }, dt);

@@ -33,6 +33,20 @@ export const VEHICLE_SOLIDS = {
     [.56,.22,.05,0,1.28,-.52],[.68,.03,.9,0,2.02,.08],
     ...[-.6,.6].flatMap(x=>[-.68,.78].map(z=>[.025,.5,.025,x,1.5,z])),
     ...[-.66,.66].flatMap(x=>[-.85,.85].map(z=>[.09,.23,.23,x,.25,z]))],
+  // auto de carrera: monocasco, alerón de adelante (bajito), cabina/toma de aire, alerón de atrás y las 4 ruedas
+  racecar: [[.62,.13,1.55,0,.32,-.1],[.88,.06,.2,0,.15,2.1],[.24,.26,.75,0,.72,-.6],[.62,.1,.22,0,1.0,-1.8],
+    ...[-.84,.84].map(x=>[.21,.36,.36,x,.36,-1.25]),...[-.84,.84].map(x=>[.17,.33,.33,x,.33,1.25])],
+  // moto: angosta (pasa por donde no pasa un auto)
+  moto: [[.13,.24,.82,0,.66,-.12],[.06,.34,.34,0,.34,.74],[.07,.34,.34,0,.34,-.7]],
+};
+// cómo anda cada uno: velocidad máxima (m/s), aceleración, giro máximo (rad/s) y cuánto gira según la velocidad;
+// blades: tiene cuchillas (Espacio las prende); si no, Espacio es el freno de mano (derrapa y gira más cerrado)
+export const VTYPE = {
+  mower: { max: 8, acc: 2.7, turn: 2.1, turnK: 0.55, blades: true },
+  tractor: { max: 10, acc: 2.7, turn: 2.1, turnK: 0.42, blades: true },
+  cart: { max: 9, acc: 2.7, turn: 1.5, turnK: 0.55 },
+  racecar: { max: 27, acc: 1.25, turn: 1.75, turnK: 0.32, brake: 4.5, crash: 13 },
+  moto: { max: 22, acc: 1.6, turn: 2.3, turnK: 0.36, brake: 5, crash: 6, lean: true },
 };
 const DRIVE_GROUPS = groups(GR.VEHICLE, GR.WORLD | GR.VEHICLE | GR.PAWN | GR.REMOTE);
 // los NPC no son paredes para el auto (se los atropella: ver _runOver); ni su cápsula ni su cuerpo tirado lo frenan
@@ -186,23 +200,38 @@ export class VehicleManager {
       const gas = (input.key('KeyW') ? 1 : 0) - (input.key('KeyS') ? 1 : 0);
       const turn = (input.key('KeyA') ? 1 : 0) - (input.key('KeyD') ? 1 : 0);
       const turbo = input.key('ShiftLeft') || input.key('ShiftRight');
-      const max = localV.type === 'tractor' ? 10 : localV.type === 'cart' ? 9 : 8;
-      const target = gas * max * (turbo ? 1.35 : 1);
+      const T = VTYPE[localV.type] || VTYPE.mower;
+      // los rápidos van para atrás despacio (marcha atrás: un tercio)
+      const target = gas * (gas < 0 && T.brake ? Math.min(6, T.max / 3) : T.max) * (turbo ? (T.brake ? 1.15 : 1.35) : 1);
       // acelerar hacia el otro lado frena fuerte (X ya no frena: X es bajarse)
       const braking = gas !== 0 && Math.sign(gas) !== Math.sign(localV.speed) && Math.abs(localV.speed) > 0.3;
-      localV.speed += (target - localV.speed) * Math.min(1, dt * (braking ? 6 : gas ? 2.7 : 4.2));
+      // freno de mano (Espacio en los que no tienen cuchillas): baja la velocidad y deja girar más cerrado (derrape)
+      const hand = !T.blades && input.key('Space');
+      localV.drift = (localV.drift || 0) + ((hand && Math.abs(localV.speed) > 4 ? 1 : 0) - (localV.drift || 0)) * Math.min(1, dt * 5);
+      // los rápidos aceleran de a poco (más tirón abajo que arriba) y frenan fuerte
+      const accK = T.brake ? T.acc * (1.6 - 0.9 * Math.min(1, Math.abs(localV.speed) / T.max)) : T.acc;
+      localV.speed += (target - localV.speed) * Math.min(1, dt * (braking ? (T.brake || 6) : gas ? accK : hand ? 2.2 : T.brake ? 0.7 : 4.2));
       localV.steer += (turn - localV.steer) * Math.min(1, dt * 7);
-      // giro cerrado como una cortadora de verdad (radio de 2 a 4 m): se puede volver al lado de la pasada
+      // giro: cerrado en las cortadoras (radio de 2 a 4 m); en los rápidos el radio crece con la velocidad
       const sp = Math.abs(localV.speed);
-      const rate = Math.min(localV.type === 'cart' ? 1.5 : 2.1, sp * (localV.type === 'tractor' ? 0.42 : 0.55));
+      let rate = Math.min(T.turn, sp * T.turnK);
+      if (T.brake && sp > T.max * 0.55) rate *= 1 - 0.35 * (sp - T.max * 0.55) / (T.max * 0.45);
+      rate *= 1 + localV.drift * 0.7;
       const yawBefore = localV.yaw;
       localV.yaw += localV.steer * Math.sign(localV.speed) * rate * dt;
       if (Math.abs(localV.yaw-yawBefore)>1e-5 && this._blockedTurn(localV)) localV.yaw = yawBefore;
-      if (localV.type !== 'cart' && input.consume('Space')) {
+      if (T.blades && input.consume('Space')) {
         localV.blades = !localV.blades;
         this._sendT = 1; // publicar el cambio en este mismo cuadro
         G.sfx?.trigger('pickup', null, .3);
       }
+      if (localV.drift > 0.5 && sp > 6 && G.fx && (this._skidT = (this._skidT || 0) - dt) <= 0) {
+        this._skidT = 0.05; // humo de las gomas al derrapar
+        G.fx.puff(TMPV.set(localV.pos.x - Math.sin(localV.yaw) * 1.1, 0.15, localV.pos.z - Math.cos(localV.yaw) * 1.1), TMPV2.set(0, 0.6, 0), 0.4, 0xb8b8b4);
+      }
+      // la moto se inclina para el lado de la curva (y el piloto con ella: player.js)
+      const leanTo = T.lean && !localV.air ? -localV.steer * Math.min(1, sp / 12) * (0.42 + localV.drift * 0.15) : 0;
+      localV.lean = (localV.lean || 0) + (leanTo - (localV.lean || 0)) * Math.min(1, dt * 5);
 
       const dist = localV.speed * dt;
       const dx = Math.sin(localV.yaw) * dist, dz = Math.cos(localV.yaw) * dist;
@@ -228,7 +257,7 @@ export class VehicleManager {
       }
       this._runOver(localV);
       this._ground(localV, dt);
-      localV.quat.setFromEuler(TMPE.set(localV._tilt || 0, localV.yaw, 0, 'YXZ'));
+      localV.quat.setFromEuler(TMPE.set(localV._tilt || 0, localV.yaw, localV.lean || 0, 'YXZ'));
       localV.targetPos.copy(localV.pos); localV.targetQuat.copy(localV.quat);
       localV.group.position.copy(localV.pos); localV.group.quaternion.copy(localV.quat);
       this.local.setSeatPose(localV);
@@ -404,7 +433,7 @@ export class VehicleManager {
     for (const w of v.wheels) w.rotation.x += (sp * dt) / (w.userData.r || 0.3);
     const steer = clamp(v.steer || 0, -1, 1);
     for (const pv of ud.pivots || []) pv.rotation.y = steer * 0.5;
-    if (ud.steer) ud.steer.rotation.set(ud.steer.userData.tilt || 0, 0, steer * 1.7);
+    if (ud.steer && !ud.steer.userData.fixed) ud.steer.rotation.set(ud.steer.userData.tilt || 0, 0, steer * 1.7);
     const blade = v.blade ?? (v.blade = v.group.getObjectByName('blade') || null);
     if (blade && v.blades) blade.rotation.y += dt * 35;
     const b = ud.body;
@@ -414,10 +443,10 @@ export class VehicleManager {
     v._ps = sp;
     const k1 = Math.min(1, dt * 6), k2 = Math.min(1, dt * 5);
     v._pitch += (clamp(-acc * 0.0045, -0.05, 0.05) - v._pitch) * k1;
-    v._roll += (clamp(-steer * sp * 0.007, -0.07, 0.07) - v._roll) * k2;
+    v._roll += ((ud.lean ? 0 : clamp(-steer * sp * 0.007, -0.07, 0.07)) - v._roll) * k2;
     const running = !!v.seats?.some(Boolean) || Math.abs(sp) > 0.3;
     const t = G.time + v.id * 1.7;
-    const vib = running && v.type !== 'cart' ? Math.sin(t * 19) * 0.0008 : 0;
+    const vib = running && v.type !== 'cart' ? Math.sin(t * (v.type === 'racecar' || v.type === 'moto' ? 31 : 19)) * 0.0008 : 0;
     const rough = Math.min(1, Math.abs(sp) / 4);
     const bump = (Math.sin(v._dist * 2.3) * 0.006 + Math.sin(v._dist * 5.3 + 1) * 0.004) * rough;
     b.rotation.set(v._pitch + bump * 1.2, 0, v._roll + Math.sin(v._dist * 1.7) * 0.006 * rough);

@@ -62,7 +62,7 @@ export class Room {
       this.vehicles.set(v.id, {
         id: v.id, type: v.type, color: v.color,
         spawn: { p: [...v.p], q: yawQuat(v.yaw) },
-        p: [...v.p], q: yawQuat(v.yaw), o: 0, seats: v.type === 'mower' ? [0] : [0, 0],
+        p: [...v.p], q: yawQuat(v.yaw), o: 0, seats: v.type === 'mower' || v.type === 'racecar' ? [0] : [0, 0],
         s: [0, 0, 0], idleSince: Date.now(),
       });
     }
@@ -108,6 +108,9 @@ export class Room {
         if (raw.length === n * 2) {
           this.grass.hgt.set(raw.subarray(0, n));
           this.grass.dir.set(raw.subarray(n));
+          // lo que ahora es piso duro (el asfalto del circuito, por ejemplo) no tiene pasto aunque el archivo diga otra cosa
+          const allowed = grassAllowed();
+          for (let k = 0; k < n; k++) if (!allowed[k]) this.grass.hgt[k] = 0;
         }
       }
     } catch (e) { console.warn('[sala', this.name, '] no pude cargar el pasto:', e.message); }

@@ -62,7 +62,7 @@ export class OwnerPowers {
     }
     if (!on) {
       if (L?.invisible) this.setInvisible(false);
-      if (L?.immortal) L.immortal = false;
+      if (L?.immortal && !L.godOther) L.immortal = false; // (la inmortalidad que da un admin o la sala es aparte)
       return;
     }
     if (!L.dead && !L.combatBlocked && inp.hit('KeyN') && G.time >= this.ballT) {
@@ -256,7 +256,7 @@ export class OwnerPowers {
     const L = this.getLocal();
     if (L && !this.active()) {
       if (L.invisible) this.setInvisible(false);
-      L.immortal = false;
+      if (!L.godOther) L.immortal = false;
     }
     // A respawn/model rebuild creates a new material; retain the active ghost
     // state without recompiling its shader every frame.

@@ -504,3 +504,8 @@ button.big:hover { filter: brightness(1.06); }
 .adm-tag.own { background: rgba(255, 204, 51, 0.25); color: var(--accent); }
 .adm-login { display: flex; gap: 8px; }
 .adm-login input { flex: 1; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line-strong); background: rgba(0, 0, 0, 0.35); color: #fff; font: 15px var(--ui); }
+
+/* cronómetro del circuito (game/race.js): chiquito, arriba al centro, solo manejando en la pista */
+#race-hud { position: fixed; top: 54px; left: 50%; transform: translateX(-50%); z-index: 4; pointer-events: none; padding: 5px 14px; border-radius: 10px;
+  background: rgba(10, 10, 12, 0.55); color: var(--ink); font: 14px var(--ui); letter-spacing: 0.4px; text-shadow: var(--txt-shadow); white-space: nowrap; }
+#race-hud b { color: var(--accent); }

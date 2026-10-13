@@ -1,4 +1,4 @@
-// Modelos de los vehículos (cortadora antigua, tractor clásico, carrito de golf) con materiales PBR:
+// Modelos de los vehículos (cortadora antigua, tractor clásico, carrito de golf, auto de carrera y moto) con materiales PBR:
 // pintura laqueada, cromo, bronce, cuero, madera del volante y tablero con relojes. +Z es adelante.
 // Estructura (la usa entities.js):
 //   raíz -> body (carrocería: se balancea, rebota y vibra) -> mallas fusionadas por material + volante
@@ -518,8 +518,159 @@ function cart(color) {
   return root;
 }
 
+
+// caño de a hasta b (cuadros de moto, barras antivuelco)
+function tube(g, a, b, r, mat) {
+  const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), d = B.clone().sub(A), len = d.length();
+  const m = part(g, new THREE.CylinderGeometry(r, r, len, 10), mat, (A.x + B.x) / 2, (A.y + B.y) / 2, (A.z + B.z) / 2);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+  return m;
+}
+// el número de carrera (círculo blanco con el número en negro)
+const NUMS = new Map();
+function numberMat(n, ring = '#ffffff') {
+  const k = n + ring;
+  if (!NUMS.has(k)) {
+    const t = canvasTex(128, 128, (c) => {
+      c.fillStyle = ring; c.beginPath(); c.arc(64, 64, 60, 0, Math.PI * 2); c.fill();
+      c.fillStyle = '#111'; c.font = 'bold 74px Arial Black, Arial'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(String(n), 64, 68);
+    });
+    NUMS.set(k, new THREE.MeshStandardMaterial({ map: t, roughness: 0.4, transparent: true }));
+  }
+  return NUMS.get(k);
+}
+const NUMBER_OF = (color) => (Math.abs(color * 7919) % 89) + 10;
+
+// Auto de carrera (fórmula): monocasco bajo con trompa afilada, pontones, alerones adelante y atrás, ruedas
+// descubiertas bien anchas, toma de aire arriba del piloto y la barra antivuelco. El piloto va metido en la cabina.
+function racecar(color) {
+  const m = mats();
+  const P = paint(color);
+  const carbon = new THREE.MeshPhysicalMaterial({ color: 0x15171a, roughness: 0.32, metalness: 0.35, clearcoat: 0.8, clearcoatRoughness: 0.2 });
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+  // piso plano y monocasco
+  part(body, new THREE.BoxGeometry(1.25, 0.05, 3.1), carbon, 0, 0.1, -0.15);
+  part(body, rbox(0.72, 0.36, 2.0, 0.16, 0.06), P, 0, 0.36, 0.05);
+  // trompa: cono achatado hacia adelante
+  const nose = part(body, new THREE.CylinderGeometry(0.07, 0.3, 1.25, 16), P, 0, 0.3, 1.55, Math.PI / 2);
+  nose.scale.set(1, 1, 0.55);
+  part(body, new THREE.PlaneGeometry(0.26, 0.26), numberMat(NUMBER_OF(color)), 0, 0.42, 1.25, -Math.PI / 2 + 0.18);
+  // alerón delantero con sus derivas
+  part(body, rbox(1.75, 0.035, 0.36, 0.05, 0.012), carbon, 0, 0.12, 2.12);
+  part(body, rbox(1.55, 0.03, 0.2, 0.05, 0.01), P, 0, 0.18, 2.05, -0.18);
+  for (const s of [-1, 1]) part(body, new THREE.BoxGeometry(0.03, 0.2, 0.42), carbon, s * 0.88, 0.17, 2.1);
+  // pontones con la toma de aire
+  for (const s of [-1, 1]) {
+    part(body, rbox(0.42, 0.34, 1.35, 0.14, 0.05), P, s * 0.56, 0.34, -0.2);
+    part(body, rbox(0.34, 0.22, 0.06, 0.08, 0.02), m.black, s * 0.56, 0.38, 0.47);
+    part(body, new THREE.BoxGeometry(0.02, 0.22, 1.1), m.black, s * 0.775, 0.34, -0.25);
+  }
+  // cabina: hueco negro, butaca, volantito y espejos
+  part(body, rbox(0.46, 0.06, 0.7, 0.18, 0.02), m.black, 0, 0.555, 0.18);
+  part(body, rbox(0.4, 0.3, 0.12, 0.08, 0.03), m.black, 0, 0.62, -0.18, -0.25);
+  const steer = steeringWheel(body, 0, 0.62, 0.52, 1.2, 0.11, [0, 0.55, 0.7]);
+  for (const s of [-1, 1]) { tube(body, [s * 0.3, 0.55, 0.62], [s * 0.42, 0.66, 0.66], 0.012, carbon); part(body, rbox(0.12, 0.06, 0.03, 0.02, 0.01), P, s * 0.44, 0.67, 0.66); }
+  // cubierta del motor con la toma de aire arriba del piloto y la barra antivuelco
+  part(body, rbox(0.46, 0.4, 1.45, 0.16, 0.06), P, 0, 0.6, -0.78);
+  part(body, rbox(0.3, 0.32, 0.36, 0.12, 0.04), P, 0, 0.88, -0.32);
+  part(body, rbox(0.2, 0.14, 0.04, 0.06, 0.02), m.black, 0, 0.92, -0.13);
+  tube(body, [-0.16, 0.6, -0.12], [0, 1.0, -0.2], 0.022, m.chrome);
+  tube(body, [0.16, 0.6, -0.12], [0, 1.0, -0.2], 0.022, m.chrome);
+  // alerón trasero en sus parantes
+  part(body, rbox(1.2, 0.05, 0.36, 0.04, 0.015), carbon, 0, 1.0, -1.78);
+  part(body, rbox(1.2, 0.04, 0.2, 0.04, 0.012), P, 0, 1.1, -1.86, 0.3);
+  for (const s of [-1, 1]) part(body, new THREE.BoxGeometry(0.035, 0.46, 0.55), P, s * 0.62, 0.88, -1.78);
+  tube(body, [0, 0.55, -1.5], [0, 0.98, -1.75], 0.03, carbon);
+  // difusor, luz de lluvia y escape
+  part(body, new THREE.BoxGeometry(0.95, 0.12, 0.35), carbon, 0, 0.16, -1.82, 0.25);
+  lamp(body, 0, 0.36, -1.98, 0.035, m.tail, true);
+  part(body, new THREE.CylinderGeometry(0.05, 0.06, 0.18, 12), m.steel, 0, 0.52, -1.62, Math.PI / 2);
+  // suspensiones (caños) hacia las ruedas
+  for (const s of [-1, 1]) {
+    tube(body, [s * 0.3, 0.42, 1.0], [s * 0.78, 0.33, 1.25], 0.016, carbon);
+    tube(body, [s * 0.3, 0.26, 1.15], [s * 0.78, 0.3, 1.25], 0.016, carbon);
+    tube(body, [s * 0.4, 0.45, -1.1], [s * 0.78, 0.36, -1.25], 0.016, carbon);
+    tube(body, [s * 0.4, 0.22, -1.3], [s * 0.78, 0.33, -1.25], 0.016, carbon);
+  }
+  mergeStatic(body);
+  for (const s of [-1, 1]) wheel(root, 0.36, 0.42, m.black, s * 0.84, 0.36, -1.25, 0, 5);
+  const pivots = [];
+  for (const s of [-1, 1]) {
+    const pv = new THREE.Group();
+    pv.position.set(s * 0.84, 0.33, 1.25);
+    pv.userData.steerPivot = true;
+    wheel(pv, 0.33, 0.34, m.black, 0, 0, 0, 0, 5, s);
+    root.add(pv);
+    pivots.push(pv);
+  }
+  root.userData = { body, steer, pivots, exhaust: new THREE.Vector3(0, 0.52, -1.72), seatZ: 0.05 };
+  return root;
+}
+
+// Moto de cross: cuadro de caños, tanque y cachas del color, asiento largo (entra un acompañante), motor, escape
+// cromado, horquilla con el manubrio (gira entera con la dirección) y las dos ruedas con tacos.
+function moto(color) {
+  const m = mats();
+  const P = paint(color);
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+  const frame = m.black;
+  // cuadro
+  tube(body, [0, 1.0, 0.5], [0, 0.48, -0.12], 0.03, frame);
+  tube(body, [0, 1.0, 0.5], [0, 0.86, -0.25], 0.026, frame);
+  tube(body, [0, 0.86, -0.25], [0, 0.82, -0.75], 0.022, frame);
+  tube(body, [0, 0.48, -0.12], [0, 0.82, -0.6], 0.022, frame);
+  // basculante hasta la rueda de atrás
+  for (const s of [-1, 1]) tube(body, [s * 0.08, 0.46, -0.12], [s * 0.08, 0.34, -0.7], 0.025, m.steel);
+  tube(body, [0, 0.82, -0.3], [0.0, 0.46, -0.55], 0.03, m.chrome); // amortiguador
+  // motor y escape
+  part(body, rbox(0.26, 0.3, 0.36, 0.06, 0.03), m.steel, 0, 0.5, 0.12);
+  part(body, rbox(0.2, 0.1, 0.24, 0.04, 0.02), m.grey, 0, 0.7, 0.14);
+  tube(body, [0.06, 0.52, 0.3], [0.16, 0.42, 0.0], 0.026, m.chrome);
+  tube(body, [0.16, 0.42, 0.0], [0.17, 0.66, -0.6], 0.03, m.chrome);
+  part(body, new THREE.CylinderGeometry(0.055, 0.05, 0.36, 14), m.steel, 0.17, 0.7, -0.66, Math.PI / 2 - 0.35);
+  // tanque, cachas laterales con el número, asiento y guardabarros de atrás
+  part(body, rbox(0.3, 0.22, 0.48, 0.1, 0.05), P, 0, 0.92, 0.22);
+  for (const s of [-1, 1]) {
+    part(body, rbox(0.03, 0.22, 0.32, 0.04, 0.01), P, s * 0.15, 0.8, -0.42);
+    part(body, new THREE.PlaneGeometry(0.17, 0.17), numberMat(NUMBER_OF(color)), s * 0.168, 0.8, -0.42, 0, s * Math.PI / 2);
+  }
+  part(body, rbox(0.25, 0.08, 0.82, 0.1, 0.03), m.black, 0, 0.9, -0.24);
+  part(body, rbox(0.2, 0.04, 0.6, 0.08, 0.015), P, 0, 0.88, -0.86, -0.25);
+  lamp(body, 0, 0.88, -1.15, 0.035, m.tail, true);
+  // estriberas (adelante el piloto, atrás el acompañante)
+  for (const s of [-1, 1]) { part(body, new THREE.BoxGeometry(0.1, 0.025, 0.06), m.steel, s * 0.2, 0.4, -0.02); part(body, new THREE.BoxGeometry(0.08, 0.02, 0.05), m.steel, s * 0.18, 0.5, -0.55); }
+  mergeStatic(body);
+  wheel(root, 0.34, 0.13, m.steel, 0, 0.34, -0.7, 22, 0, 1);
+  // la horquilla gira entera (rueda, barras, guardabarros, manubrio, número de adelante y el faro)
+  const pv = new THREE.Group();
+  pv.position.set(0, 0, 0.62);
+  pv.userData.steerPivot = true;
+  wheel(pv, 0.34, 0.11, m.steel, 0, 0.34, 0.12, 22, 0, 1);
+  for (const s of [-1, 1]) tube(pv, [s * 0.075, 0.36, 0.12], [s * 0.07, 1.05, -0.12], 0.024, m.chrome);
+  part(pv, rbox(0.17, 0.035, 0.4, 0.06, 0.012), P, 0, 0.72, 0.12, 0.1);
+  tube(pv, [-0.38, 1.12, -0.14], [0.38, 1.12, -0.14], 0.013, m.steel);
+  for (const s of [-1, 1]) part(pv, new THREE.CylinderGeometry(0.02, 0.02, 0.12, 10), m.rubber, s * 0.33, 1.12, -0.14, 0, 0, Math.PI / 2);
+  part(pv, rbox(0.22, 0.2, 0.03, 0.05, 0.01), P, 0, 0.98, 0.0, -0.3);
+  part(pv, new THREE.PlaneGeometry(0.14, 0.14), numberMat(NUMBER_OF(color)), 0, 0.98, 0.017, -0.3);
+  lamp(pv, 0, 0.9, 0.05, 0.045);
+  // las manos del piloto van a los puños (player.js _wheelLocal usa esto como si fuera un volante: x de cada lado)
+  const grips = new THREE.Object3D();
+  grips.position.set(0, 1.12, -0.14); grips.rotation.x = -Math.PI / 2;
+  grips.userData = { R: 0.38, fixed: true };
+  pv.add(grips);
+  root.add(pv);
+  root.userData = { body, steer: grips, pivots: [pv], exhaust: new THREE.Vector3(0.17, 0.72, -0.85), seatZ: -0.12, lean: true };
+  return root;
+}
+
 export function buildVehicleModel(type, color) {
   if (type === 'tractor') return tractor(color);
   if (type === 'cart') return cart(color);
+  if (type === 'racecar') return racecar(color);
+  if (type === 'moto') return moto(color);
   return mower(color);
 }
