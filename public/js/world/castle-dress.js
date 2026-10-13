@@ -385,10 +385,6 @@ function dressUpperCastle({ d, c, r, col }) {
   wallChart(d, 'archive', 4.8, y + 2.9, -125.66, 0, 2.0, 1.65, 125);
   upperPlaque(d, 'EL CONDE NUNCA DUERME', 4.8, y + 1.03, -124.82, 0, 125);
   B.flush();
-  // Small plaques help orient players without HUD arrows or new menus.
-  for (const [label, x, z, yaw, roomId] of [['APOSENTOS', -8.34, -123.75, -PI / 2, 121], ['CARTOGRAFÍA', -14.6, -114.7, 0, 122], ['BOTICA', 8.34, -123.75, PI / 2, 123], ['ARMERÍA', 14.6, -114.7, 0, 124]]) {
-    upperPlaque(d, label, x, y + 2.0, z, yaw, roomId);
-  }
 }
 
 function castleMap(d, x, y, z, w, h) {

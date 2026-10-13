@@ -1,6 +1,7 @@
 // Decoración del castillo del terror: modelos (llegan en segundo plano), calabazas talladas con fuego adentro,
 // velas, lápidas con epitafios, telarañas, retratos pintados por código, calaveras, árboles secos, niebla baja,
 // murciélagos, cuervos y el espantapájaros. Todo lo repetido va instanciado.
+import { soilRow, dressYard } from './castle-yard.js';
 import * as THREE from 'three';
 import { G, rng } from '../core/G.js';
 import { whenAsset, assetModel, assetBounds, instanceModel, artwork, placeModel } from '../game/assets.js';
@@ -223,6 +224,7 @@ export class Decor {
     this.fair = new Fair(this).build();
     this.c.fair = this.fair;
     this.anim.push((t) => this.fair.update(t));
+    dressYard(this); // huerta, cementerio, plaza de armas y torres con vida (world/castle-yard.js)
   }
 
   // ---------------------------------------------------------------- modelos repetidos (instanciados cuando llegan)
@@ -280,7 +282,7 @@ export class Decor {
         if (r() < 0.6) put(x + (r() - 0.5) * 1.2, 0.06, z - 1.2 - r() * 0.6, 0.18 + r() * 0.16);
       }
       rows.push(list);
-      this.c.deco('mud', -41.2 + row * 3.1, 0.06, -116.3, 1.2, 0.12, 20, { mask: false, noShadow: true });
+      soilRow(this, -41.2 + row * 3.1, -126.3, -106.3); // camellón de tierra de verdad (castle-yard.js)
     }
     this._vines(rows);
     this.instances('c_pumpkin_a', plainA);

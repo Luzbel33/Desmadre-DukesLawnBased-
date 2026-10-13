@@ -530,16 +530,20 @@ export class Npc {
   _placeShovel(ch) {
     const P = this.prop, fwd = V3.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
     const up = V4;
-    if (this.action === 'dig' && ch.handL) {
-      // la inclinación la marca la fase (igual que la pose 'dig' de character.js): clavada casi vertical con la hoja
-      // adelante, palanca, levantada casi horizontal girando al costado para tirar la tierra, y vuelta
-      const ph = this.actionT % 2.2, sm = (x) => x * x * (3 - 2 * x), s = (a, b) => Math.min(1, Math.max(0, (ph - a) / (b - a)));
-      const lever = sm(s(0.6, 1.0)) * (1 - sm(s(1.6, 2.1))), toss = sm(s(1.0, 1.3)) * (1 - sm(s(1.45, 1.9)));
-      const tilt = 0.38 + lever * 0.55 + toss * 0.45, yaw = this.yaw + toss * 0.75;
-      up.set(-Math.sin(yaw) * Math.sin(tilt), Math.cos(tilt), -Math.cos(yaw) * Math.sin(tilt));
-      fwd.set(Math.sin(yaw), 0, Math.cos(yaw));
-      P.position.copy(ch.handL.getWorldPosition(V6)).addScaledVector(up, -(P.userData.grip || 0.95));
+    if (this.action === 'dig' && ch.handL && ch.handR) {
+      // el mango pasa por las dos manos: sale de la línea entre la derecha (abajo) y la izquierda (empuñadura, arriba)
+      // y los dedos lo rodean (gripOn). Así nunca se separa de las manos, hagan lo que hagan los brazos.
+      ch.fistWorld('l', V6); ch.fistWorld('r', V3); // el centro de cada puño (donde queda el mango)
+      up.copy(V6).sub(V3);
+      const span = up.length();
+      if (span > 0.12) up.multiplyScalar(1 / span); else up.set(0, 1, 0);
+      if (up.y < 0.25) up.y = 0.25; up.normalize();
+      fwd.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+      P.position.copy(V6).addScaledVector(up, -(P.userData.grip || 0.95));
+      ch.gripOn.l = ch.gripOn.r = true; ch.gripRadius.l = ch.gripRadius.r = 0.024;
+      ch.gripAxis.l.copy(up); ch.gripAxis.r.copy(up);
     } else {
+      if (ch.gripOn) { ch.gripOn.l = ch.gripOn.r = false; ch.gripRadius.l = ch.gripRadius.r = 0; }
       up.set(-fwd.x * 0.15, 1, -fwd.z * 0.15).normalize();
       const right = V5.set(-fwd.z, 0, fwd.x).multiplyScalar(-1);
       P.position.copy(this.pos).addScaledVector(right, 0.5).addScaledVector(fwd, 0.25);

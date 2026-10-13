@@ -346,7 +346,7 @@ export class ClubGame {
     this.camBob = clamp(this.camBob + this._bobV * h, -0.12, 0.12);
     Lf.speed = speed;
     this.rideUse && (this.rideUse.label = Lf.phase === 'ride' ? 'Esperá...' : Lf.at === 'top' ? 'Apretar el botón (bajar al -666)' : 'Apretar el botón (subir)');
-    if (this.bellUse) this.bellUse.label = this.truceUntil > G.time ? 'Tocar la campana (que vuelvan a pelear)' : 'Tocar la campana (cortar la pelea)';
+    if (this.bellUse) this.bellUse.label = this.truceUntil > G.time ? 'Tocar la campana (¡que peleen!)' : 'Tocar la campana (cortar la pelea)';
     for (const d of [D.liftS, D.liftN]) { try { d.collider.setEnabled(d.open < 0.85); } catch { /* */ } }
     this.inLift = !!inside;
   }
@@ -479,6 +479,7 @@ export class ClubGame {
         };
       }
       this.fighters = [toro, chacal];
+      this.truceUntil = Infinity; // arrancan en su rincón, respirando: pelean cuando alguien toca la campana
     }
   }
 
@@ -645,7 +646,7 @@ export class ClubGame {
   // la campana: cortan la pelea (cada uno a su rincón, a respirar) por un rato, o vuelven a pelear
   _bellApply(m) {
     const on = !!m.on;
-    this.truceUntil = on ? G.time + 30 : 0;
+    this.truceUntil = on ? Infinity : 0; // sin campana de arranque no pelean: la pelea la larga el que toca la campana, y la corta otro toque
     const at = this.club.anchors.bell;
     G.sfx?.trigger('ring-bell', at, 0.9, { full: 5, max: 40, rate: 1 });
     for (const f of this.fighters || []) {

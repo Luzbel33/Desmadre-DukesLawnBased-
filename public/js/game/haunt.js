@@ -420,35 +420,38 @@ export class Haunt {
     this._ramSkull();
   }
 
-  // el cráneo de carnero colgado del lado de adentro del pasadizo (junto al estante): se baja como una palanca
+  // la máscara de toro colgada del lado de adentro del pasadizo (junto al estante): se baja como una palanca. Es la misma
+  // máscara de las bailarinas (assets/props/art/mask_bull.glb), sobre una placa redonda de roble con aro de hierro.
   _ramSkull() {
     if (!HAS_DOM) return;
-    const bone = getMat('bone'), wood = getMat('oldWood'), dark = getMat('black');
-    const plaque = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.58, 0.05), wood);
-    plaque.position.set(18.3, F0 + 1.75, -115.33);
-    this.scene.add(plaque);
-    // el cráneo gira sobre su nuca (pegada a la tabla): mira hacia adentro del cuarto (-z)
+    const wood = getMat('oldWood'), iron = getMat('iron');
+    const wx = 18.3, wy = F0 + 1.75, wz = -115.33; // la pared (mira hacia -z)
+    const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.06, 28), wood); plate.rotation.x = Math.PI / 2; plate.position.set(wx, wy, wz - 0.03);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.022, 8, 32), iron); rim.position.set(wx, wy, wz - 0.06);
+    const nail = (a) => { const n = new THREE.Mesh(new THREE.SphereGeometry(0.018, 6, 4), iron); n.position.set(wx + Math.cos(a) * 0.29, wy + Math.sin(a) * 0.29, wz - 0.065); return n; };
+    for (const m of [plate, rim, ...[0, 1, 2, 3, 4, 5].map((i) => nail(i * Math.PI / 3 + 0.3))]) { m.castShadow = true; m.receiveShadow = true; this.scene.add(m); }
+    // la máscara gira sobre la parte de arriba de la placa
     const pivot = new THREE.Group();
-    pivot.position.set(18.3, F0 + 1.83, -115.36);
+    pivot.position.set(wx, wy + 0.2, wz - 0.07);
     this.scene.add(pivot);
-    const add = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); pivot.add(m); return m; };
-    const head = new THREE.SphereGeometry(0.1, 16, 12); head.scale(1, 0.95, 1.15);
-    add(head, bone, 0, 0, -0.1);
-    add(new THREE.CylinderGeometry(0.035, 0.07, 0.2, 10), bone, 0, -0.06, -0.24, Math.PI / 2 + 0.45);
-    for (const s of [-1, 1]) {
-      add(new THREE.SphereGeometry(0.026, 8, 6), dark, s * 0.05, 0.02, -0.19);
-      // cuerno enrulado: segmentos que se afinan y giran hacia atrás y abajo
-      let x = s * 0.07, y = 0.06, z = -0.08, a = 0;
-      for (let k = 0; k < 9; k++) {
-        const rr = 0.04 * (1 - k / 11), len = 0.07;
-        a += 0.62;
-        const nx = x + s * Math.cos(a) * len * 0.55, ny = y + Math.sin(a) * len, nz = z + Math.cos(a) * len * 0.6;
-        const seg = add(new THREE.CylinderGeometry(rr * 0.85, rr, len * 1.1, 8), bone, (x + nx) / 2, (y + ny) / 2, (z + nz) / 2);
-        seg.quaternion.setFromUnitVectors(V2.set(0, 1, 0), V1.set(nx - x, ny - y, nz - z).normalize());
-        x = nx; y = ny; z = nz;
-      }
-    }
     this.ramSkull = { pivot, t: -99 };
+    // un candelero de pared al lado (el pasadizo estaba a oscuras y no se veía la placa) con su llama y su luz tibia
+    const c = this.castle;
+    for (const [geo, x, y, z] of [[new THREE.BoxGeometry(0.05, 0.3, 0.05), wx + 0.62, wy - 0.15, wz - 0.05], [new THREE.CylinderGeometry(0.07, 0.04, 0.05, 10), wx + 0.62, wy - 0.02, wz - 0.12]]) {
+      const m = new THREE.Mesh(geo, iron); m.position.set(x, y, z); m.castShadow = true; this.scene.add(m);
+    }
+    c.flame?.(wx + 0.62, wy + 0.04, wz - 0.16, 0.05, 0.14, { intensity: 0.9 });
+    c.light?.(wx + 0.5, wy + 0.1, wz - 0.7, 0xffa050, 3.4, 6.5, { flicker: true, priority: 1.1 });
+    whenAsset('c_mask_bull', () => {
+      const m = assetModel('c_mask_bull');
+      if (!m) return;
+      m.rotation.y = Math.PI; // de cara al cuarto
+      m.scale.setScalar(1.45); // (a tamaño de trofeo: la cabeza de la bailarina es más chica)
+      m.position.set(0, -0.36, 0.03);
+      m.traverse((o) => { if (o.isMesh && o.material?.color) { o.material = o.material.clone(); o.material.color.multiplyScalar(1.6); o.material.roughness = Math.min(0.85, o.material.roughness ?? 0.7); } });
+      m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.layers.enable(1); } });
+      pivot.add(m);
+    });
   }
 
   // luces frías en algunas ventanas: el relámpago entra por ahí

@@ -99,6 +99,10 @@ export const CASTLE_MANIFEST = {
   c_scarecrow_hat: { url: P + 'art/scarecrow_hat.glb', scale: 1, center: false },
   c_haybale: { url: P + 'art/haybale.glb', scale: 1 },
   c_skull: { url: P + 'art/skull.glb', scale: 1 },
+  // las máscaras de animales de las bailarinas, como trofeos para colgar en las paredes
+  c_mask_bull: { url: P + 'art/mask_bull.glb', scale: 1, center: false }, c_mask_lion: { url: P + 'art/mask_lion.glb', scale: 1, center: false },
+  c_mask_horse: { url: P + 'art/mask_horse.glb', scale: 1, center: false }, c_mask_cat: { url: P + 'art/mask_cat.glb', scale: 1, center: false },
+  c_mask_pig: { url: P + 'art/mask_pig.glb', scale: 1, center: false }, c_mask_rabbit: { url: P + 'art/mask_rabbit.glb', scale: 1, center: false },
   c_bones: { url: P + 'art/bones_pile.glb', scale: 1, shadow: false },
   c_skel_sit: { url: P + 'art/skeleton_sit.glb', scale: 1, center: false },
   c_skel_lie: { url: P + 'art/skeleton_lie.glb', scale: 1, center: false },

@@ -268,7 +268,7 @@ export class Villagers {
   }
   _digger(n) {
     // la pala (del castillo: c_spade) en la mano; cava, tira la tierra, se seca la frente
-    whenAsset('c_spade', () => { const m = assetModel('c_spade'); if (m && !n.prop) { m.scale.setScalar(0.9); m.userData.noCull = true; m.userData.shovel = true; m.userData.grip = 0.95; this.scene.add(m); n.prop = m; } });
+    whenAsset('c_spade', () => { const m = assetModel('c_spade'); if (m && !n.prop) { m.scale.setScalar(0.9); m.userData.noCull = true; m.userData.shovel = true; m.userData.grip = 1.12; this.scene.add(m); n.prop = m; } });
     return (npc, dt) => {
       npc.speed = 0; npc.baseYaw = Math.PI;
       const d = npc.data;

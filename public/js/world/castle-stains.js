@@ -161,8 +161,9 @@ export function stainCastle(castle) {
   B(S.hands, IX1 - 0.06, 1.3, -106.4, -1, 0, 0, 0.9, 0.9, { opacity: 0.8 });
   B(S.pool, 14.2, 0.07, -117.2, 0, 1, 0, 1.4, 1.1, { opacity: 0.7 });
   // patio: la horca
-  B(S.pool, 30.9, 0.515, -90, 0, 1, 0, .95, 1.1, { opacity: 0.85 });
-  B(S.drips, 30.4, 0.25, -88.39, 0, 0, 1, 1.4, 0.45, { off: 0.006, opacity: 0.8 });
+  // el charco en el piso, justo abajo de la trampilla abierta (hueco x +0.03..+0.97, z -1.24..-0.52 de la horca en 30,-90)
+  B(S.pool, 30.5, 0.025, -90.9, 0, 1, 0, 1.1, 1.3, { opacity: 0.85 });
+  B(S.splat, 30.2, 0.026, -91.5, 0, 1, 0, 0.7, 0.7, { opacity: 0.6 });
 
   castle.stains = st.finish();
   return st;
