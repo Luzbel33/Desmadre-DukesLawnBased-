@@ -192,6 +192,7 @@ function drawFace(canvas, look, expr, t = 0) {
 }
 
 // ---------------------------------------------------------------- personaje
+const smooth = (x) => x * x * (3 - 2 * x);
 const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
 const tmpQ = new THREE.Quaternion();
@@ -939,6 +940,69 @@ export class Character {
         J.shoulderL[0] = lerp(J.shoulderL[0], -0.3, k);
         break;
       }
+      // humor físico (game/gags.js pone el sonido y lo que sale): son del torso, las piernas siguen caminando
+      case 'pee': {
+        const k = smooth(clamp(at / 0.4, 0, 1)) * (at > 4.8 ? clamp(1 - (at - 4.8) / 0.4, 0, 1) : 1);
+        // las dos manos adelante, a la altura de la bragueta
+        J.shoulderL[0] = lerp(J.shoulderL[0], -0.28, k); J.shoulderR[0] = lerp(J.shoulderR[0], -0.28, k);
+        J.shoulderL[2] = lerp(J.shoulderL[2], -0.32, k); J.shoulderR[2] = lerp(J.shoulderR[2], 0.32, k);
+        J.elbowL[0] = lerp(J.elbowL[0], -0.6, k); J.elbowR[0] = lerp(J.elbowR[0], -0.6, k);
+        // primero mira para abajo; cuando sale, el alivio (cabeza atrás, ojos al cielo); después vuelve a apuntar
+        const relief = at > 1.0 && at < 2.7 ? Math.sin(((at - 1.0) / 1.7) * Math.PI) : 0;
+        J.neck[0] += (0.35 * clamp(1 - (at - 0.4) / 0.6, 0, 1) - 0.6 * relief) * k;
+        J.spine[0] += (-0.12 - 0.08 * relief) * k;
+        J.hips = J.hips || [0, 0, 0];
+        J.hips[0] -= 0.12 * k; J.hips[1] += Math.sin(at * 1.4) * 0.07 * k; // cadera adelante y el vaivén de apuntar
+        if (at > 4.3 && at < 4.85) { const s = Math.sin(at * 42) * 0.15 * k; J.elbowL[0] += s; J.elbowR[0] += s; J.hips[0] += s * 0.3; } // las sacudidas
+        break;
+      }
+      case 'puke': {
+        const k = clamp(at / 0.2, 0, 1) * (at > 3.0 ? clamp(1 - (at - 3.0) / 0.4, 0, 1) : 1);
+        if (at < 0.6) { // la arcada: una mano a la boca, la otra a la panza, se le infla el pecho
+          const a = smooth(clamp(at / 0.3, 0, 1)) * k;
+          J.shoulderR[0] = lerp(J.shoulderR[0], -1.55, a); J.shoulderR[2] = lerp(J.shoulderR[2], 0.42, a); J.elbowR[0] = lerp(J.elbowR[0], -2.25, a);
+          J.shoulderL[0] = lerp(J.shoulderL[0], -0.5, a); J.shoulderL[2] = lerp(J.shoulderL[2], -0.25, a); J.elbowL[0] = lerp(J.elbowL[0], -1.5, a);
+          J.spine[0] += -0.08 * a + Math.max(0, Math.sin(at * 24)) * 0.05; J.neck[0] -= 0.1 * a;
+        } else if (at < 2.5) { // se dobla y larga todo en tres arcadas (las mismas de game/gags.js)
+          const h = Math.exp(-(((at - 1.0) / 0.1) ** 2)) + Math.exp(-(((at - 1.6) / 0.1) ** 2)) + Math.exp(-(((at - 2.1) / 0.1) ** 2));
+          const b = smooth(clamp((at - 0.6) / 0.3, 0, 1)) * k;
+          // doblado desde la cadera (la pelvis se inclina, los muslos compensan y las rodillas ceden)
+          J.hips = J.hips || [0, 0, 0]; J.hips[0] += 0.42 * b;
+          J.hipL[0] -= 0.5 * b; J.hipR[0] -= 0.5 * b; J.kneeL[0] += 0.38 * b; J.kneeR[0] += 0.38 * b;
+          J.spine[0] += (0.6 + 0.25 * h) * b; J.neck[0] += (-0.25 - 0.3 * h) * b;
+          J.shoulderL[0] = lerp(J.shoulderL[0], -0.95, b); J.elbowL[0] = lerp(J.elbowL[0], -0.15, b); J.shoulderL[2] = lerp(J.shoulderL[2], 0.08, b); // la mano a la rodilla
+          J.shoulderR[0] = lerp(J.shoulderR[0], -0.5 - 0.5 * h, b); J.elbowR[0] = lerp(J.elbowR[0], -0.5, b); J.shoulderR[2] = lerp(J.shoulderR[2], -0.2, b);
+          hipsY -= 0.1 * b;
+        } else { // se limpia la boca con el antebrazo, todavía medio doblado
+          const w = smooth(clamp((at - 2.5) / 0.25, 0, 1)) * k;
+          J.hips = J.hips || [0, 0, 0]; J.hips[0] += 0.42 * k * (1 - w); J.hipL[0] -= 0.5 * k * (1 - w); J.hipR[0] -= 0.5 * k * (1 - w);
+          J.spine[0] += 0.3 * k * (1 - w * 0.6);
+          J.shoulderR[0] = lerp(J.shoulderR[0], -1.45, w); J.shoulderR[2] = lerp(J.shoulderR[2], 0.55, w); J.elbowR[0] = lerp(J.elbowR[0], -2.0, w);
+          J.shoulderR[1] += Math.sin((at - 2.5) * 9) * 0.35 * w;
+          J.neck[1] -= 0.2 * w;
+        }
+        break;
+      }
+      case 'burp': {
+        const k = clamp(at / 0.2, 0, 1) * (at > 1.7 ? clamp(1 - (at - 1.7) / 0.3, 0, 1) : 1);
+        const thump = at < 0.45 ? Math.max(0, Math.sin((at * Math.PI * 2) / 0.22)) : 0; // dos golpecitos en el pecho
+        const out = at > 0.45 && at < 1.3 ? Math.sin(((at - 0.45) / 0.85) * Math.PI) : 0; // el eructo: pecho afuera, cabeza atrás
+        J.shoulderR[0] = lerp(J.shoulderR[0], -1.05 + thump * 0.25, k); J.shoulderR[2] = lerp(J.shoulderR[2], 0.55, k); J.elbowR[0] = lerp(J.elbowR[0], -2.1, k);
+        J.spine[0] += (-0.14 * out + 0.04 * thump) * k; J.neck[0] -= 0.55 * out * k;
+        J.shoulderL[2] += 0.12 * out * k;
+        break;
+      }
+      case 'fart': {
+        const k = smooth(clamp(at / 0.3, 0, 1)) * (at > 1.8 ? clamp(1 - (at - 1.8) / 0.4, 0, 1) : 1);
+        const push = at > 0.35 && at < 0.75 ? Math.sin(((at - 0.35) / 0.4) * Math.PI) : 0;
+        const still = 1 - clamp(spd / 1.5, 0, 1); // caminando no levanta la pierna
+        J.spine[0] += (0.35 + 0.12 * push) * k;
+        J.hips = J.hips || [0, 0, 0]; J.hips[0] += 0.22 * k * still;
+        J.hipR[0] -= 0.45 * k * still; J.kneeR[0] += 0.55 * k * still; J.hipR[2] -= 0.2 * k * still;
+        J.shoulderR[0] = lerp(J.shoulderR[0], 0.55, k); J.elbowR[0] = lerp(J.elbowR[0], -0.7, k); J.shoulderR[2] = lerp(J.shoulderR[2], -0.2, k); // la mano en la nalga
+        J.neck[1] += 0.65 * k * clamp(at / 0.6, 0, 1); J.spine[1] += 0.25 * k; // mira para atrás a ver el desastre
+        break;
+      }
       case 'vomit': {
         const k = clamp(at / 0.3, 0, 1) * (at > 2.2 ? clamp(1 - (at - 2.2) / 0.4, 0, 1) : 1);
         J.spine[0] += 0.9 * k;
@@ -1148,13 +1212,17 @@ export class Character {
         J.hips = [0.25 * k, 0, 0];
         break;
       }
-      case 'cagar': { // en cuclillas, haciendo fuerza (tiembla)
-        const strain = et > 0.8 && et < 3 ? Math.sin(et * 30) * 0.02 : 0;
-        J.hipL[0] = J.hipR[0] = -1.75; J.kneeL[0] = J.kneeR[0] = 2.35;
-        J.hipL[2] = 0.35; J.hipR[2] = -0.35;
-        J.spine[0] = 0.4 + strain; J.neck[0] = -0.2;
-        J.shoulderL[0] = J.shoulderR[0] = -1.0; J.elbowL[0] = J.elbowR[0] = -1.1;
-        addY(-0.62);
+      case 'cagar': { // baja en cuclillas, hace fuerza (tiembla), mira a los costados por si alguien vio y se para
+        const down = smooth(clamp(et / 0.6, 0, 1)) * (et > 3.3 ? clamp(1 - (et - 3.3) / 0.45, 0, 1) : 1);
+        const strain = et > 0.8 && et < 2.2 ? 1 : 0, shake = strain * Math.sin(et * 34) * 0.025;
+        J.hipL[0] = J.hipR[0] = -1.75 * down; J.kneeL[0] = J.kneeR[0] = 2.35 * down;
+        J.hipL[2] = 0.35 * down; J.hipR[2] = -0.35 * down;
+        J.spine[0] = (0.4 + strain * 0.12) * down + shake; J.neck[0] = -0.2 * down;
+        J.neck[1] = et > 2.3 && et < 3.25 ? Math.sin((et - 2.3) * 7) * 0.6 : 0;
+        // antebrazos apoyados en las rodillas, las manos colgando adelante (apretando cuando hace fuerza)
+        J.shoulderL[0] = J.shoulderR[0] = -0.5 * down; J.shoulderL[2] = 0.18 * down; J.shoulderR[2] = -0.18 * down;
+        J.elbowL[0] = J.elbowR[0] = (-0.75 - strain * 0.2) * down;
+        addY(-0.62 * down);
         break;
       }
       case 'pushups': {

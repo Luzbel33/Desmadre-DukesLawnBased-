@@ -24,8 +24,9 @@ Fuente única de trabajo pendiente.
 - [ ] Ajedrez jugable en el castillo (y quizás en otros lugares).
 
 ### Humor físico estilo POSTAL 2
-- [ ] Hecho 13/10 (rueda de gestos Z: mear, vomitar, eructar, pedo, cagarse + encendedor en la taberna y la barra del
-      búnker): probar en multiplayer real y ajustar. Los sonidos son sintetizados: si Luz quiere, buscar grabaciones CC0.
+- [ ] Hecho 13/10 (rueda Z: mear, vomitar, eructar, pedo, cagarse + encendedor; `game/gags.js`): se camina mientras
+      tanto, el chorro va adonde apuntás y mancha a players y NPC (se seca solo), la caca reventada mancha, los NPC
+      vomitan del asco. Probar en multiplayer real. Sonidos sintetizados: si Luz quiere, grabaciones CC0.
 
 ### Admin
 - [ ] Hecho 13/10: espectar, congelar, muteo global (voz y chat), darle cosas/plata a otro, velocidad/salto/gravedad de

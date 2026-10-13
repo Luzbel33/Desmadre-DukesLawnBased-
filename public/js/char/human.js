@@ -464,6 +464,8 @@ function damageMaterial(base, dmgTex) {
     uFlush: { value: 0 },
     uPale: { value: 0 },
     uMask: { value: 0 },
+    uFilth: { value: 0 }, // pis / vómito / caca encima (canal A de uDmg); baja solo: se seca
+    uFilthCol: { value: new THREE.Color(0xd8c24a) },
   };
   mat.userData.u = u;
   mat.onBeforeCompile = (sh) => {
@@ -472,7 +474,7 @@ function damageMaterial(base, dmgTex) {
       '#include <begin_vertex>',
       '#include <begin_vertex>\nvHeadInfluence = headInfluence;',
     );
-    sh.fragmentShader = 'uniform sampler2D uDmg;\nuniform float uFlush;\nuniform float uPale;\n' + sh.fragmentShader.replace(
+    sh.fragmentShader = 'uniform sampler2D uDmg;\nuniform float uFlush;\nuniform float uPale;\nuniform float uFilth;\nuniform vec3 uFilthCol;\n' + sh.fragmentShader.replace(
       '#include <map_fragment>',
       /* glsl */ `#include <map_fragment>
       {
@@ -484,6 +486,7 @@ function damageMaterial(base, dmgTex) {
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.32, 0.015, 0.02), wound);
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.1, 0.0, 0.005), smoothstep(0.75, 1.0, dm.r));
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.26, 0.0, 0.01), clamp(dm.g * 1.15, 0.0, 0.93));
+        diffuseColor.rgb = mix(diffuseColor.rgb, uFilthCol * (0.75 + 0.25 * dm.a), clamp(dm.a * uFilth, 0.0, 1.0) * 0.78);
         float lum = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lum) * vec3(0.9, 0.95, 1.0), uPale * 0.6);
       }`,
@@ -492,12 +495,12 @@ function damageMaterial(base, dmgTex) {
       /* glsl */ `#include <roughnessmap_fragment>
       {
         vec4 dm2 = texture2D(uDmg, vMapUv);
-        roughnessFactor = mix(roughnessFactor, 0.18, clamp(dm2.g + dm2.r, 0.0, 1.0));
+        roughnessFactor = mix(roughnessFactor, 0.18, clamp(dm2.g + dm2.r + dm2.a * uFilth * 0.8, 0.0, 1.0));
       }`,
     );
     sh.fragmentShader = 'uniform float uMask;\nvarying float vHeadInfluence;\n' + sh.fragmentShader;
   };
-  mat.customProgramCacheKey = () => 'human-dmg-mask-v2';
+  mat.customProgramCacheKey = () => 'human-dmg-mask-v3';
   return mat;
 }
 
@@ -1035,6 +1038,41 @@ export class HumanCharacter {
     this.dmgTex.needsUpdate = true;
   }
 
+  // suciedad (pis, vómito, caca) donde le pegó (punto en mundo): manchas en el canal A, de un color por personaje
+  // (el último que le cayó tiñe lo demás); se seca en ~70 s (uFilth baja) y al final se borra
+  filth(world, col, amount = 1) {
+    if (!this.skinned || !this.joints?.length) return;
+    this.root.updateWorldMatrix(true, true);
+    let best = 0, bd = Infinity;
+    for (let i = 0; i < this.joints.length; i++) {
+      this.joints[i].updateWorldMatrix(true, false);
+      const d = V1.setFromMatrixPosition(this.joints[i].matrixWorld).distanceToSquared(world);
+      if (d < bd) { bd = d; best = i; }
+    }
+    const u = this.material.userData.u;
+    u.uFilthCol.value.lerp(new THREE.Color(col), this.filthK > 0.05 ? 0.5 : 1);
+    const N = DMG_SIZE, D = this.dmgData;
+    // una mancha grande de borde irregular y gotitas alrededor (salpicado), un poco chorreada hacia abajo
+    const seed = Math.random() * 1000, hash = (x, y) => { const h = Math.sin(x * 12.9898 + y * 78.233 + seed) * 43758.5453; return h - Math.floor(h); };
+    for (let n = 0; n < 7; n++) {
+      const big = n === 0, spread = big ? 0 : 0.16;
+      const at = new THREE.Vector3((Math.random() - 0.5) * spread, (Math.random() - 0.65) * spread * 1.4, (Math.random() - 0.5) * spread).add(world);
+      const uv = this._uvAt(best, at);
+      if (!uv) continue;
+      const rad = (big ? 0.02 + Math.random() * 0.012 : 0.005 + Math.random() * 0.007) * amount * N, cx = uv[0] * N, cy = uv[1] * N;
+      for (let y = Math.max(0, Math.floor(cy - rad * 1.8)); y <= Math.min(N - 1, Math.ceil(cy + rad * 1.8)); y++) {
+        for (let x = Math.max(0, Math.floor(cx - rad * 1.3)); x <= Math.min(N - 1, Math.ceil(cx + rad * 1.3)); x++) {
+          const dx = (x + 0.5 - cx) / rad, dy = (y + 0.5 - cy) / (rad * 1.5);
+          // borde comido por ruido: no un círculo prolijo
+          const d2 = (dx * dx + dy * dy) * (0.7 + hash(Math.floor(x / 3), Math.floor(y / 3)) * 0.6);
+          if (d2 < 1) { const k = (y * N + x) * 4; D[k + 3] = Math.min(255, D[k + 3] + Math.min(1, (1 - d2) * 2.2) * (170 + hash(x, y) * 85)); }
+        }
+      }
+    }
+    this.dmgTex.needsUpdate = true;
+    this.filthK = 1; u.uFilth.value = 1;
+  }
+
   // UV del punto más cercano de una parte (punto en mundo)
   _uvAt(part, world) {
     const sk = this.skinned;
@@ -1085,6 +1123,11 @@ export class HumanCharacter {
   }
 
   _dripStep(dt) {
+    if (this.filthK > 0) { // la suciedad se seca de a poco y al final se borra
+      this.filthK = Math.max(0, this.filthK - dt / 70);
+      this.material.userData.u.uFilth.value = Math.min(1, this.filthK * 1.6);
+      if (!this.filthK) { for (let k = 3; k < this.dmgData.length; k += 4) this.dmgData[k] = 0; this.dmgTex.needsUpdate = true; }
+    }
     if (!this.drips.length) return;
     for (let n = this.drips.length - 1; n >= 0; n--) {
       const d = this.drips[n];
