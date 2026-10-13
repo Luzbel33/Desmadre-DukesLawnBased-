@@ -12,12 +12,16 @@ import { HumanCharacter } from '../char/human.js';
 import { CASTLE, INTERACT } from '../shared/mapdata.js';
 import { whenAsset, assetModel } from './assets.js';
 import { getMat } from '../world/builder.js';
+import { UpperHaunts, UPPER_ZONES } from './haunt-upper.js';
 
 const F0 = CASTLE.keep.floor;
 const KZ1 = CASTLE.keep.z1;
 const V1 = new THREE.Vector3();
 const V2 = new THREE.Vector3();
 const HAS_DOM = typeof document !== 'undefined';
+
+// gira de a poco hacia un ángulo (por el camino corto)
+function dampYaw(a, b, k) { const d = Math.atan2(Math.sin(b - a), Math.cos(b - a)); return a + d * Math.min(1, k); }
 
 // ---------------------------------------------------------------- material de fantasma (piel translúcida que brilla en el borde)
 function ghostMaterial(map, color) {
@@ -94,6 +98,13 @@ class Ghost {
     this.t = 0;
     this.target = 1.2;
   }
+  // camina despacio hasta un punto (con pasos de verdad) y ahí se desvanece
+  walk(to, speed = 1.1) {
+    this.mode = 'walk';
+    this.walkTo = to.clone();
+    this.speed = speed;
+    this.t = 0;
+  }
   get visible() { return this.char.root.visible; }
   update(dt, time) {
     if (!this.char.root.visible) return;
@@ -110,9 +121,21 @@ class Ghost {
       bob = 0;
     }
     if (this.mode === 'rise') bob = -1.6 + Math.min(1, this.t / 1.6) * 1.6;
+    let walkSpeed = 0;
+    if (this.mode === 'walk' && this.walkTo) {
+      V1.copy(this.walkTo).sub(this.pos); V1.y = 0;
+      const d = V1.length();
+      if (d < 0.2) { this.hide(); this.walkTo = null; }
+      else {
+        this.yaw = dampYaw(this.yaw, Math.atan2(V1.x, V1.z), dt * 6);
+        this.pos.addScaledVector(V1.normalize(), Math.min(d, this.speed * dt));
+        walkSpeed = this.speed;
+      }
+      bob = 0.03; // apenas despegada del piso
+    }
     this.char.root.position.set(this.pos.x, this.pos.y + (this.mode === 'sit' ? 0 : bob), this.pos.z);
     this.char.root.rotation.y = this.yaw;
-    this.char.animate({ speed: 0, grounded: true, sit: this.mode === 'sit', aimPitch: this.pose.pitch || 0, headYaw: this.pose.headYaw || 0 }, dt);
+    this.char.animate({ speed: walkSpeed, grounded: true, sit: this.mode === 'sit', aimPitch: this.pose.pitch || 0, headYaw: this.pose.headYaw || 0 }, dt);
     const J = this.char.joints;
     const E = new THREE.Euler();
     const q = new THREE.Quaternion();
@@ -121,6 +144,9 @@ class Ghost {
       // brazos hacia adelante, la cabeza echada hacia atrás (grita)
       add(3, -1.35, 0, 0.25); add(5, -1.35, 0, -0.25); add(4, -0.2, 0, 0); add(6, -0.2, 0, 0); add(2, -0.35, 0, 0);
       add(7, 0.35, 0, 0); add(9, 0.2, 0, 0); add(8, 0.5, 0, 0); add(10, 0.6, 0, 0);
+    } else if (this.mode === 'walk') {
+      // camina con la cabeza gacha y los brazos colgando (sin balancearlos)
+      add(2, 0.32, 0, 0.15); add(3, 0, 0, -0.08); add(5, 0, 0, 0.08);
     } else if (this.mode !== 'sit') {
       // colgando: brazos caídos y separados, cabeza ladeada, pies en punta (flota)
       add(3, 0, 0, -0.18); add(5, 0, 0, 0.18); add(2, 0.18, 0.1, 0.32 + Math.sin(time * 0.9) * 0.05);
@@ -283,6 +309,7 @@ const ZONES = {
   graveyard: [25, -0.5, -130, 43.6, 6, -103.2],
   eastcourt: [4, -0.5, -103, 43.6, 6, -80.5],
 };
+Object.assign(ZONES, UPPER_ZONES); // el piso de arriba y las torres (game/haunt-upper.js)
 const inBox = (p, b) => p.x > b[0] && p.x < b[3] && p.y > b[1] && p.y < b[4] && p.z > b[2] && p.z < b[5];
 
 export class Haunt {
@@ -302,6 +329,7 @@ export class Haunt {
     this.flameBase = new Map();
     this.lady = { stage: 0, t: -99 };
     this._buildGhosts();
+    this.upper = new UpperHaunts(this);
     this._buildDoors();
     this._buildInteract();
     this._buildWindowLights();
@@ -564,8 +592,9 @@ export class Haunt {
           // la dama cruza al fondo, en la oscuridad
           const g = this.lady.g;
           if (g && this._near(c.anchors.gallery, 14)) {
+            this.lady.flashOnly = false; // (si venía del cementerio quedaba visible solo con los relámpagos)
             g.show(V1.set(-6.5, F0, -124.8), Math.PI / 2, 'stand', 0.75);
-            const walk = setInterval(() => { g.pos.x += 0.09; if (g.pos.x > 6) { clearInterval(walk); g.hide(); } }, 16);
+            g.walk(V2.set(6, F0, -124.8), 1.15);
           }
         }, 4200);
         setTimeout(() => { gd.target = 1; gd.speed = 0.9; sfx?.trigger('door-creak', V1.set(3, F0 + 1.5, -116.8), 0.7, { full: 3, max: 25 }); }, 9000);
@@ -697,18 +726,37 @@ export class Haunt {
   }
 
   // silla de ruedas que cruza sola la sala de los retratos
+  // la silla de ruedas de la sala de los retratos: en la oscuridad gira hacia vos y rueda de frente (rechinando),
+  // frena sola antes de chocarte o de llegar a una pared y se queda donde paró
   _wheelchair() {
     const m = this.decor?.models.wheelchair;
-    if (!m) return;
-    const z0 = m.position.z, t0 = G.time;
-    G.sfx?.trigger('door-creak', m.position, 0.7, { full: 2, max: 18, rate: 0.6 });
+    if (!m || this._chairBusy) return;
+    const me = G.me?.pos;
+    const B = { x0: -6.9, x1: 6.9, z0: -125.1, z1: -117.9 }; // adentro de la sala, lejos de los muros
+    const tx = me && me.y > F0 - 1 ? clamp(me.x, B.x0, B.x1) : m.position.x - 2, tz = me && me.y > F0 - 1 ? clamp(me.z, B.z0, B.z1) : m.position.z;
+    const dx = tx - m.position.x, dz = tz - m.position.z, dist = Math.hypot(dx, dz);
+    let run = Math.max(0, Math.min(4.5, dist - 1.2)); // se para a un metro y pico
+    // nunca a través de un mueble: frena antes de lo que tenga adelante
+    const hit = G.phys?.raycast(m.position.x, F0 + 0.35, m.position.z, dx / dist, 0, dz / dist, run + 0.7, undefined, null, (col) => G.phys.info(col)?.kind !== 'me');
+    if (hit && hit.dist < run + 0.7) run = Math.max(0, hit.dist - 0.75);
+    if (run < 0.3) return;
+    this._chairBusy = true;
+    const yaw0 = m.rotation.y, yaw1 = Math.atan2(dx, dz), x0 = m.position.x, z0 = m.position.z;
+    const ux = dx / dist, uz = dz / dist, t0 = G.time, turn = 0.9, roll = run / 1.1;
+    G.sfx?.trigger('door-creak', m.position, 0.7, { full: 2, max: 18, rate: 0.55 });
     const step = () => {
-      const k = (G.time - t0) / 3.2;
-      m.position.z = lerp(z0, -116.8, clamp(k, 0, 1));
-      m.rotation.y = Math.sin(k * 9) * 0.04;
+      const t = G.time - t0;
+      const kt = clamp(t / turn, 0, 1), kr = clamp((t - turn) / roll, 0, 1);
+      const ease = kr * kr * (3 - 2 * kr);
+      let d = yaw1 - yaw0; d = Math.atan2(Math.sin(d), Math.cos(d));
+      m.rotation.y = yaw0 + d * kt * kt * (3 - 2 * kt);
+      m.position.x = x0 + ux * run * ease;
+      m.position.z = z0 + uz * run * ease;
+      m.position.y = F0 + (kr > 0 && kr < 1 ? Math.abs(Math.sin(t * 14)) * 0.006 : 0); // traqueteo de las ruedas
       m.updateMatrixWorld(true);
-      if (k < 1) requestAnimationFrame(step);
-      else setTimeout(() => { m.position.z = z0; m.rotation.y = -Math.PI / 2; m.updateMatrixWorld(true); }, 9000);
+      if (kr > 0 && kr < 1 && Math.random() < 0.04) G.sfx?.trigger('creak', m.position, 0.35, { full: 2, max: 12, rate: 1.4 });
+      if (kr < 1) this._chairStep = step;
+      else { this._chairBusy = false; G.sfx?.trigger('wood', m.position, 0.4, { full: 2, max: 12 }); }
     };
     step();
   }
@@ -816,6 +864,8 @@ export class Haunt {
       cabinet.open = lerp(cabinet.open, cabinet.target, 1 - Math.exp(-dt * 5));
       cabinet.pivot.rotation.y = -cabinet.open * 1.6;
     }
+    this.upper?.update(dt);
+    if (this._chairStep) { const f = this._chairStep; this._chairStep = null; f(); }
     // el cráneo de carnero baja como una palanca y vuelve a su lugar
     const rs = this.ramSkull;
     if (rs) { const k = clamp((t - rs.t) / 1.3, 0, 1); rs.pivot.rotation.x = Math.sin(k * Math.PI) * 0.75; }
@@ -944,6 +994,7 @@ export class Haunt {
 
   _enter(id) {
     const c = this.castle;
+    this.upper?.enter(id);
     if (id === 'hall' && this.doors.keep.open > 0.9 && G.me.pos.z < KZ1 - 2 && this._can('slam', 95)) { this.play('slam'); this._send('slam'); }
     if (id === 'dining' && this._can('dining', 140)) { this.play('dining'); this._send('dining'); }
     if (id === 'gallery' && this._can('gallery', 120)) { this.play('gallery'); this._send('gallery'); }
@@ -958,7 +1009,7 @@ export class Haunt {
     if (f) sfx._loop('fogon-fire', 'fire', 0.55 * (1 + this.fireBoost * 0.6), { x: f.x, y: 0.8, z: f.z }, { bus: 'ambient', full: 3, max: 24 });
     for (const [k, x, z] of [['fp1', -22.6, -109.5], ['fp2', 22.6, -111.5]]) sfx._loop(k, 'fire', 0.3, { x, y: F0 + 0.8, z }, { bus: 'ambient', full: 2, max: 12 });
     const io = this.world.storm?.indoor || 0;
-    const inKeep = G.me && (this.inside.hall || this.inside.dining || this.inside.gallery || this.inside.kitchen || this.inside.library || this.inside.secret || this.inside.crypt || this.inside.balcony);
+    const inKeep = G.me && (this.inside.hall || this.inside.dining || this.inside.gallery || this.inside.kitchen || this.inside.library || this.inside.secret || this.inside.crypt || this.inside.balcony || this.inside.condes || this.inside.carto || this.inside.botica || this.inside.armeria || this.inside.archivo);
     sfx._loop('keep-drone', 'drone', inKeep ? 0.32 * Math.max(0.5, io) : 0, null, { bus: 'ambient' });
     sfx._loop('heart', 'heartbeat', this.heart * 0.55, null, { bus: 'sfx', rate: 0.9 + this.heart * 0.5 });
     sfx._loop('clock-tick', 'clock-tick', 0.25, { x: 7.3, y: F0 + 1.5, z: -112.6 }, { bus: 'ambient', full: 1.5, max: 11 });

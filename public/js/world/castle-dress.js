@@ -479,6 +479,8 @@ function apothecaryBottles(d, floor) {
       d.c.deco('woodDark', x, y + 0.30 * scale, z, 0.048 * scale, 0.05, 0.048 * scale, { mask: false });
     }
     im.receiveShadow = true; im.userData.castleRoom = 123; im.updateMatrix(); im.matrixAutoUpdate = false; d.scene.add(im);
+    // los frascos se pueden reventar en un susto (game/haunt-upper.js)
+    (d.c.potionShelves ||= []).push({ im, list: Array.from({ length: 9 }, (_, i) => ({ i, pos: new THREE.Vector3(15.9 + (i % 3) * 0.98 + k * 0.22, floor + 1.84 + Math.floor(i / 3) * 0.7 + 0.15, -125.1) })) });
   }
 }
 

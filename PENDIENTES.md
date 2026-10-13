@@ -19,8 +19,8 @@ Fuente única de trabajo pendiente.
 ### Castillo
 - [ ] Terminar la expansión del castillo: piso de arriba, torres, más habitaciones y mejor hechas (trabajo de Codex
       sin commitear integrado el 13/10: `world/castle-expansion.js`).
-- [ ] Jumpscares mejores y con más variaciones; ruidos nuevos.
-- [ ] La silla de ruedas de la sala de los retratos atraviesa la pared; el fantasma se mueve re random: arreglarlos.
+- [ ] Sustos del piso de arriba y las torres hechos (`game/haunt-upper.js`, 2-3 variantes por cuarto, ruidos al azar):
+      probarlos jugando y ajustar tiempos. Faltan sustos nuevos en la planta baja (salón, cocina, biblioteca).
 - [ ] Ajedrez jugable en el castillo (y quizás en otros lugares).
 
 ### Humor físico estilo POSTAL 2 (fácil de usar, en los gestos)
