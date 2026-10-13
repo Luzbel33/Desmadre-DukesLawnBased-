@@ -16,6 +16,7 @@ import { Reflector } from 'three/addons/objects/Reflector.js';
 import { G } from '../core/G.js';
 import { psyArtKit, PSY_ART } from './psy-art.js';
 import { bunkerScreen } from './club-screens.js';
+import { snakesTexture, lilacMaterial, penrose } from './psy-illusions.js';
 
 const HAS_DOM = typeof document !== 'undefined';
 const W = CLUB.wings, H = CLUB.hall, WT = 0.4;
@@ -1049,6 +1050,33 @@ export class ClubWings {
         this.c.group.add(m);
       }
     });
+    // ilusiones ópticas (psy-illusions.js): serpientes rotantes en la pared este, el lilac chaser en la oeste y el
+    // triángulo imposible flotando en el medio (siempre te mira con su único punto de vista posible)
+    {
+      const panel = (x, z, yaw, mat, w) => {
+        const ex = Math.sin(yaw), ez = Math.cos(yaw);
+        this.c.phys.box(x + ex * 0.06, 2.4, z + ez * 0.06, Math.abs(ez) > 0.01 ? w / 2 + 0.1 : 0.07, w / 2 + 0.1, Math.abs(ez) > 0.01 ? 0.07 : w / 2 + 0.1, 0, { paint: false, mat: 'wood' });
+        this.deco('gold', x + ex * 0.035, 2.4, z + ez * 0.035, Math.abs(ez) > 0.01 ? w + 0.16 : 0.05, w + 0.16, Math.abs(ez) > 0.01 ? 0.05 : w + 0.16);
+        if (!HAS_DOM) return;
+        const m = this.mesh(new THREE.PlaneGeometry(w, w), mat, x + ex * 0.065, 2.4, z + ez * 0.065, { yaw });
+        m.receiveShadow = false;
+      };
+      if (HAS_DOM) {
+        const snakes = new THREE.MeshBasicMaterial({ map: snakesTexture(0), color: 0xb0b0b0 });
+        panel(ps.x1, -475.2, -Math.PI / 2, snakes, 2.6);
+        panel(ps.x1, -467, -Math.PI / 2, new THREE.MeshBasicMaterial({ map: snakesTexture(1.3), color: 0xb0b0b0 }), 2.6);
+        const lilac = lilacMaterial();
+        panel(ps.x0, -466.1, Math.PI / 2, lilac, 2.4);
+        this.c.anim.push((t) => { lilac.uniforms.uT.value = t % 1000; });
+        const tri = penrose({ L: 1.3, t: 0.22 });
+        tri.group.position.set(-36, 3.25, -465.5);
+        this.c.group.add(tri.group);
+        this.c.anim.push((t) => tri.step(t, G.camera));
+      } else {
+        panel(ps.x1, -475.2, -Math.PI / 2, null, 2.6); panel(ps.x1, -467, -Math.PI / 2, null, 2.6); panel(ps.x0, -466.1, Math.PI / 2, null, 2.4);
+      }
+      this.sign((g, w, h) => { g.clearRect(0, 0, w, h); g.fillStyle = '#ffffff'; g.font = 'bold 40px Rubik, sans-serif'; g.textAlign = 'center'; g.fillText('mirá la cruz del medio', w / 2, 52); }, 512, 80, 1.4, 0.22, ps.x0 + 0.08, 3.86, -466.1, Math.PI / 2);
+    }
     // tres espejos deformantes de verdad en la pared oeste (te ves con panza, finito u ondulado)
     this.funhouse = [];
     if (HAS_DOM) {
