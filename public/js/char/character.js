@@ -11,6 +11,7 @@ export const PARENT = [-1, 0, 1, 1, 3, 1, 5, 0, 7, 0, 9];
 export const CHILDREN = PARENT.map((_, i) => PARENT.map((p, j) => (p === i ? j : -1)).filter((j) => j >= 0));
 export const JOINT_NAMES = ['hips', 'spine', 'neck', 'shoulderL', 'elbowL', 'shoulderR', 'elbowR', 'hipL', 'kneeL', 'hipR', 'kneeR'];
 export const DMG_RES = 64;
+const SPRING_OMEGA = [13, 10, 9, 13, 15, 13, 15, 20, 22, 20, 22]; // frecuencia natural (rad/s) de cada articulación (hips, spine, neck, brazos, piernas)
 
 function specs(body) {
   const fat = body === 'gordo', thin = body === 'flaco';
@@ -746,10 +747,21 @@ export class Character {
       J.elbowL[0] = J.elbowR[0] = -0.25 - run * 1.0;
       J.shoulderL[2] = 0.08; J.shoulderR[2] = -0.08;
       J.spine[0] = run * 0.28 + walkAmt * 0.05;
-      J.spine[1] = sw * amp * 0.25;
-      hipsY = -Math.abs(Math.cos(ph)) * 0.04 * walkAmt;
-      // respiración en idle
-      J.spine[0] += Math.sin(t * 1.6) * 0.015 * (1 - walkAmt);
+      // la pelvis gira con la pierna que avanza y el torso en contrafase (como camina la gente de verdad); la cabeza
+      // se estabiliza (compensa casi todo ese giro) y el cuerpo se carga sobre el pie que apoya
+      J.hips[1] = -sw * amp * 0.2; J.spine[1] = sw * amp * 0.42; J.neck[1] = -sw * amp * 0.16;
+      J.hips[2] = sw * 0.045 * walkAmt; J.spine[2] = -sw * 0.03 * walkAmt; J.neck[2] = sw * 0.02 * walkAmt;
+      J.shoulderL[2] += Math.max(0, -sw) * 0.08 * walkAmt; J.shoulderR[2] -= Math.max(0, sw) * 0.08 * walkAmt;
+      hipsY = -Math.abs(Math.cos(ph)) * (0.04 + run * 0.025) * walkAmt;
+      // reposo con vida: respira, pasa el peso de una pierna a la otra cada tanto, la cabeza acompaña y las manos no
+      // quedan tiesas (codos apenas doblados)
+      const idle = 1 - walkAmt, p0 = (A.phase0 ??= Math.random() * 6.28), shift = Math.sin(t * 0.37 + p0) * idle, sway = Math.sin(t * 0.61 + 1.7) * idle;
+      J.spine[0] += Math.sin(t * 1.6) * 0.015 * idle;
+      J.hips[2] += shift * 0.035; J.hipL[2] -= shift * 0.03; J.hipR[2] -= shift * 0.03;
+      J.kneeL[0] += Math.max(0, shift) * 0.1; J.kneeR[0] += Math.max(0, -shift) * 0.1;
+      J.hips[1] += sway * 0.04; J.spine[1] -= sway * 0.025; J.neck[1] += Math.sin(t * 0.23 + 0.5) * 0.06 * idle; J.neck[0] += Math.sin(t * 0.31) * 0.025 * idle;
+      J.elbowL[0] -= 0.14 * idle; J.elbowR[0] -= 0.14 * idle; J.shoulderL[2] += 0.04 * idle; J.shoulderR[2] -= 0.04 * idle;
+      J.shoulderL[0] += Math.sin(t * 0.5) * 0.03 * idle; J.shoulderR[0] += Math.sin(t * 0.5 + 2) * 0.03 * idle;
       J.shoulderL[2] += Math.sin(t * 1.6) * 0.02 * (1 - walkAmt);
       J.shoulderR[2] -= Math.sin(t * 1.6) * 0.02 * (1 - walkAmt);
     }
@@ -1098,10 +1110,29 @@ export class Character {
     // aplicar suavizado (la pierna que patea y el cuello del cabezazo siguen más rápido: el golpe es seco)
     const k = 1 - Math.exp(-dt * 18);
     const kFast = 1 - Math.exp(-dt * 46);
+    // caminando, parado o en el aire cada articulación sigue su objetivo como un resorte amortiguado (con un poquito
+    // de rebote y retraso distinto por parte: la cadera primero, el torso después y la cabeza al final), así los
+    // arranques, frenadas y giros no se ven de robot. Las acciones (golpes, bailes, poses) siguen con el suavizado
+    // rápido de siempre, que es el que tienen calibrado.
+    const spring = !st.action && !st.emote && !st.sit && !st.drive && !st.slide && !st.dive && !st.crouch;
+    const V = A.vel || (A.vel = JOINT_NAMES.map(() => ({ x: 0, y: 0, z: 0 })));
+    const OM = SPRING_OMEGA, hdt = Math.min(dt, 1 / 20);
     for (let i = 0; i < JOINT_NAMES.length; i++) {
       const n = JOINT_NAMES[i];
       const tgt = J[n];
       const c = A.cur[i];
+      if (spring && hdt > 0) {
+        const w = OM[i], z = i >= 7 ? 0.95 : 0.7, v = V[i];
+        for (const ax of ['x', 'y', 'z']) {
+          const to = tgt[ax === 'x' ? 0 : ax === 'y' ? 1 : 2];
+          v[ax] += ((to - c[ax]) * w * w - 2 * z * w * v[ax]) * hdt;
+          c[ax] += v[ax] * hdt;
+        }
+        const j2 = this.joints[i];
+        if (!this.detached[i]) j2.rotation.set(c.x, c.y, c.z, 'YXZ');
+        continue;
+      }
+      V[i].x = V[i].y = V[i].z = 0;
       const kk = (st.action === 'kick' && (i === 9 || i === 10)) || (st.action === 'headbutt' && (i === 1 || i === 2)) ? kFast : k;
       c.x += (tgt[0] - c.x) * kk;
       c.y += (tgt[1] - c.y) * kk;
