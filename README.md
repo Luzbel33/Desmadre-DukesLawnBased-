@@ -16,6 +16,8 @@ Lobby online 3D para boludear con amigos: cuerpos físicos estilo Half Sword, pi
 
 No hace falta `npm install`: las librerías y los modelos vienen incluidos. Si cambiaste de versión, recargá con **Ctrl+F5**.
 
+El acceso de dueño requiere `OWNER_KEY` en el servidor; no hay una clave pública por defecto. En Render se configura como variable de entorno. `JUGAR.bat` conserva una clave local aleatoria en `data/owner.key` (fuera de Git) y la carga al arrancar, salvo que ya hayas definido `OWNER_KEY`. Usá esa clave en el ingreso o en F9. Sin clave configurada los invitados pueden jugar, pero nadie obtiene privilegios de dueño.
+
 ## Controles
 
 Todas las teclas se pueden cambiar en la pausa (Esc → Controles). Estas son las de fábrica:

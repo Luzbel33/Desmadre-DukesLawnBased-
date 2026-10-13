@@ -11,7 +11,7 @@ if(typeof WebSocket==='undefined')throw new Error('Esta prueba requiere Node 22+
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const reserve=createServer();await new Promise(r=>reserve.listen(0,'127.0.0.1',r));const port=reserve.address().port;await new Promise(r=>reserve.close(r));
 const dir=fs.mkdtempSync(path.join(os.tmpdir(),'dukes-network-'));
-const server=spawn(process.execPath,['server/server.js'],{cwd:root,env:{...process.env,HOST:'127.0.0.1',PORT:String(port),DATA_DIR:dir},stdio:['ignore','pipe','pipe']});
+const server=spawn(process.execPath,['server/server.js'],{cwd:root,env:{...process.env,HOST:'127.0.0.1',PORT:String(port),DATA_DIR:dir,OWNER_KEY:''},stdio:['ignore','pipe','pipe']});
 let log='';server.stdout.on('data',b=>log+=b);server.stderr.on('data',b=>log+=b);
 const peers=[],report={http:[],checks:[]};const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function until(check,label,ms=4000){const start=Date.now();while(Date.now()-start<ms){const v=check();if(v)return v;await sleep(20);}throw new Error('Timeout: '+label);}
@@ -29,6 +29,10 @@ try{
   if(file==='/'){assert.equal(r.headers.get('referrer-policy'),'strict-origin-when-cross-origin');assert.match(await r.text(),/id="media"/);}
  }
  const a=await peer('QA A'),b=await peer('QA B');
+ const ownerCheck=await fetch(`http://127.0.0.1:${port}/api/owner`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'SmokePyro',key:'unconfigured-test-key'})});
+ assert.equal((await ownerCheck.json()).ok,false);
+ a.send({t:'adm',a:'login',key:'unconfigured-test-key'});await until(()=>a.messages.some(m=>m.t==='adm'&&m.a==='denied'),'unconfigured owner access denied');
+ report.checks.push('unconfigured owner privileges fail closed; guests still join and play');
  a.send({t:'media',s:'cine',a:'add',v:'M7lc1UVf-VE'});
  const first=await until(()=>b.latest()?.cur?.v==='M7lc1UVf-VE'&&b.latest().cur,'shared video');assert.ok(first.playId);report.checks.push('add shared across 2 clients');
  a.send({t:'media',s:'cine',a:'pause'});await until(()=>b.latest()?.cur?.paused,'pause');assert.ok(b.latest().cur.pos>=0);report.checks.push('pause shared; nonnegative early position');
@@ -45,5 +49,6 @@ try{
  a.send({t:'st',s:{p:[1,0,2],y:0,eq:1}});await until(()=>b.messages.some(m=>m.t==='snap'&&m.P?.some(x=>x[1].eq===1)),'position/equipment');report.checks.push('state/equipment regression');
  report.clients=3;report.result='PASS';console.log(JSON.stringify(report,null,2));
 }finally{
- for(const p of peers)p.ws.close();await sleep(100);server.kill('SIGTERM');await new Promise(r=>server.once('exit',r));fs.rmSync(dir,{recursive:true,force:true});
+ for(const p of peers)p.ws.close();await sleep(100);server.kill('SIGTERM');await new Promise(r=>server.once('exit',r));
+ if(path.dirname(path.resolve(dir))===path.resolve(os.tmpdir())&&path.basename(dir).startsWith('dukes-network-'))fs.rmSync(dir,{recursive:true,force:true});
 }

@@ -10,6 +10,10 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+if not defined OWNER_KEY (
+  if not exist "data\owner.key" node -e "const fs=require('node:fs');fs.mkdirSync('data',{recursive:true});fs.writeFileSync('data/owner.key',require('node:crypto').randomBytes(32).toString('base64url'),{flag:'wx'});"
+  if exist "data\owner.key" set /p OWNER_KEY=<"data\owner.key"
+)
 start "DESMADRE - servidor" cmd /k "cd /d ""%~dp0"" && npm start"
 timeout /t 2 /nobreak >nul
 start "" "http://localhost:3000"

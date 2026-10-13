@@ -4,8 +4,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { Room } from '../server/room.js';
+import { checkOwnerKey } from '../server/owner.js';
 import { PROTOCOL, CLUB, CASTLE } from '../public/js/shared/mapdata.js';
+
+// The Node test runner isolates this file in its own process.
+const TEST_OWNER_KEY = randomBytes(32).toString('hex');
+process.env.OWNER_KEY = TEST_OWNER_KEY;
 
 let ipN = 1;
 function fakeWs() {
@@ -20,12 +26,36 @@ function fakeWs() {
 const say = (ws, obj) => ws.handlers.message(JSON.stringify(obj), false);
 const join = (ws, name, look, key) => say(ws, { t: 'join', v: PROTOCOL, name, look, key });
 
+test('owner access fails closed without configuration and requires the exact key', () => {
+  assert.equal(checkOwnerKey(TEST_OWNER_KEY), true);
+  for (const key of [undefined, null, '', {}, [TEST_OWNER_KEY], TEST_OWNER_KEY + 'extra']) {
+    assert.equal(checkOwnerKey(key), false);
+  }
+  try {
+    delete process.env.OWNER_KEY;
+    assert.equal(checkOwnerKey(TEST_OWNER_KEY), false);
+    const room = new Room('test-unconfigured', fs.mkdtempSync(path.join(os.tmpdir(), 'desmadre-')));
+    const guest = fakeWs(); room.accept(guest); join(guest, 'Invitado', {});
+    assert.ok(guest.sent.some((m) => m.t === 'ready'), 'ordinary play remains available');
+    say(guest, { t: 'adm', a: 'login', key: TEST_OWNER_KEY });
+    assert.ok(guest.sent.some((m) => m.t === 'adm' && m.a === 'denied'));
+    assert.equal(room.players.get(guest.sent.find((m) => m.t === 'welcome').id).owner, undefined);
+    const reserved = fakeWs(); room.accept(reserved); join(reserved, 'SmokePyro', {}, TEST_OWNER_KEY);
+    assert.ok(reserved.closed, 'the reserved name is not released when configuration is absent');
+    process.env.OWNER_KEY = 'x'.repeat(128);
+    assert.equal(checkOwnerKey('x'.repeat(128)), true);
+    assert.equal(checkOwnerKey('x'.repeat(128) + 'extra'), false, 'oversized input is not truncated into a valid key');
+  } finally {
+    process.env.OWNER_KEY = TEST_OWNER_KEY;
+  }
+});
+
 test('SmokePyro sin la clave no entra; con la clave es el dueño y puede ser el Diablo', () => {
   const room = new Room('test-owner', fs.mkdtempSync(path.join(os.tmpdir(), 'desmadre-')));
-  const bad = fakeWs(); room.accept(bad); join(bad, 'SmokePyro', { model: 'diablo' }, 'silencio');
+  const bad = fakeWs(); room.accept(bad); join(bad, 'SmokePyro', { model: 'diablo' }, 'incorrect-test-key');
   assert.ok(bad.closed, 'con la clave mal no entra');
   assert.equal(bad.sent.find((m) => m.t === 'err')?.m, 'El nombre SmokePyro está reservado.');
-  const own = fakeWs(); room.accept(own); join(own, 'smokepyro', { model: 'diablo' }, 'Silencio');
+  const own = fakeWs(); room.accept(own); join(own, 'smokepyro', { model: 'diablo' }, TEST_OWNER_KEY);
   assert.equal(own.sent.find((m) => m.t === 'welcome')?.owner, 1, 'con la clave es el dueño');
   const other = fakeWs(); room.accept(other); join(other, 'Tano', { model: 'diablo' });
   const w = other.sent.find((m) => m.t === 'welcome');
@@ -41,7 +71,7 @@ test('SmokePyro sin la clave no entra; con la clave es el dueño y puede ser el 
 
 test('poderes: solo el dueño se hace invisible o quema; los demás no', () => {
   const room = new Room('test-pow', fs.mkdtempSync(path.join(os.tmpdir(), 'desmadre-')));
-  const own = fakeWs(); room.accept(own); join(own, 'SmokePyro', { model: 'diablo' }, 'Silencio');
+  const own = fakeWs(); room.accept(own); join(own, 'SmokePyro', { model: 'diablo' }, TEST_OWNER_KEY);
   const a = fakeWs(); room.accept(a); join(a, 'Ana', {});
   a.sent.length = 0;
   say(own, { t: 'pow', a: 'inv', v: 1 });
@@ -56,7 +86,7 @@ test('poderes: solo el dueño se hace invisible o quema; los demás no', () => {
 
 test('galleta is allowed online; leaving Diablo clears invisibility and rejects powers', () => {
   const room=new Room('test-model-switch',fs.mkdtempSync(path.join(os.tmpdir(),'desmadre-')));
-  const own=fakeWs();room.accept(own);join(own,'SmokePyro',{model:'diablo'},'Silencio');
+  const own=fakeWs();room.accept(own);join(own,'SmokePyro',{model:'diablo'},TEST_OWNER_KEY);
   const guest=fakeWs();room.accept(guest);join(guest,'Galletita',{model:'galleta'});
   assert.equal(room.players.get(2).look.model,'galleta');
   say(own,{t:'pow',a:'inv',v:1});guest.sent.length=0;
@@ -71,7 +101,7 @@ test('galleta is allowed online; leaving Diablo clears invisibility and rejects 
 
 test('fireballs and temporary flames: validated relay, cooldown, impact deduplication and late join',()=>{
   const room=new Room('test-fire-network',fs.mkdtempSync(path.join(os.tmpdir(),'desmadre-')));
-  const own=fakeWs();room.accept(own);join(own,'SmokePyro',{model:'diablo'},'Silencio');
+  const own=fakeWs();room.accept(own);join(own,'SmokePyro',{model:'diablo'},TEST_OWNER_KEY);
   const guest=fakeWs();room.accept(guest);join(guest,'Galletita',{model:'galleta'});
   say(own,{t:'st',s:{p:[0,0,0]}});say(guest,{t:'st',s:{p:[0,0,4]}});guest.sent.length=0;
   say(own,{t:'pow',a:'ball',shot:'1',o:[100,2,0],d:[0,0,1]});
@@ -97,7 +127,7 @@ test('fireballs and temporary flames: validated relay, cooldown, impact deduplic
 
 test('ritual: del cuarto secreto al Búnker y del pentagrama del Búnker de vuelta al castillo', () => {
   const room = new Room('test-ritual', fs.mkdtempSync(path.join(os.tmpdir(), 'desmadre-')));
-  const own = fakeWs(); room.accept(own); join(own, 'SmokePyro', { model: 'diablo' }, 'Silencio');
+  const own = fakeWs(); room.accept(own); join(own, 'SmokePyro', { model: 'diablo' }, TEST_OWNER_KEY);
   const a = fakeWs(); room.accept(a); join(a, 'Ana', {});
   const P = CLUB.pentagram, P2 = CLUB.pentagram2, F0 = CASTLE.keep.floor;
   const ritual = () => a.sent.find((m) => m.t === 'pow' && m.a === 'ritual');
@@ -141,7 +171,7 @@ test('admin: la clave hace dueño con cualquier nombre; el dueño nombra admins 
   assert.ok(!b.closed, 'un jugador común no echa a nadie');
   say(own, { t: 'adm', a: 'login', key: 'mal' });
   assert.ok(own.sent.some((m) => m.t === 'adm' && m.a === 'denied'), 'clave mal: rechazada');
-  say(own, { t: 'adm', a: 'login', key: 'Silencio' });
+  say(own, { t: 'adm', a: 'login', key: TEST_OWNER_KEY });
   assert.ok(a.sent.some((m) => m.t === 'adm' && m.a === 'roles' && m.roles.some(([id, l]) => id === 1 && l === 2)), 'todos se enteran de quién es el dueño');
   // el dueño hace admin a Ana; Ana no puede echar al dueño ni nombrar admins, pero sí traer a Beto
   say(own, { t: 'adm', a: 'admin', to: 2, on: true });
