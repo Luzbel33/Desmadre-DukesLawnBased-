@@ -106,6 +106,8 @@ export class World {
     for (const it of this.club.interact) INTERACT.push(it);
     this.storm.indoorAt = (x, y, z) => this.club.indoorAt(x, y, z) || this.castle.indoorAt(x, y, z);
     this.storm.undergroundAt = (x, z) => (inClub(x, z, 2) ? 1 : 0);
+    // la luz de relleno de cada sala del Búnker (no gasta luces del pool: se ve igual en los presets livianos)
+    this.storm.ambientAt = (x, y, z) => this.club.ambientAt(x, y, z);
     this.storm.tower = this.castle.spire;
     this.pool.roomAt = (x, y, z) => this.club.roomOf(x, y, z) || this.castle.roomOf(x, y, z);
     // las luces de los edificios y muebles también pasan al pool (la escena siempre tiene las mismas luces)

@@ -577,7 +577,7 @@ export class ClubWings {
     this.neon('abandonen toda esperanza', { font: 'Metal Mania', px: 70, color: '#ff8a40' }, 5.2, 0.65, 0, 8.05, -478.62, Math.PI);
     const fog = this.c.fog;
     if (fog) { for (const [x, z] of [[0, -506], [-4, -494], [4, -494], [0, -516]]) fog.add(x, 0.3, z, 6, { radius: 3.5, height: 1.1, opacity: 0.06, speed: 0.04 }); }
-    this.anchors.hellDj = new THREE.Vector3(0, 1.2, hl.z0 + 1.6);
+    this.anchors.hellDj = new THREE.Vector3(0, 1.2, hl.z0 + 1.6); // en la cueva, abajo de la cornisa
     this.anchors.hellFloor = new THREE.Vector3(0, 0, -509);
   }
   world() { return this.c.world; }
@@ -598,33 +598,81 @@ export class ClubWings {
     this.box('leatherBlack', 0, sh + 0.55, z0 + 2.6, 3.4, 1.1, 1.0);
     this.deco('neonRed', 0, sh + 0.55, z0 + 3.11, 3.4, 0.04, 0.02);
     for (const s of [-1, 1]) { this.cyl('black', s * 0.85, sh + 1.12, z0 + 2.6, 0.2, 0.2, 0.03, 20); this.deco('darkgray', s * 0.85, sh + 1.11, z0 + 2.6, 0.5, 0.02, 0.5); }
-    // fauces: arco de neón con colmillos, ojos rojos y dos cuernos enormes de hueso
-    if (HAS_DOM) {
-      const arch = this.mesh(new THREE.TorusGeometry(5.2, 0.12, 8, 48, Math.PI), getMat('neonRed'), 0, sh, z0 + 0.35);
-      arch.castShadow = false;
-    }
-    for (let k = 0; k < 11; k++) {
-      const a = Math.PI * (0.08 + k * 0.084), x = Math.cos(a) * 5.0, y = sh + Math.sin(a) * 5.0, len = 0.5 + (k % 2) * 0.35;
-      this.cyl('bone', x, y - len / 2 - 0.1, z0 + 0.5, 0.14, 0.0, len, 8);
-    }
+    // las antorchas del escenario
     for (const s of [-1, 1]) {
-      this.deco('redLamp', s * 2.6, 8.6, z0 + 0.1, 1.5, 0.55, 0.05);
-      // cuerno: segmentos que se afinan y se curvan hacia arriba y afuera
-      let x = s * 4.3, y = 7.4, ang = 0;
-      for (let k = 0; k < 9; k++) {
-        const rr = 0.55 * (1 - k / 10), len = 0.6;
-        ang += 0.16;
-        const rz = -s * (0.9 - ang);
-        this.cyl('bone', x, y, z0 + 0.6, rr * 0.86, rr, len, 12, { rz });
-        x += -Math.sin(rz) * len * 0.92; y += Math.cos(rz) * len * 0.92;
-      }
       this.fire(s * 5.4, sh, z0 + 5.2, 0.25, 0.25, 1.2, 1.4);
       this.cyl('iron', s * 5.4, sh / 2, z0 + 5.2, 0.3, 0.38, sh, 12);
       this.light(s * 5.4, sh + 1.6, z0 + 5.2, 0xff5a1a, 12, 14, { flicker: true, priority: 1.8, decay: 1.2 });
     }
+    // el Diablo en persona: una cabeza gigante (la del modelo del Diablo, assets/blender/demon/build_hell_head.py) que
+    // asoma del muro arriba del DJ y mira la pista: la mandíbula se abre con el bombo, los ojos arden, echa humo por
+    // la nariz y cada tanto gruñe. Luz roja de abajo, como si la iluminara la lava.
+    // la cornisa de piedra de donde asoma (tapa el corte del busto) con dos pilares y una grieta de lava en el borde;
+    // abajo, en la "cueva", toca el DJ
+    const S = 9.5, ly = 3.8, depth = 6.6;
+    this.box('keepStone', 0, ly - 0.2, z0 + depth / 2, 7.2, 0.4, depth);
+    this.deco('lavaRock', 0, ly - 0.42, z0 + depth - 0.1, 7.3, 0.06, 0.25);
+    this.deco('neonRed', 0, ly - 0.18, z0 + depth + 0.01, 7.0, 0.05, 0.03);
+    for (const s of [-1, 1]) { this.cyl('keepStone', s * 3.2, (sh + ly - 0.4) / 2, z0 + depth - 0.5, 0.45, 0.55, ly - 0.4 - sh, 14, { collide: true }); this.cyl('lavaRock', s * 3.2, ly - 0.55, z0 + depth - 0.5, 0.6, 0.5, 0.3, 14); }
+    this.light(0, ly - 0.8, z0 + 2.2, 0xff5020, 4, 6, { priority: 1.3 }); // la cueva del DJ
+    const g = this.c.group, anim = this.c.anim, base = new THREE.Vector3(0, ly - 0.3, z0 + 0.2 + 0.464 * S);
+    this.light(0, ly + 1.2, z0 + depth + 4, 0xff3810, 10, 14, { priority: 1.7, decay: 1.3 });
+    this.light(0, 10.5, z0 + 3, 0xff6a30, 5, 10, { priority: 1.2, decay: 1.4 });
+    const rim = { value: 1 };
+    whenAsset('b_hellhead', () => {
+      const m = assetModel('b_hellhead');
+      if (!m) return;
+      m.scale.setScalar(S); m.position.copy(base);
+      m.traverse((o) => {
+        if (!o.isMesh) return;
+        o.castShadow = false; o.receiveShadow = true; o.userData.club = true;
+        // piel negra: un borde de brasa (fresnel) que dibuja la silueta en la oscuridad y late con la música
+        const mat = o.material.clone();
+        mat.onBeforeCompile = (sh2) => {
+          sh2.uniforms.uRim = rim;
+          sh2.fragmentShader = 'uniform float uRim;\n' + sh2.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+            float fr = pow(1.0 - clamp(abs(dot(normalize(normal), normalize(vViewPosition))), 0.0, 1.0), 4.0);
+            totalEmissiveRadiance += vec3(1.0, 0.1, 0.02) * fr * uRim;`);
+        };
+        o.material = mat;
+      });
+      g.add(m);
+      const jaw = m.getObjectByName('jaw');
+      m.rotation.x = 0.13; // se inclina sobre la pista, mirando a la gente
+      // ojos: brasas en las cuencas (hijos de la cabeza: escalan con ella)
+      const eyeMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 0.5, 0.15), toneMapped: false });
+      const eyes = [-0.038, 0.038].map((x) => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.019, 12, 8), eyeMat); e.position.set(x, 0.267, 0.31); m.add(e); return e; });
+      const glow = new THREE.MeshBasicMaterial({ map: this._glowTex(), color: 0xff3010, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+      for (const e of eyes) { const s2 = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.16), glow); s2.position.copy(e.position).z += 0.01; m.add(s2); }
+      const nose = [-0.012, 0.012].map((x) => new THREE.Vector3(x, 0.19, 0.37));
+      let lastBar = -1, growlBar = -1;
+      anim.push((t, dt, B) => {
+        const kick = B ? Math.exp(-B.f * 4.5) : 0, bar = B?.bar ?? 0;
+        if (jaw) jaw.rotation.x = 0.04 + 0.26 * kick * kick + (growlBar >= 0 && bar - growlBar < 1 ? 0.25 : 0);
+        const flare = 0.55 + 0.45 * kick + 0.08 * Math.sin(t * 23) * Math.sin(t * 7);
+        eyeMat.color.setRGB(4 * flare, 0.45 * flare, 0.12 * flare);
+        glow.opacity = 0.55 + 0.45 * kick;
+        rim.value = 0.45 + 1.1 * kick;
+        // humo por la nariz al empezar cada compás; un gruñido cada 16 compases
+        if (bar !== lastBar) {
+          lastBar = bar;
+          const cam = G.camera?.position;
+          const near = cam && cam.distanceToSquared(base) < 900;
+          if (near) for (const n of nose) G.fx?.puff(m.localToWorld(V3.copy(n)), V4.set(0, -0.3, 1), 0.9, 0x2a2420);
+          if (near && bar % 16 === 0) { growlBar = bar; G.sfx?.trigger('devil-growl', base.clone().setY(8), 0.9, { full: 12, max: 45, rate: 0.7 }); }
+        }
+      });
+    });
     this.c.party.push(this.light(0, 7.5, (hl.z0 + hl.z1) / 2, 0xff2010, 18, 30, { priority: 1.9, decay: 1.0 }));
-    // la frente del Diablo: la pantalla entre los cuernos, arriba de los ojos (se maneja desde la cabina)
+    // la pantalla del Infierno en el muro oeste, arriba del balcón (se maneja desde la cabina)
     bunkerScreen(this.c, 'bunker_hell');
+  }
+  _glowTex() {
+    if (this._glow) return this._glow;
+    const cv = canvas(64, 64), x = cv.getContext('2d'), gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.3, 'rgba(255,255,255,0.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
+    return (this._glow = new THREE.CanvasTexture(cv));
   }
   // piso de basalto con grietas de lava que laten con la música (sin luces: emisivo puro)
   _lavaFloor(hl) {

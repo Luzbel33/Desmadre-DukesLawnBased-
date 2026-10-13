@@ -20,6 +20,13 @@ const HAS_DOM = typeof document !== 'undefined';
 const C = CLUB, H = C.hall;
 const WT = 0.4; // espesor de muros
 export const BPM = 126;
+// la luz de relleno de cada sala (ids: 900 escalera, 901 pasillo, 902 ascensor, 903 antesala, 904 club; las alas en
+// club-wings.js): [intensidad, color de arriba, color de abajo]
+const ROOM_AMBIENT = {
+  900: [0.3, 0x6a6a78, 0x1a1a20], 901: [0.42, 0x8a8a90, 0x202024], 902: [0.5, 0x9a9488, 0x24221e], 903: [0.42, 0x9a3a2a, 0x1e0a08],
+  904: [0.4, 0x8a4fa6, 0x2a0e1e], 1001: [0.46, 0xb08a60, 0x2a1a10], 1002: [0.5, 0xc060c0, 0x2a1030], 1101: [0.34, 0xa03018, 0x2a0804],
+  1201: [0.42, 0xb04a8a, 0x2a0a1a], 1301: [0.62, 0xa8b2bc, 0x30302c], 1401: [0.32, 0x7a50c0, 0x1a0a2a], 1402: [0.13, 0x504858, 0x0a080c],
+};
 const V1 = new THREE.Vector3();
 const V2 = new THREE.Vector3();
 const COL = new THREE.Color();
@@ -62,6 +69,18 @@ function boxUV(w, h, d, tile, u0 = 0) {
   const uv = g.attributes.uv, dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
   for (let f = 0; f < 6; f++) for (let k = 0; k < 4; k++) { const i = f * 4 + k; uv.setXY(i, uv.getX(i) * dims[f][0] / tile + u0, uv.getY(i) * dims[f][1] / tile); }
   return g;
+}
+// resplandor de un bañador de pared (cono de luz que sube desde el piso): se dibuja aditivo arriba del muro, sin luz de
+// verdad (no compite por las luces del pool)
+let _washTex = null;
+function washTex() {
+  if (_washTex || !HAS_DOM) return _washTex;
+  const cv = canvas(64, 128), g = cv.getContext('2d');
+  const gr = g.createRadialGradient(32, 128, 2, 32, 120, 120);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(255,255,255,0.55)'); gr.addColorStop(0.7, 'rgba(255,255,255,0.12)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 128);
+  _washTex = new THREE.CanvasTexture(cv);
+  return _washTex;
 }
 function hazardTex() {
   const cv = canvas(256, 64), g = cv.getContext('2d');
@@ -113,6 +132,12 @@ export class Club {
     // corre de z0 a z1 (z0 > z1: hacia el norte)
     this.b.wall(key, x, z0, x, z1, h, t, holes.map(([a, b, h0, h1]) => ({ from: Math.min(z0 - a, z0 - b), to: Math.max(z0 - a, z0 - b), bottom: h0 - y0, top: h1 - y0 })), { y0 });
   }
+  // relleno de luz de cada sala: [intensidad, cielo, piso] (lo usa world/storm.js bajo tierra)
+  ambientAt(x, y, z) {
+    const r = this.roomOf(x, y, z);
+    if (r) this._ambRoom = r;
+    return ROOM_AMBIENT[this._ambRoom] || ROOM_AMBIENT[904];
+  }
   room(x0, y0, z0, x1, y1, z1, id) { this.rooms.push({ x0, y0, z0: Math.min(z0, z1), x1, y1, z1: Math.max(z0, z1), id }); }
   roomOf(x, y, z) {
     for (const r of this.rooms) if (x >= r.x0 && x <= r.x1 && y >= r.y0 - 0.5 && y <= r.y1 && z >= r.z0 && z <= r.z1) return r.id;
@@ -143,6 +168,14 @@ export class Club {
     return m;
   }
   neon(text, o) { return neonSign(text, o); }
+  // bañador de pared: el aparatito en el piso y el cono de luz pintado en el muro (yaw: hacia dónde mira el muro)
+  wash(x, z, yaw, color, { w = 2.2, h = 3.6, y = 0, k = 0.55 } = {}) {
+    const fx = Math.sin(yaw), fz = Math.cos(yaw);
+    this.deco('black', x + fx * 0.12, y + 0.08, z + fz * 0.12, 0.3, 0.16, 0.2, { yaw });
+    if (!HAS_DOM) return;
+    const m = this.mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: washTex(), color: new THREE.Color(color).multiplyScalar(k), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }), x + fx * 0.03, y + h / 2, z + fz * 0.03, { yaw });
+    m.receiveShadow = false; m.renderOrder = 3;
+  }
   printSign(draw, w, h) { return printed(draw, w, h); }
   seat(x, y, z, yaw, extra = {}) { this.seats.push({ x, y, z, yaw, ...extra }); }
   use(id, p, r, label, extra = {}) { this.interact.push({ id, k: 'club', p, r, label, ...extra }); }
@@ -357,6 +390,18 @@ export class Club {
       this.deco('redLamp', x + (x < 0 ? 0.1 : -0.1), 2.55, z, 0.1, 0.16, 0.1);
       this.light(x + (x < 0 ? 0.6 : -0.6), 2.5, z, 0xff2a20, 2.4, 6, { flicker: true, priority: 1.1 });
     }
+    for (const [x, z] of [[-6.8, -436.5], [6.8, -436.5], [-6.8, -441.5], [6.8, -441.5]]) this.wash(x + (x < 0 ? 0.03 : -0.03), z, x < 0 ? Math.PI / 2 : -Math.PI / 2, 0xff3020, { w: 1.4, h: 2.4, y: 1.5, k: 0.5 });
+    // arriba de la puerta blindada, el nombre en neón; en la pared, las reglas
+    if (HAS_DOM) {
+      this.mesh(new THREE.PlaneGeometry(3.2, 0.8), this.neon('EL BÚNKER', { font: 'Metal Mania', px: 150, color: '#ff2a2a' }), 0, 3.85, C.door.z + 0.3);
+      this.mesh(new THREE.PlaneGeometry(1.0, 1.35), printed((g, w, hh) => {
+        g.fillStyle = '#16100e'; g.fillRect(0, 0, w, hh); g.strokeStyle = '#a07a3a'; g.lineWidth = 14; g.strokeRect(0, 0, w, hh);
+        g.fillStyle = '#e8d8b8'; g.textAlign = 'center'; g.font = 'bold 46px "Metal Mania", Georgia, serif'; g.fillText('REGLAS DEL BÚNKER', w / 2, 70);
+        g.font = '30px Georgia, serif'; g.textAlign = 'left';
+        ['1. Lo que pasa acá, queda acá.', '2. No se toca a las chicas.', '3. Al Diablo no se le dice que no.', '4. La clave no se pasa.', '5. Si te morís, volvé.'].forEach((l, i) => g.fillText(l, 40, 150 + i * 62));
+      }, 512, 520), A.x1 - 0.03, 1.75, -438.6, { yaw: -Math.PI / 2 });
+    }
+    for (const z of [-434.4, -443.2]) { this.cyl('terracotta', -6.4, 0.3, z, 0.28, 0.22, 0.6, 14, { collide: true }); this.cyl('green', -6.4, 0.95, z, 0.32, 0.12, 0.9, 10); }
     this.box('leatherBlack', -6.4, 0.25, -439, 0.7, 0.5, 2.2);
     for (const dz of [-0.6, 0.6]) this.seat(-6.3, 0.52, -439 + dz, Math.PI / 2);
     // el portero: se para al lado de la puerta (su cuerpo lo pone game/club.js); acá su lámpara y su atril
@@ -413,6 +458,16 @@ export class Club {
     // la pista: tres luces que cambian de color con el compás
     for (const x of [-5, 0, 5]) this.party.push(Object.assign(this.light(x, 4.5, -462, 0xffffff, 16, 14, { priority: 2.2 }), { dance: true }));
     this.anchors.hallCenter = new THREE.Vector3(0, 0, -461);
+    // bañadores de pared (el ladrillo negro se lee de lejos), anillos de LED en las columnas
+    const sw = H.z1 - 0.06, wx0 = H.x0 + 0.06, wx1 = H.x1 - 0.06;
+    for (const [x, c] of [[-20, 0xff2050], [-4.2, 0x9030ff], [4.2, 0x9030ff], [13.5, 0xff2050], [20.5, 0x3050ff]]) this.wash(x, sw, Math.PI, c);
+    for (const [z, c] of [[-447.5, 0x3050ff], [-457, 0xff2050], [-465, 0x9030ff], [-475.5, 0xff2050]]) this.wash(wx0, z, Math.PI / 2, c);
+    for (const [z, c] of [[-447.5, 0xff2050], [-468.5, 0x3050ff]]) this.wash(wx1, z, -Math.PI / 2, c);
+    for (const [x, z] of [[-12, -452], [12, -452], [-12, -470], [12, -470]]) {
+      for (const [y, m] of [[1.1, 'neonPink'], [4.6, 'neonCyan']]) {
+        for (const [dx, dz, sx, sz] of [[0, 0.41, 0.84, 0.02], [0, -0.41, 0.84, 0.02], [0.41, 0, 0.02, 0.84], [-0.41, 0, 0.02, 0.84]]) this.deco(m, x + dx, y, z + dz, sx, 0.06, sz);
+      }
+    }
   }
 
   _stage() {
@@ -567,6 +622,15 @@ export class Club {
     }
     this.anchors.drugTable = new THREE.Vector3(-8.5, 0.45, H.z1 - 2.0);
     this.light(-11.8, 3, H.z1 - 2, 0xff2060, 3, 8, { priority: 1.3 });
+    // lámparas de pie con pantalla que brilla entre los sillones y alfombras bajo las mesas ratonas
+    for (const x of [-18.2, -11.8, -5.2, 5.2, 11.8]) {
+      const z = H.z1 - 0.7;
+      this.cyl('black', x, 0.02, z, 0.2, 0.22, 0.04, 14);
+      this.cyl('chrome', x, 0.85, z, 0.018, 0.018, 1.66, 8);
+      this.cyl('warmBulb', x, 1.78, z, 0.17, 0.24, 0.32, 14, { open: true });
+      this.wash(x, H.z1 - 0.06, Math.PI, 0xffb070, { w: 1.6, h: 2.6, y: 0.9, k: 0.35 });
+    }
+    for (const cx of [-15, -8.5, 8.5]) this.deco('velvet', cx, 0.03, H.z1 - 2.0, 2.6, 0.012, 1.7);
   }
 
   // mesas altas con banquetas alrededor de la pista: tragos, un balde de champán y una vela; se sientan jugadores

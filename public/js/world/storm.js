@@ -607,7 +607,13 @@ export class Storm {
     if (U) {
       // bajo tierra: solo las luces del club (el cielo, el sol y la luna no llegan) y una bruma de boliche
       w.sun.intensity = 0;
-      if (w.hemi) { w.hemi.intensity = 0.32; w.hemi.color.setRGB(0.5, 0.3, 0.6); w.hemi.groundColor.setRGB(0.15, 0.05, 0.1); }
+      // cada sala con su relleno (el arsenal con tubos fluorescentes, la antesala roja, el laberinto casi negro...):
+      // se pasa de una a otra de a poco al cruzar una puerta
+      const A = this.ambientAt?.(cam.x, cam.y, cam.z) || [0.32, 0x804c99, 0x260d1a];
+      const amb = this._amb || (this._amb = { i: A[0], sky: new THREE.Color(A[1]), ground: new THREE.Color(A[2]) });
+      const k = Math.min(1, dt * 2.5);
+      amb.i += (A[0] - amb.i) * k; amb.sky.lerp(C1.setHex(A[1]), k); amb.ground.lerp(C1.setHex(A[2]), k);
+      if (w.hemi) { w.hemi.intensity = amb.i; w.hemi.color.copy(amb.sky); w.hemi.groundColor.copy(amb.ground); }
       this.scene.environmentIntensity = 0.12;
       fog.color.setRGB(0.05, 0.02, 0.06);
       fog.density = 0.012;

@@ -312,7 +312,7 @@ export const SCREENS = [
     box: CLUB.wings.vip, hearFull: 0, hearMax: 7, idle: true,
   },
   {
-    id: 'bunker_hell', name: 'Pantalla del Infierno', c: [0, 10.45, -521.84], yaw: 0, w: 4.8, h: 2.7,
+    id: 'bunker_hell', name: 'Pantalla del Infierno', c: [-11.74, 7.6, -500], yaw: Math.PI / 2, w: 5.6, h: 3.15,
     box: CLUB.wings.hell, hearFull: 0, hearMax: 8, idle: true,
   },
   {

@@ -16,18 +16,16 @@ Fuente única de trabajo pendiente.
 
 ## 0. Tanda 02/10 — PRIORITARIO (pedido de Luz)
 
-- [ ] Seguir amueblando el Búnker (el club todavía tiene zonas oscuras y vacías; arsenal y alas chicas).
-- [ ] Laberinto del terror (ya armado al sudoeste, entrada por la psicodélica): faltan los sustos (jumpscares en
-      anchors.mazeScares) y el cofre con premio al azar en anchors.mazeChest, con objetos únicos nuevos
-      (calavera de oro que se ríe, bola de cristal, silbato de la muerte, patito dorado).
-- [ ] Sala psicodélica (ya es el doble, con los espejos deformantes al sur y 6 cuadros animados propios con marcos 3D
-      en las paredes este y sur, `world/psy-art.js`): faltan ilusiones ópticas y un DJ de psytrance; opcional, cuadros
-      de arte libre (Haeckel, Hilma af Klint, Kandinsky, Louis Wain). Arte de terceros solo con permiso del artista.
-- [ ] Reemplazar las rampas por un circuito de carreras con autos de carrera, partes tipo Guts and Glory con
-      obstáculos mortales, y MOTOS.
-- [ ] Menú de admin (mejor forma de activarlo que el nombre SmokePyro): spawnear cualquier objeto, limpiar/borrar
-      cosas, sacar o agregar NPC, cambiar la hora del día, teletransportarse o teletransportar jugadores, dar
-      inmortalidad a todos, etc. Poder hacer admin a otro jugador, un escalón abajo (no puede echarnos).
+- [ ] Seguir amueblando el Búnker: hecho 12/10 relleno de luz por sala, bañadores de pared, LED en columnas, lámparas
+      del lounge y la antesala (cartel, reglas, plantas) — SIN verificar en pantalla. Falta el arsenal (más props, mejor luz).
+- [ ] Cabeza gigante del Diablo en el Infierno (`hell_head.glb`, `assets/blender/demon/build_hell_head.py`): verificar
+      en pantalla el último ajuste (escala 9.5 sobre la cornisa, ojos y humo de la nariz) y que no flote.
+- [ ] Sala psicodélica (opcional): cuadros de arte libre (Haeckel, Hilma af Klint, Kandinsky, Louis Wain). Arte de
+      terceros solo con permiso del artista. (Ya tiene DJ de psytrance, ilusiones ópticas y gente en trance.)
+- [ ] Circuito del Desmadre (hecho 12/10, `world/circuit.js`, `game/race.js`, `shared/circuit-traps.js`): probarlo
+      con gente real (carrera de 3 vueltas desde el poste del semáforo) y ajustar velocidades/trampas si hace falta.
+- [ ] Panel de admin (F9, `ui/admin.js`, servidor `onAdmin`): probarlo en multiplayer real (echar, traer, hacer admin).
+      La clave del dueño está escrita en los tests públicos: en Render poner la variable OWNER_KEY con una clave nueva.
 
 ---
 
@@ -118,7 +116,6 @@ modelos cargados al acercarse.
 
 - [ ] Dive: a veces te quedás trabado en cosas (colisiones del mapa que faltan, están mal o a medias: normalizarlas).
 - [ ] Probar el manejo en rampas y saltos (sube, cabecea, vuela y cae); ajustar si algún vehículo se traba.
-- [ ] (Después) Motos y un circuito con trampas tipo Guts and Glory / Happy Wheels.
 
 - [ ] Física de vehículos más convincente: peso, choques jugador/NPC/vehículo y respuesta sin comportamientos explosivos.
 - [ ] Revisar cortadoras y otros vehículos/props móviles que todavía floten, atraviesen geometría o reaccionen raro.

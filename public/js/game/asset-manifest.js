@@ -212,6 +212,8 @@ export const CASTLE_MANIFEST = {
 const B = P + 'bunker/';
 export const BUNKER_MANIFEST = {
   b_ammo: { url: B + 'ammo_box.glb', scale: 1, shadow: false },
+  // la cabeza gigante del Diablo en el Infierno (recortada del modelo del Diablo: assets/blender/demon/build_hell_head.py)
+  b_hellhead: { url: P + 'art/hell_head.glb', scale: 1, center: false, shadow: false },
   b_rifle: { url: B + 'bolt_action_rifle_7_62.glb', scale: 1, shadow: false },
   b_pistols: { url: B + 'service_pistol.glb', scale: 1, shadow: false },
   b_stickgren: { url: B + 'stick_grenade.glb', scale: 1, shadow: false },
