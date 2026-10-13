@@ -54,6 +54,7 @@ export const SHOPS = {
       { id: 'beer', icon: '🍺', name: 'Una birra', desc: 'Tirada, bien fría.' },
       { id: 'smoke', icon: '🚬', name: 'Un faso', desc: 'De la casa.' },
       { id: 'round', icon: '🍻', name: 'Una vuelta para todos', desc: 'Todos brindan por vos.' },
+      { id: 'lighter', icon: '🔥', name: 'Encendedor', desc: 'Click: pedo prendido fuego. Lanzallamas casero.' },
     ],
     hello: ['¿Qué te sirvo?', 'Pasá, que hay lugar.', 'La casa invita la primera. Y la segunda.'],
     sold: ['Ahí tenés, campeón.', 'Esa te va a pegar.', 'Salud y buena muerte.'],

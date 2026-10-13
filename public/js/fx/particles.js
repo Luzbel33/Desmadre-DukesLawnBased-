@@ -298,12 +298,34 @@ export class FX {
       });
     }
   }
+  // chorro de líquido de un color (pis, lo que sea): gotas que se estiran al volar; onLand para el charco
+  liquid(pos, dir, n = 4, speed = 3, col = 0xd8c040, onLand = null) {
+    for (let i = 0; i < n; i++) {
+      const sp = speed * (0.85 + Math.random() * 0.3);
+      this.drops.spawn({
+        x: pos.x, y: pos.y, z: pos.z,
+        vx: dir.x * sp + (Math.random() - 0.5) * 0.25, vy: dir.y * sp + (Math.random() - 0.5) * 0.25, vz: dir.z * sp + (Math.random() - 0.5) * 0.25,
+        life: 1.6, s: 0.006 + Math.random() * 0.007, col, grav: -9.8, bounce: 0, drag: 0.2, stretch: 0.1,
+        onLand: i === 0 && onLand ? (q) => onLand(q) : null,
+      });
+    }
+  }
+  // algo que revienta y salpica (sandía, caca...): gotas y pedazos del color, y la mancha
+  splat(pos, col, amount = 1) {
+    const n = Math.round(20 + amount * 30);
+    for (let i = 0; i < n; i++) {
+      const sp = 1 + Math.random() * 4 * amount;
+      this.drops.spawn({ x: pos.x, y: pos.y, z: pos.z, vx: (Math.random() - 0.5) * sp, vy: 0.8 + Math.random() * 2.5 * amount, vz: (Math.random() - 0.5) * sp,
+        life: 1.6, s: 0.01 + Math.random() * 0.025, col, grav: -9.8, bounce: 0, drag: 0.4,
+        onLand: i % 5 === 0 && this.onBloodLand ? (q) => this.onBloodLand(q.x, q.z, 0.08 + Math.random() * 0.2 * amount, col) : null });
+    }
+  }
   vomit(pos, dir) {
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 2; i++) {
       this.drops.spawn({
         x: pos.x, y: pos.y, z: pos.z,
         vx: dir.x * (2 + Math.random() * 1.5) + (Math.random() - 0.5) * 0.6, vy: -0.5 + Math.random(), vz: dir.z * (2 + Math.random() * 1.5) + (Math.random() - 0.5) * 0.6,
-        life: 2, s: 0.02 + Math.random() * 0.025, col: Math.random() < 0.5 ? 0x9a9a2a : 0xb0a040, grav: -9.8, bounce: 0,
+        life: 2, s: 0.01 + Math.random() * 0.012, col: Math.random() < 0.5 ? 0x9a9a2a : 0xb0a040, grav: -9.8, bounce: 0,
         onLand: i === 0 && this.onVomitLand ? (q) => this.onVomitLand(q.x, q.z) : null,
       });
     }

@@ -23,6 +23,7 @@ const HAND = [
   ['potion', '🧪 Poción'], ['chori', '🌭 Choripán'], ['apple', '🍎 Manzana'],
   ...Object.entries(CONSUMABLES).map(([k, c]) => [k, `${c.icon} ${c.label}`]),
   ...Object.entries(RELICS).map(([k, r]) => [k, `${r.icon} ${r.label}`]),
+  ['lighter', '🔥 Encendedor'],
 ];
 const PLACES = [
   ...ACTIVITIES.map((a) => ({ name: `${a.icon} ${a.name}`, p: [a.p[0], 0, a.p[2]] })),

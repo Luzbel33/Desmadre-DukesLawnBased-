@@ -4,7 +4,7 @@
 // un seno sostenido suena a "señal de radio".
 const TAU=Math.PI*2;
 const GAIN={engine:3,blades:1.4,water:1.6};
-const DURATIONS={gulp:.32,cough:.9,pain:.42,burp:.7,'step-grass':.18,'step-hard':.16,jump:.2,land:.28,hit:.22,swing:.24,pickup:.18,throw:.3,drink:1.0,smoke:.8,spray:2,engine:2,blades:2,horn:.55,wind:6,birds:1.6,water:4,ui:.18,munch:.5,drip:.42,shot:.55,boom:2.4,bills:.7,fireball:1.3,'lift-hum':2,'lift-ding':1.8,'lift-door':1.05,'lift-clunk':.7,'ring-bell':1.9,squeak:.32,'death-whistle':2.2};
+const DURATIONS={gulp:.32,cough:.9,pain:.42,burp:.7,'step-grass':.18,'step-hard':.16,jump:.2,land:.28,hit:.22,swing:.24,pickup:.18,throw:.3,drink:1.0,smoke:.8,spray:2,engine:2,blades:2,horn:.55,wind:6,birds:1.6,water:4,ui:.18,munch:.5,drip:.42,shot:.55,boom:2.4,bills:.7,fireball:1.3,'lift-hum':2,'lift-ding':1.8,'lift-door':1.05,'lift-clunk':.7,'ring-bell':1.9,squeak:.32,'death-whistle':2.2,fart:1.1,pee:1.2,retch:1.4,plop:.45,lighter:.35};
 
 // Filtro de dos polos (RBJ): pasabanda de ganancia 0 dB en el pico, o pasabajos.
 function biquad(kind,f,q,sr){
@@ -38,6 +38,14 @@ export function synthesize(name, sampleRate=22050, seed=1) {
   if(name==='drip'){st.f0=480+rnd()*420;st.dec=rnd()*10;}
   // el silbato de la muerte (azteca): aire turbulento en una cámara que resuena, chirrido que sube y se quiebra
   if(name==='death-whistle'){st.b1=biquad('bp',1400,9,sr);st.b2=biquad('bp',2300,7,sr);st.b3=biquad('bp',700,5,sr);st.lp=biquad('lp',5200,.7,sr);}
+  // el pedo: labios que vibran (diente de sierra grave con temblor) y aire; cada toma (semilla) es otro: corto, largo,
+  // que sube, que se corta, húmedo
+  if(name==='fart'){st.f0=55+rnd()*55;st.len=.25+rnd()*.7;st.slide=(rnd()-.5)*60;st.wet=rnd()<.35;st.lp=biquad('lp',900,.8,sr);st.bp=biquad('bp',260,2,sr);st.stut=rnd()<.4;}
+  // el chorrito de pis: siseo de agua contra el piso con burbujeo
+  if(name==='pee'){st.bp=biquad('bp',2400,1.4,sr);st.bp2=biquad('bp',700,2,sr);}
+  if(name==='retch'){st.lp=biquad('lp',600,.8,sr);st.bp=biquad('bp',1100,1.6,sr);}
+  if(name==='plop'){st.lp=biquad('lp',500,.9,sr);}
+  if(name==='lighter'){st.bp=biquad('bp',3500,1.5,sr);}
   // patito de goma: el aire que sale por el pitito (dos chillidos, apretar y soltar)
   if(name==='squeak'){st.bp=biquad('bp',2600,6,sr);}
   // ascensor del Búnker: motor (zumbido con armónicos que cierran el loop de 2 s), aire/cable (ruido en banda) y traqueteo
@@ -157,6 +165,27 @@ export function synthesize(name, sampleRate=22050, seed=1) {
         v=st.lp(st.b1(air)*2.4+st.b2(air)*1.3+st.b3(air)*.9+.18*Math.sin(phase)*(.5+.5*rnd()));
         env=Math.min(1,u/.04)*(u>.8?Math.max(0,1-(u-.8)/.2):1);break;
       }
+      case 'fart': {
+        const live=t<st.len, k=t/st.len;
+        const stut=st.stut?(Math.sin(TAU*7*t)>-.2?1:.15):1;
+        const f=st.f0+st.slide*k+12*Math.sin(TAU*31*t)+8*n;
+        phase+=TAU*Math.max(30,f)/sampleRate;
+        const saw=((phase/TAU)%1)*2-1;
+        v=live?st.lp(saw*.7+lo*.6)+st.bp(n)*(st.wet?.9:.25):0;
+        env=live?Math.min(1,t/.02)*Math.min(1,(st.len-t)/.06)*stut:0;break;
+      }
+      case 'pee': {
+        const bub=Math.max(0,Math.sin(TAU*(18+9*Math.sin(t*3))*t))**6;
+        v=st.bp(n)*1.3+st.bp2(n)*.6*bub;env=Math.min(1,t/.05)*Math.min(1,(duration-t)/.1);break;
+      }
+      case 'retch': {
+        // dos arcadas y el chorro: voz ronca que se estrangula + salpicón
+        const f=110+60*Math.sin(TAU*1.4*t);phase+=TAU*f/sampleRate;const saw=((phase/TAU)%1)*2-1;
+        const gag=u<.55?Math.max(0,Math.sin(TAU*u*3.6)):0;
+        v=st.lp(saw)*.6*gag+st.bp(n)*(u>.5?1.1:.2);env=u>.5?Math.exp(-(u-.5)*3):1;break;
+      }
+      case 'plop': {const f=180-140*u;phase+=TAU*f/sampleRate;v=.7*Math.sin(phase)+st.lp(n)*.4;env=Math.exp(-u*7)*Math.min(1,t/.004);break;}
+      case 'lighter': {v=st.bp(n)*(u<.15?1.2:.35)+(u<.03?n:0);env=Math.exp(-u*3);break;}
       case 'squeak': {
         const k=u<.45?0:1,lu=k?(u-.45)/.55:u/.45;
         const f=k?1700-500*lu:1300+900*lu;phase+=TAU*f/sampleRate;

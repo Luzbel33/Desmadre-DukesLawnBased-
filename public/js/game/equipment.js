@@ -95,6 +95,12 @@ export function createEquippedModel(slot){
   }
   if(slot>=11&&slot<=19)consumableModel(slot,group);
   if(slot>=24&&slot<=27)relicModel(slot,group);
+  if(slot===28){ // encendedor tipo zippo con la tapa abierta y la llamita (se ve al usarlo)
+    const chrome=new THREE.MeshStandardMaterial({color:0xd8d8d0,metalness:1,roughness:.25});
+    group.add(mesh(new THREE.BoxGeometry(.038,.05,.014),chrome,0,.03,0));
+    const lid=mesh(new THREE.BoxGeometry(.038,.022,.014),chrome,-.02,.07,0);lid.rotation.z=1.2;group.add(lid);
+    const f=mesh(new THREE.ConeGeometry(.008,.035,8),new THREE.MeshBasicMaterial({color:0xffa030,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}),0,.075,0);f.name='flame';f.castShadow=false;group.add(f);
+  }
   return group;
 }
 
@@ -234,7 +240,7 @@ export { billTexture };
 export class EquipmentView {
   constructor(scene){this.scene=scene;this.group=null;this.slot=0;}
   update(char,slot,yaw,action,actionT=0,hidden=false){
-    const desired=hidden||!([1,2,3,5,6,7,8,9,10,24,25,26,27].includes(slot)||SLOT_KIND[slot])?0:slot;
+    const desired=hidden||!([1,2,3,5,6,7,8,9,10,24,25,26,27,28].includes(slot)||SLOT_KIND[slot])?0:slot;
     if(desired!==this.slot){this.dispose();this.slot=desired;if(desired){this.group=createEquippedModel(desired);this.scene.add(this.group);}}
     if(!this.group)return;
     char.root.updateWorldMatrix(true,true);char.handR.getWorldPosition(this.group.position);
@@ -243,6 +249,7 @@ export class EquipmentView {
     if(slot===2||SLOT_KIND[slot]==='smoke'){if(slot===2)this.group.position.y+=.018;const ember=this.group.getObjectByName('ember');if(ember)ember.material.emissiveIntensity=action==='smoke'||(slot===18&&action==='drink')?2:.65;}
     if(slot===3&&action==='spray')this.group.rotateX(-.15);
     if(slot>=24&&slot<=27)this._relic(slot,action==='relic'?actionT:-1);
+    if(slot===28){const f=this.group.getObjectByName('flame');if(f){const on=action==='fartflame'&&actionT>.25&&actionT<2;f.material.opacity=on?.9:0;f.scale.setScalar(on?1+Math.random()*.4:1);}}
     if(slot===6){this.group.rotateX(-(char.aimPitch||0));const f=this.group.getObjectByName('flash');if(f){this.flashT=Math.max(0,(this.flashT||0)-1/60);f.material.opacity=this.flashT>0?1:0;}}
   }
   shoot(){this.flashT=.05;}

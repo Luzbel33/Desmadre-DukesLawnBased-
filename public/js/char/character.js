@@ -932,6 +932,13 @@ export class Character {
         J.shoulderR[0] = -2.7; J.elbowR[0] = -1.4; J.spine[1] = 0.5;
         break;
       }
+      case 'fartflame': { // agachado, cola para atrás y el encendedor atrás de la cadera
+        const k = clamp(at / 0.3, 0, 1) * (at > 1.9 ? clamp(1 - (at - 1.9) / 0.3, 0, 1) : 1);
+        J.spine[0] += 0.55 * k; J.hipR[0] -= 0.35 * k; J.kneeR[0] += 0.4 * k;
+        J.shoulderR[0] = lerp(J.shoulderR[0], 0.75, k); J.shoulderR[2] = lerp(J.shoulderR[2], -0.25, k); J.elbowR[0] = lerp(J.elbowR[0], -0.45, k);
+        J.shoulderL[0] = lerp(J.shoulderL[0], -0.3, k);
+        break;
+      }
       case 'vomit': {
         const k = clamp(at / 0.3, 0, 1) * (at > 2.2 ? clamp(1 - (at - 2.2) / 0.4, 0, 1) : 1);
         J.spine[0] += 0.9 * k;
@@ -1107,6 +1114,47 @@ export class Character {
         J.kneeL[0] = J.kneeR[0] = 2.2;
         J.shoulderL[0] = J.shoulderR[0] = -0.5; J.elbowL[0] = J.elbowR[0] = -0.8;
         addY(-0.72);
+        break;
+      }
+      // los del humor físico (main.js gagFx pone el sonido y lo que sale)
+      case 'mear': { // piernas abiertas, cadera adelante, las dos manos al frente abajo; un sacudón al final
+        J.hipL[2] = 0.18; J.hipR[2] = -0.18; J.spine[0] = -0.18; J.neck[0] = -0.1;
+        J.shoulderL[0] = J.shoulderR[0] = -0.22; J.shoulderL[2] = -0.3; J.shoulderR[2] = 0.3;
+        J.elbowL[0] = J.elbowR[0] = -0.55;
+        if (et > 4.2 && et < 4.8) { const k = Math.sin(et * 40) * 0.12; J.elbowL[0] += k; J.elbowR[0] += k; }
+        J.hips = [-0.12, 0, 0];
+        break;
+      }
+      case 'vomitar': { // agachado con las manos en las rodillas; el cuerpo se sacude con las arcadas
+        const heave = et > 0.6 && et < 2.4 ? Math.max(0, Math.sin(et * 9)) * 0.18 : 0;
+        J.spine[0] = 0.85 + heave; J.neck[0] = 0.25 - heave;
+        J.hipL[0] = J.hipR[0] = -0.3; J.kneeL[0] = J.kneeR[0] = 0.45;
+        J.shoulderL[0] = J.shoulderR[0] = -0.75; J.elbowL[0] = J.elbowR[0] = -0.25;
+        J.shoulderL[2] = 0.2; J.shoulderR[2] = -0.2;
+        addY(-0.09);
+        break;
+      }
+      case 'eructar': { // pecho afuera, cabeza para atrás, puño en el pecho
+        const k = Math.min(1, et / 0.35) * (et > 1.6 ? Math.max(0, 1 - (et - 1.6) / 0.4) : 1);
+        J.spine[0] = -0.22 * k; J.neck[0] = -0.5 * k;
+        J.shoulderR[0] = -1.1 * k; J.shoulderR[2] = 0.5 * k; J.elbowR[0] = -2.1 * k;
+        break;
+      }
+      case 'pedo': { // se inclina, levanta una pierna, saca la cola
+        const k = Math.min(1, et / 0.3) * (et > 2 ? Math.max(0, 1 - (et - 2) / 0.4) : 1);
+        J.spine[0] = 0.45 * k; J.hipR[0] = -0.55 * k; J.kneeR[0] = 0.7 * k; J.hipR[2] = -0.25 * k;
+        J.shoulderL[0] = J.shoulderR[0] = 0.1; J.shoulderL[2] = 0.5 * k; J.shoulderR[2] = -0.5 * k;
+        J.elbowL[0] = J.elbowR[0] = -1.4 * k;
+        J.hips = [0.25 * k, 0, 0];
+        break;
+      }
+      case 'cagar': { // en cuclillas, haciendo fuerza (tiembla)
+        const strain = et > 0.8 && et < 3 ? Math.sin(et * 30) * 0.02 : 0;
+        J.hipL[0] = J.hipR[0] = -1.75; J.kneeL[0] = J.kneeR[0] = 2.35;
+        J.hipL[2] = 0.35; J.hipR[2] = -0.35;
+        J.spine[0] = 0.4 + strain; J.neck[0] = -0.2;
+        J.shoulderL[0] = J.shoulderR[0] = -1.0; J.elbowL[0] = J.elbowR[0] = -1.1;
+        addY(-0.62);
         break;
       }
       case 'pushups': {

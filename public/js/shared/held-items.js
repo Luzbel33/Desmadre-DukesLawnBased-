@@ -28,6 +28,7 @@ export const HELD_ITEMS = {
   bola_cristal: { slot: 25, shape: 'ball', r: .075, oy: .03, mass: 1.2, breakDv: 9, glass: 0xb070ff, label: 'bola de cristal' },
   silbato: { slot: 26, shape: 'ball', r: .04, oy: 0, mass: .15, label: 'silbato de la muerte' },
   patito: { slot: 27, shape: 'ball', r: .055, oy: .02, mass: .9, label: 'patito dorado' },
+  lighter: { slot: 28, shape: 'box', hx: .02, hy: .032, hz: .011, oy: .03, mass: .06, harmless: true, label: 'encendedor' },
 };
 export const heldType = item => Object.hasOwn(HELD_ITEMS, item) ? 'held_' + item : null;
 export const HELD_PROP_DEFS = Object.fromEntries(Object.entries(HELD_ITEMS).map(([item, d]) => [heldType(item), { ...d, item, kind: 'blunt', grip: [0, 0, 0] }]));

@@ -23,9 +23,9 @@ Fuente única de trabajo pendiente.
       probarlos jugando y ajustar tiempos. Faltan sustos nuevos en la planta baja (salón, cocina, biblioteca).
 - [ ] Ajedrez jugable en el castillo (y quizás en otros lugares).
 
-### Humor físico estilo POSTAL 2 (fácil de usar, en los gestos)
-- [ ] Mear, vomitar, eructar, tirarse pedos, cagarse (con su sonido, partículas y manchas).
-- [ ] Encendedor como arma: el ataque es tirarse un pedo y prenderlo → lanzallamas.
+### Humor físico estilo POSTAL 2
+- [ ] Hecho 13/10 (rueda de gestos Z: mear, vomitar, eructar, pedo, cagarse + encendedor en la taberna y la barra del
+      búnker): probar en multiplayer real y ajustar. Los sonidos son sintetizados: si Luz quiere, buscar grabaciones CC0.
 
 ### Admin
 - [ ] Espectar jugadores, congelarlos, mutearlos globalmente, darles objetos/plata, cambiar parámetros globales o de
@@ -222,7 +222,6 @@ modelos cargados al acercarse.
 - [ ] Mear.
 - [ ] Vomitar.
 - [ ] Escupir.
-- [ ] Caca agarrable/revoleable que manche.
 - [ ] Pedos y variantes de fuego si encajan con el sandbox.
 
 ### Otras ideas

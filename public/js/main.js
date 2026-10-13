@@ -563,6 +563,7 @@ function updatePrompt() {
     else if (it === 'chori') H.hint('chori', 'Click', 'Morder el choripán');
     else if (it === 'apple') H.hint('apple', 'Click', 'Morder la manzana acaramelada');
     else if (relic(it)) H.hint(it, 'Click', relic(it).use);
+    else if (it === 'lighter') H.hint(it, 'Click', 'Tirarse un pedo y prenderlo (lanzallamas)');
     else if (consumable(it)) { const C = consumable(it); H.hint(it, 'Click', `${C.kind === 'drink' ? 'Tomar' : C.kind === 'smoke' ? 'Pitar' : 'Comer'}: ${C.label} (${C.uses - (L.hands.r.bites || 0)})`); }
   };
   const popcornHint = () => {
@@ -705,6 +706,9 @@ const EMOTES = [
   { e: 'clap', icon: '👏', label: 'Aplaudir' }, { e: 'point', icon: '👉', label: 'Señalar' },
   { e: 'facepalm', icon: '🤦', label: 'Facepalm' }, { e: 'flex', icon: '💪', label: 'Músculo' },
   { e: 'sitfloor', icon: '🧘', label: 'Sentarse' }, { e: 'cheers', icon: '🍻', label: '¡Salud!' },
+  // humor físico (main.js gagFx): con sonido y lo que sale
+  { e: 'mear', icon: '💦', label: 'Mear' }, { e: 'vomitar', icon: '🤮', label: 'Vomitar' },
+  { e: 'eructar', icon: '😮‍💨', label: 'Eructar' }, { e: 'pedo', icon: '💨', label: 'Pedo' }, { e: 'cagar', icon: '💩', label: 'Cagarse' },
 ];
 function openEmotes(by) {
   if (state.mode !== 'game' || state.radial.open) return;
@@ -720,6 +724,7 @@ function chooseEmote(it) {
   try { localStorage.setItem('dukes.lastEmote', it.e); } catch { /* */ }
   if (it.e === 'laugh') { if (!G.owner?.laugh()) G.sfx?.trigger('ui-err', null, 0.4); return; }
   state.local?.setEmote(it.e); state.net?.send({ t: 'ev', k: 'emote', e: it.e });
+  if (GAGS.has(it.e)) gagFx(state.local, it.e, true);
 }
 // Z o el click de la rueda: un toque repite el último gesto; mantenido (según la opción de la pausa) abre la rueda
 function emoteHoldMs() {
@@ -1074,6 +1079,99 @@ function crystalVision(L) {
   bigMessage('🔮 LA BOLA TE MUESTRA...', `${p.name} anda por ${where}${doing}`, 3200);
 }
 
+// ---------------------------------------------------------------- humor físico (estilo POSTAL 2)
+// Los gestos de la rueda (mear, vomitar, eructar, pedo, cagarse) tienen sonido y lo que sale de verdad, y el
+// encendedor: click = pedo prendido fuego (lanzallamas para atrás). Lo ven y lo oyen todos (evento 'emote' / 'gag').
+const GAGS = new Set(['mear', 'vomitar', 'eructar', 'pedo', 'cagar']);
+const gagLive = []; // { P, kind, t, mine }
+const gagV = new THREE.Vector3(), gagV2 = new THREE.Vector3();
+function gagFwd(P) { const y = P.yaw || 0; return gagV2.set(Math.sin(y), 0, Math.cos(y)); }
+function gagAt(P, up, fwd) { const f = gagFwd(P); return new THREE.Vector3(P.pos.x + f.x * fwd, P.pos.y + up, P.pos.z + f.z * fwd); }
+function gagVoice(P) { return MODELS[P.look?.model]?.gender === 'f' ? 'burp-f' : 'burp-m'; }
+function gagFx(P, kind, mine) {
+  if (!P?.pos) return;
+  for (let i = gagLive.length - 1; i >= 0; i--) if (gagLive[i].P === P) gagLive.splice(i, 1);
+  gagLive.push({ P, kind, t: 0, mine, done: {} });
+  if (mine && kind === 'vomitar') P.setAction?.('vomit', 2.6); // la arcada dobla el cuerpo (y viaja con el estado)
+}
+// los NPC de cerca reaccionan (tienen nariz)
+function gagNpcs(P, lines, r = 5) {
+  for (const n of G.allNpcs?.() || []) {
+    if (n.dead || n.pos.distanceTo(P.pos) > r || Math.random() < 0.4) continue;
+    n.lookAt = P.pos;
+    n.say?.(lines[Math.floor(Math.random() * lines.length)], 2.2);
+  }
+}
+function stepGags(dt) {
+  for (let i = gagLive.length - 1; i >= 0; i--) {
+    const g = gagLive[i], P = g.P, t = (g.t += dt), once = (k, at) => (t >= at && !g.done[k] ? (g.done[k] = true) : false);
+    if (!P.pos || (P === state.local && P.emote !== g.kind && g.kind !== 'fuego')) { gagLive.splice(i, 1); continue; }
+    const f = gagFwd(P);
+    if (g.kind === 'mear') {
+      if (t > 0.5 && t < 4.3) {
+        G.fx?.liquid(gagAt(P, 0.86, 0.22), gagV.set(f.x * 0.8, 0.35, f.z * 0.8), 3, 2.4, 0xd8c040, (q) => G.blood?.add(q.x, q.z, 0.12 + Math.random() * 0.1, 0xb89a28, 0.031, 120));
+        if (once('s' + Math.floor((t - 0.5) / 1.1), 0.5 + Math.floor((t - 0.5) / 1.1) * 1.1)) G.sfx?.trigger('pee', gagAt(P, 0.3, 0.6), 0.55, { full: 2, max: 14 });
+      }
+      if (once('ahh', 1.2)) G.sfx?.trigger(gagVoice(P) === 'burp-f' ? 'ahh-f1' : 'ahh-m', P.pos, 0.45, { full: 2, max: 14 });
+      if (t > 5) gagLive.splice(i, 1);
+    } else if (g.kind === 'vomitar') {
+      if (once('retch', 0.45)) { G.sfx?.trigger('retch', P.pos, 0.85, { full: 2, max: 18 }); gagNpcs(P, ['¡Qué asco!', '¡Ehh, en el piso no!', 'Uh, se descompuso.']); }
+      if (t > 1.05 && t < 2.3) {
+        const m = P.char?.mouthWorld ? P.char.mouthWorld(gagV) : gagAt(P, 1.45, 0.2);
+        G.fx?.liquid(m, gagV2.set(f.x, -0.35, f.z).normalize(), 3, 2.6, Math.random() < 0.5 ? 0x9a9a2a : 0xb0a040, (q) => G.blood?.add(q.x, q.z, 0.14 + Math.random() * 0.14, 0x8a8a2a, 0.031, 160));
+        if (Math.random() < 0.15) G.fx?.vomit(m, gagV2.set(f.x, -0.4, f.z).normalize()); // algún grumo
+      }
+      if (t > 3) gagLive.splice(i, 1);
+    } else if (g.kind === 'eructar') {
+      if (once('b', 0.3)) { G.sfx?.trigger(gagVoice(P), P.pos, 1, { full: 3, max: 22, rate: 0.85 + Math.random() * 0.2 }); G.fx?.puff(P.char?.mouthWorld?.(gagV) || gagAt(P, 1.5, 0.2), f, 0.3, 0xd8d0b0); }
+      if (t > 2) gagLive.splice(i, 1);
+    } else if (g.kind === 'pedo') {
+      if (once('f', 0.42)) {
+        const butt = gagAt(P, 0.95, -0.18);
+        G.sfx?.trigger('fart', butt, 1, { full: 3, max: 24 });
+        G.fx?.puff(butt, gagV.set(-f.x * 0.6, 0.1, -f.z * 0.6), 0.7, 0x9a8a48);
+        gagNpcs(P, ['¡Qué baranda!', '¡¿Quién fue?!', 'Ay no, el que se lo tiró...', '¡Andá al baño, che!']);
+      }
+      if (t > 2.5) gagLive.splice(i, 1);
+    } else if (g.kind === 'cagar') {
+      if (once('strain', 0.9)) G.sfx?.trigger('pain', P.pos, 0.35, { full: 2, max: 10, rate: 0.7 });
+      if (once('plop', 2.1)) {
+        const at = gagAt(P, 0.22, -0.12);
+        G.sfx?.trigger('plop', at, 0.9, { full: 2, max: 16 });
+        G.sfx?.trigger('fart', at, 0.5, { full: 2, max: 14, rate: 1.3 });
+        if (g.mine) state.props?.spawnThrow('poop', at, { x: 0, y: -0.5, z: 0 });
+        gagNpcs(P, ['¡NO! ¡Acá no!', '¡Un animal!', 'Esto no lo limpio yo.']);
+      }
+      if (t > 3.6) gagLive.splice(i, 1);
+    } else if (g.kind === 'fuego') {
+      // el encendedor: chispazo, pedo y la llamarada para atrás un segundo y medio
+      if (once('click', 0.3)) G.sfx?.trigger('lighter', P.pos, 0.6, { full: 2, max: 12 });
+      if (once('f', 0.42)) G.sfx?.trigger('fart', gagAt(P, 0.95, -0.2), 1, { full: 3, max: 26, rate: 0.85 });
+      if (t > 0.45 && t < 1.95) {
+        const butt = gagAt(P, 0.92, -0.25), back = gagV.set(-f.x, 0.08, -f.z);
+        for (let k = 0; k < 6; k++) {
+          const sp = 5 + Math.random() * 4, sx = (Math.random() - 0.5) * 1.6, sy = (Math.random() - 0.5) * 1.2;
+          G.fx?.glow.spawn({ x: butt.x, y: butt.y, z: butt.z, vx: back.x * sp + f.z * sx, vy: back.y * sp + sy, vz: back.z * sp - f.x * sx,
+            life: 0.35 + Math.random() * 0.25, s0: 0.12, s1: 0.55, r: 1, g: 0.45 + Math.random() * 0.3, b: 0.12, a0: 0.95, a1: 0, drag: 1.5, grav: 1.5 });
+        }
+        if (!g.light) { g.light = { position: butt.clone(), color: new THREE.Color(0xff8a30), intensity: 40, distance: 9, decay: 1.6, visible: true, priority: 6, base: 40 }; G.world?.pool?.add(g.light); }
+        g.light.position.copy(butt); g.light.intensity = 30 + Math.random() * 20;
+        if (g.mine && once('hit' + Math.floor(t / 0.25), Math.floor(t / 0.25) * 0.25)) fartBurn(P, butt, back);
+      }
+      if (t >= 1.95 && g.light) { G.world?.pool?.remove?.(g.light); g.light.visible = false; g.light.intensity = 0; g.light = null; }
+      if (t > 2.4) gagLive.splice(i, 1);
+    }
+  }
+}
+// a quién le llega la llamarada (detrás tuyo, hasta 4,5 m, en un cono)
+function fartBurn(P, from, dir) {
+  const inCone = (p) => { const d = gagV.copy(p).sub(from); const l = d.length(); return l < 4.5 && d.normalize().dot(dir) > 0.75; };
+  for (const n of G.allNpcs?.() || []) if (!n.dead && inCone(n.pos.clone().setY(n.pos.y + 1))) { n.ignite?.(4); n.say?.('¡ME PRENDISTE FUEGO EL ORTO... DIGO, EL CULO!', 2); }
+  for (const rp of G.players.values()) if (rp.pos && inCone(rp.pos.clone().setY(rp.pos.y + 1))) state.net?.send({ t: 'ev', k: 'fartburn', to: rp.id });
+  // las cosas de madera y papel cercanas no; pero a veces te quemás vos
+  if (Math.random() < 0.06 && !state.local.immortal) { G.owner?.ignite('me', 2); state.net?.send({ t: 'ev', k: 'onfire', d: 2 }); bigMessage('🔥', 'Te quemaste la cola', 1400); }
+}
+
 function doTap(side) {
   const L = state.local;
   if (!L) return;
@@ -1123,6 +1221,7 @@ function doTap(side) {
       if (hand.bites >= 3) { hand.item = null; hand.bites = 0; hand.itemGeneration = generation + 1; updateHotbar(); }
     }, 450);
   } else if (r === 'relic') useRelic(L, item, stillHeld);
+  else if (r === 'fartflame') { gagFx(L, 'fuego', true); state.net?.send({ t: 'ev', k: 'gag', g: 'fuego' }); }
   else if (r === 'consume') consume(L, hand, item, generation, stillHeld);
   else if (r === 'cash' || r === 'cashall') G.sfx?.trigger('swing', null, 0.3); // los billetes salen al final del envión ('cashthrow')
   else if (r === 'shoot') G.items?.shoot(L);
@@ -1269,6 +1368,16 @@ function handleEvent(m) {
     }
     case 'emote':
       if (rp) rp.stateData = { ...(rp.stateData || {}), em: m.e, et: 0 };
+      if (rp && GAGS.has(m.e)) gagFx(rp, m.e, false);
+      break;
+    case 'gag': // otro se tiró un pedo prendido fuego (el encendedor)
+      if (rp && m.g === 'fuego') gagFx(rp, 'fuego', false);
+      break;
+    case 'fartburn': // ...y me agarró a mí
+      if (m.to === G.myId && rp && state.local && !state.local.dead && rp.pos.distanceTo(state.local.pos) < 6.5) {
+        state.local.damage(4, m.id); G.owner?.ignite('me', 3, m.id); state.net?.send({ t: 'ev', k: 'onfire', d: 3 });
+        G.hud?.notify(`🔥💨 ${escapeHtml(rp.name)} te prendió fuego con un pedo.`, 2500);
+      }
       break;
     case 'rs': // reapareció: cuerpo entero y limpio para todos
       rp?.resetBody(); G.owner?.extinguish(m.id);
@@ -1569,7 +1678,7 @@ async function joinGame() {
     state.props.onBreak = (p, pos, def, how) => {
       if (how === 'chop') G.fx?.clippings(pos, new THREE.Vector3(0, 1, 0), 10);
       if (def.glass) { G.fx?.glass(pos, 22, def.glass); G.sfx?.trigger('glass', pos, 0.9); }
-      else if (def.splat) { G.fx?.blood(pos, new THREE.Vector3(0, 1, 0), 1.2); G.sfx?.trigger('hit', pos, 0.9); }
+      else if (def.splat) { G.fx?.splat(pos, def.splat, p.type === 'poop' ? 0.7 : 1.2); G.sfx?.trigger(p.type === 'poop' ? 'plop' : 'hit', pos, 0.9); }
       else { G.fx?.glass(pos, 14, p.type === 'gnome' ? 0xd8413a : 0x7a5a3a); G.sfx?.trigger('hit', pos, 0.9); }
     };
     state.local.onEvent = onLocalEvent;
@@ -2297,7 +2406,8 @@ async function boot() {
       showHitMeter(speed);
       contactFeedback(clamp(speed / 12, 0.3, 1));
     };
-    G.fx.onBloodLand = (x, z, size) => G.blood.add(x, z, size);
+    G.fx.onBloodLand = (x, z, size, col) => G.blood.add(x, z, size, col);
+    G.fx.onVomitLand = (x, z) => G.blood.add(x, z, 0.25 + Math.random() * 0.2, 0x8a8a2a);
     G.input = new Input(canvas); G.input.enabled = false; keys.load(); G.input.map = (c) => keys.map(c);
     state.radial = new RadialMenu($('radial'));
     // Esc con el menú de gestos abierto: lo cierra (el navegador suelta el mouse igual; no es para pausar)
@@ -2417,6 +2527,8 @@ async function boot() {
     // depuración: window.__dukesStep(ms) avanza un cuadro a mano; window.__dukesPause congela el loop
     window.__dukesStep = (ms = 1000 / 60) => step(last + ms);
     window.__dukesCctv = openCctv; // depuración: abrir la sala de monitores sin ir al escritorio
+    window.__dukesEmote = (e) => chooseEmote(EMOTES.find((x) => x.e === e)); // depuración: hacer un gesto
+    window.__dukesTap = doTap; // depuración: un click con una mano
     function step(now) {
       try {
       const frameSeconds = Math.max(0.001, (now - last) / 1000);
@@ -2444,7 +2556,7 @@ async function boot() {
         updateNameTags(); updatePrompt(); updateHud(dt); updatePost();
         G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.club?.update(dt); G.villagers?.update(dt, G.camera); G.adminNpcs?.update(dt, G.camera); G.circuit?.update(dt, G.camera); G.race?.update(dt); G.cctv?.update(dt, G.camera); G.items?.update(dt); G.owner?.update(dt);
         { const hide = (G.world.storm?.indoor || 0) > 0.95; for (const m of G.grass.meshes) m.visible = !hide; }
-        G.fx.update(dt, G.camera); G.blood.update(dt); G.football?.update(dt); G.gore?.update(dt); state.graffiti?.flush();
+        G.fx.update(dt, G.camera); stepGags(dt); G.blood.update(dt); G.football?.update(dt); G.gore?.update(dt); state.graffiti?.flush();
         G.bag?.update(dt);
         G.hud?.flushHints(dt);
         G.markers?.update(G.camera, state.mode === 'game', (ox, oy, oz, dx, dy, dz, dist) => G.phys.raycast(ox, oy, oz, dx, dy, dz, dist));

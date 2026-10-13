@@ -35,6 +35,8 @@ export const PROP_DEFS = {
   wetsign: { shape: 'box', hx: 0.15, hy: 0.315, hz: 0.18, oy: 0.315, mass: 1.2, kind: 'blunt', grip: [0, 0.6, 0], label: 'cartel de piso mojado' },
   barrel: { shape: 'cyl', r: 0.28, h: 0.88, oy: 0.44, mass: 16, kind: 'blunt', grip: [0, 0.86, 0.25], label: 'tambor' },
   box: { shape: 'box', hx: 0.195, hy: 0.17, hz: 0.26, oy: 0.17, mass: 1.5, breakDv: 9, kind: 'blunt', grip: [0, 0.34, 0], label: 'caja' },
+  // la caca (gesto de cagarse): se agarra, se revolea y revienta manchando todo
+  poop: { shape: 'ball', r: 0.075, oy: 0.06, mass: 0.45, breakDv: 3.2, splat: 0x4a2a10, kind: 'blunt', grip: [0, 0.08, 0], label: 'soreta' },
 };
 export const DEFAULT_DEF = { shape: 'box', hx: 0.18, hy: 0.18, hz: 0.18, oy: 0.18, mass: 2, kind: 'blunt', grip: [0, 0.3, 0], label: 'objeto' };
 export const defOf = (type) => PROP_DEFS[type] || DEFAULT_DEF;
@@ -75,6 +77,7 @@ export const HOLD = {
   wetsign: { style: 'carry', two: [[-0.12, 0.6, 0], [0.12, 0.6, 0]] },
   barrel: { style: 'carry', two: [[0, 0.86, 0.25], [0, 0.86, -0.25]] },
   box: { style: 'carry', two: [[-0.2, 0.2, 0], [0.2, 0.2, 0]] },
+  poop: { style: 'carry' },
 };
 const HOLD_DEFAULT = { style: 'carry' };
 export const holdOf = (type) => HOLD[type] || HOLD_DEFAULT;
@@ -304,6 +307,16 @@ function fallbackMesh(type) {
       }));
       add(g, shared('coneGeo', () => new THREE.CylinderGeometry(0.02, 0.13, 0.5, 24, 1, true)), orange, 0, 0.3, 0);
       add(g, shared('coneBase', () => new THREE.BoxGeometry(0.34, 0.04, 0.34)), shared('coneBaseMat', () => mat(0xe0480e, 0.7)), 0, 0.02, 0);
+      break;
+    }
+    case 'poop': {
+      // el clásico: tres roscas que se achican, marrón brilloso
+      const brown = shared('poopMat', () => new THREE.MeshPhysicalMaterial({ color: 0x5a3414, roughness: 0.35, clearcoat: 0.6, clearcoatRoughness: 0.3 }));
+      for (const [y, r, s] of [[0.025, 0.07, 1], [0.065, 0.052, 0.8], [0.098, 0.034, 0.6]]) {
+        const ring = add(g, shared('poopRing' + s, () => new THREE.TorusGeometry(r, r * 0.55 * s + 0.012, 10, 20)), brown, 0, y, 0);
+        ring.rotation.x = Math.PI / 2;
+      }
+      add(g, shared('poopTip', () => new THREE.ConeGeometry(0.022, 0.05, 10)), brown, 0, 0.128, 0);
       break;
     }
     case 'watermelon': {
