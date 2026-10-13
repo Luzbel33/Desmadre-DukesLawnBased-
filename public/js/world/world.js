@@ -441,8 +441,11 @@ export class World {
     sun.target.updateMatrixWorld();
     // en 'Rendimiento' la sombra del sol se redibuja un cuadro sí y uno no (mapa y matriz se actualizan juntos: no tiembla)
     const every = G.perf?.shadowEvery || 1;
-    sun.shadow.autoUpdate = every <= 1;
-    if (every > 1 && G.frame % every === 0) sun.shadow.needsUpdate = true;
+    // Underground the sun contributes no light. Keep its allocated shadow map
+    // for the shader, but only refresh it when daylight can contribute again.
+    const sunLit = sun.intensity > 0;
+    sun.shadow.autoUpdate = sunLit && every <= 1;
+    if (sunLit && every > 1 && G.frame % every === 0) sun.shadow.needsUpdate = true;
     if (this.forest) this.forest.update(G.camera ? G.camera.position : focus, G.time);
     if (this.sky?.material.uniforms.time) this.sky.material.uniforms.time.value = G.time;
     // sombra lejana: cuando están los árboles (o si tardan demasiado)

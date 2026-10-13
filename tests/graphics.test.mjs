@@ -3,6 +3,98 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { GRAPHICS, TIERS, classifyGpu, AutoTuner, applyGraphics, applyShadows, readGraphics } from '../public/js/core/graphics.js';
 import { LightPool } from '../public/js/world/lightpool.js';
+import { Post } from '../public/js/fx/post.js';
+import { N8AOPass } from '../public/vendor/n8ao/N8AO.js';
+import { World } from '../public/js/world/world.js';
+import { G } from '../public/js/core/G.js';
+
+function postFixture(scene, render) {
+  const post = Object.create(Post.prototype);
+  post.renderPass = { scene };
+  post.intox = {};
+  post.u = Object.fromEntries(['Drunk', 'High', 'Acid', 'Keta', 'Dmt', 'Shroom', 'Pill', 'Speed', 'Hurt', 'LowBlood', 'Black', 'Smoke'].map(key => ['u' + key, { value: 0 }]));
+  post.composer = { renderer: { info: { reset() {} } }, render };
+  return post;
+}
+
+test('post: comparte matrices entre pases sin congelar las animaciones del cuadro siguiente', () => {
+  const scene = new THREE.Scene(), parent = new THREE.Group(), mesh = new THREE.Object3D();
+  scene.add(parent); parent.add(mesh);
+  let updates = 0;
+  const update = scene.updateMatrixWorld;
+  scene.updateMatrixWorld = function (...args) { updates++; return update.apply(this, args); };
+  const positions = [];
+  const post = postFixture(scene, () => {
+    for (let pass = 0; pass < 3; pass++) {
+      if (scene.matrixWorldAutoUpdate) scene.updateMatrixWorld();
+      positions.push(mesh.matrixWorld.elements[12]);
+    }
+  });
+  parent.position.x = 10; mesh.position.x = 2;
+  post.render(1 / 60);
+  parent.position.x = 20; mesh.position.x = 4;
+  post.render(1 / 60);
+  assert.equal(updates, 2, 'una actualización por cuadro, no una por pase');
+  assert.deepEqual(positions, [12, 12, 12, 24, 24, 24]);
+  assert.equal(scene.matrixWorldAutoUpdate, true);
+});
+
+test('post: restaura el control de matrices si un pase falla y respeta escenas manuales', () => {
+  const scene = new THREE.Scene();
+  const post = postFixture(scene, () => { throw new Error('pase fallido'); });
+  assert.throws(() => post.render(1 / 60), /pase fallido/);
+  assert.equal(scene.matrixWorldAutoUpdate, true);
+  scene.matrixWorldAutoUpdate = false;
+  scene.updateMatrixWorld = () => assert.fail('la escena administra sus matrices');
+  assert.throws(() => post.render(1 / 60), /pase fallido/);
+  assert.equal(scene.matrixWorldAutoUpdate, false);
+});
+
+test('AO: los pases transparentes conservan la sombra completa y restauran sus opciones', t => {
+  let fail = false, calls = 0;
+  t.mock.method(N8AOPass.prototype, 'renderTransparency', function (renderer) {
+    calls++;
+    assert.equal(renderer.shadowMap.autoUpdate, false);
+    assert.equal(renderer.shadowMap.needsUpdate, false);
+    if (fail) throw new Error('transparencia fallida');
+  });
+  const renderer = { getSize: v => v.set(32, 32), getPixelRatio: () => 1,
+    shadowMap: { autoUpdate: true, needsUpdate: true } };
+  const post = new Post(renderer, new THREE.Scene(), new THREE.PerspectiveCamera(), { bloom: false });
+  post.ao.renderTransparency(renderer);
+  assert.deepEqual(renderer.shadowMap, { autoUpdate: true, needsUpdate: true });
+  fail = true;
+  assert.throws(() => post.ao.renderTransparency(renderer), /transparencia fallida/);
+  assert.deepEqual(renderer.shadowMap, { autoUpdate: true, needsUpdate: true });
+  renderer.shadowMap.autoUpdate = false;
+  assert.throws(() => post.ao.renderTransparency(renderer), /transparencia fallida/);
+  assert.equal(renderer.shadowMap.autoUpdate, false);
+  assert.equal(calls, 3);
+});
+
+test('sol: bajo tierra conserva su mapa sin redibujarlo y vuelve a actualizar al salir', () => {
+  const old = { camera: G.camera, perf: G.perf, frame: G.frame };
+  const world = new World(new THREE.Scene());
+  world.sun = new THREE.DirectionalLight(0xffffff, 0);
+  world.shadowSize = 38;
+  try {
+    G.camera = null; G.perf = { shadowEvery: 1 }; G.frame = 7;
+    world.sun.shadow.needsUpdate = true;
+    world.update(1 / 60, { x: 0, z: 0 }, { bake: false });
+    assert.equal(world.sun.shadow.autoUpdate, false);
+    assert.equal(world.sun.shadow.needsUpdate, true, 'la primera asignación del mapa sigue permitida');
+    world.sun.shadow.needsUpdate = false;
+    G.perf.shadowEvery = 2; G.frame = 8;
+    world.update(1 / 60, { x: 0, z: 0 }, { bake: false });
+    assert.equal(world.sun.shadow.needsUpdate, false, 'no pide otra sombra invisible');
+    world.sun.intensity = 2;
+    world.update(1 / 60, { x: 0, z: 0 }, { bake: false });
+    assert.equal(world.sun.shadow.needsUpdate, true);
+    G.perf.shadowEvery = 1;
+    world.update(1 / 60, { x: 0, z: 0 }, { bake: false });
+    assert.equal(world.sun.shadow.autoUpdate, true);
+  } finally { Object.assign(G, old); }
+});
 
 test('la placa de video elige el preset de arranque', () => {
   const cases = [

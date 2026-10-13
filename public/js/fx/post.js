@@ -308,6 +308,19 @@ class IntoxPass extends Pass {
   }
 }
 
+class WorldAOPass extends N8AOPass {
+  renderTransparency(renderer) {
+    const shadows = renderer.shadowMap;
+    const autoUpdate = shadows.autoUpdate, needsUpdate = shadows.needsUpdate;
+    // Beauty already captured all casters. N8AO hides opaque meshes here, so a
+    // second shadow update would both waste work and erase those casters.
+    shadows.autoUpdate = false;
+    shadows.needsUpdate = false;
+    try { return super.renderTransparency(renderer); }
+    finally { shadows.autoUpdate = autoUpdate; shadows.needsUpdate = needsUpdate; }
+  }
+}
+
 export class Post {
   constructor(renderer, scene, camera, opts = {}) {
     const size = renderer.getSize(new THREE.Vector2());
@@ -326,7 +339,7 @@ export class Post {
       this.composer.addPass(this.renderPass);
       // N8AO: sombra de contacto en rincones, pies de muebles y paredes (lo que más "asienta" la escena)
       const w = size.x * pr, h = size.y * pr;
-      const ao = new N8AOPass(scene, camera, w, h);
+      const ao = new WorldAOPass(scene, camera, w, h);
       const bt = new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.LinearFilter, magFilter: THREE.NearestFilter, type: THREE.HalfFloatType, format: THREE.RGBAFormat, stencilBuffer: false, samples: 4 });
       bt.depthTexture = new THREE.DepthTexture(w, h, THREE.UnsignedIntType);
       bt.depthTexture.format = THREE.DepthFormat;
@@ -423,6 +436,14 @@ export class Post {
     const u = this.u;
     const active = u.uDrunk.value > 0.01 || u.uHigh.value > 0.01 || u.uAcid.value > 0.01 || u.uKeta.value > 0.01 || u.uDmt.value > 0.01 || u.uShroom.value > 0.01 || u.uPill.value > 0.01 || u.uSpeed.value > 0.01 || u.uHurt.value > 0.01 || u.uLowBlood.value > 0.01 || u.uBlack.value > 0.001 || u.uSmoke.value > 0.01;
     this.intox.enabled = active;
-    this.composer.render(dt);
+    const scene = this.renderPass.scene;
+    const autoUpdate = scene.matrixWorldAutoUpdate;
+    // Beauty and both AO transparency passes share the same transforms. Updating
+    // once avoids walking every model/bone three times; animations still advance
+    // before this frame, and independent renders retain their normal behavior.
+    if (autoUpdate) scene.updateMatrixWorld();
+    scene.matrixWorldAutoUpdate = false;
+    try { this.composer.render(dt); }
+    finally { scene.matrixWorldAutoUpdate = autoUpdate; }
   }
 }
