@@ -21,7 +21,8 @@ Fuente única de trabajo pendiente.
       sin commitear integrado el 13/10: `world/castle-expansion.js`).
 - [ ] Sustos del piso de arriba y las torres hechos (`game/haunt-upper.js`, 2-3 variantes por cuarto, ruidos al azar):
       probarlos jugando y ajustar tiempos. Faltan sustos nuevos en la planta baja (salón, cocina, biblioteca).
-- [ ] Ajedrez jugable en el castillo (y quizás en otros lugares).
+- [ ] Ajedrez (hecho 13/10: biblioteca y cuarto de los condes, contra otro o contra el Conde; `game/chess.js`). Falta:
+      probarlo entre dos personas y sumar tableros en otros lugares (taberna, coffeeshop).
 
 ### Humor físico estilo POSTAL 2
 - [ ] Hecho 13/10 (rueda Z: mear, vomitar, eructar, pedo, cagarse + encendedor; `game/gags.js`): se camina mientras

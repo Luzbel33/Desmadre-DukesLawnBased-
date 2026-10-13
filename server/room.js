@@ -5,7 +5,9 @@ import zlib from 'node:zlib';
 import { isOwnerName, checkOwnerKey, allowTry } from './owner.js';
 import {
   PROTOCOL, GRASSMAP, GRASS, SURFACES, SURFACE_BY_ID, SCREENS, VEHICLES, PROPS, FIELD, PAINT, parsePatch, grassAllowed, CLUB, CASTLE, playableAt,
+  CHESS_BOARDS,
 } from '../public/js/shared/mapdata.js';
+import { initial as chessInitial, isLegal as chessLegal, apply as chessApply, status as chessStatus } from '../public/js/shared/chess.js';
 import { applyDots, cutRect, growAll, fieldMask, mowField, DOT_BYTES } from '../public/js/shared/raster.js';
 import { Football } from './football.js';
 import { PokerTable } from './poker.js';
@@ -67,6 +69,7 @@ export class Room {
       });
     }
     for (const s of SCREENS) this.media.set(s.id, { queue: [], cur: null });
+    this.chess = new Map(CHESS_BOARDS.map((b) => [b.id, { ...this._chessNew(), seats: { w: 0, b: 0 }, ai: null }]));
     this.poker = new PokerTable('bar', 6, {
       broadcast: (o) => this.broadcast(o),
       sendTo: (pid, o) => { const pl = this.players.get(pid); if (pl) this.send(pl, o); },
@@ -209,6 +212,7 @@ export class Room {
       if (ch) this.broadcast({ t: 'vs', id: v.id, seats: v.seats, o: v.o });
     }
     this.poker.leave(p.id);
+    for (const id of this.chess.keys()) this._chessLeave(p, id);
     this.broadcast({ t: 'pleave', id: p.id });
     if (p.ready) this.sys(p.name + ' se fue del lobby.');
   }
@@ -254,6 +258,7 @@ export class Room {
       chatHistory: this.chatHistory,
       fires: this.firePatches.filter(f=>f.end>Date.now()).map(f=>({id:f.id,p:f.p,n:f.n,life:(f.end-Date.now())/1000})),
       poker: this.poker.publicState(),
+      chess: [...this.chess.keys()].map((id) => this._chessPub(id)),
       fb: this.football.state(),
     });
     if ([...this.players.values()].some((o) => o.muted || o.frozen || o.tune)) this._adminRoles();
@@ -435,6 +440,7 @@ export class Room {
       case 'vr': this.onVehReset(p, msg); break;
       case 'media': this.onMedia(p, msg); break;
       case 'adm': this.onAdmin(p, msg); break;
+      case 'chess': this.onChess(p, msg); break;
       case 'pk':
         if (msg.a === 'sit') this.poker.sit(p.id, p.name, msg.seat | 0);
         else if (msg.a === 'leave') this.poker.leave(p.id);
@@ -739,6 +745,75 @@ export class Room {
     this.dirtyVeh.delete(v);
     this.broadcast({ t: 'vreset', id: v.id, p: v.p, q: v.q });
     this.broadcast({ t: 'vs', id: v.id, seats: v.seats, o: v.o });
+  }
+
+  // ------------------------------------------------------------------ ajedrez (game/chess.js; reglas en shared/chess.js)
+  // Cada mesa: el estado, quién está sentado de cada color (o el Conde, la IA: la calcula el cliente del que juega
+  // contra él y el servidor la valida igual), la última jugada y el resultado.
+  _chessNew() { return { st: chessInitial(), last: null, res: null, n: 0 }; }
+  _chessPub(id) { const c = this.chess.get(id); return { b: id, st: c.st, seats: c.seats, ai: c.ai, last: c.last, res: c.res, n: c.n }; }
+  _chessName(c, col) { return c.ai === col ? 'el Conde' : this.players.get(c.seats[col])?.name || '?'; }
+  _chessOver(c, r, why) {
+    c.res = { r, why };
+    const w = this._chessName(c, 'w'), b = this._chessName(c, 'b');
+    if (r === 'draw') this.sys(`♟️ ${w} y ${b} empataron al ajedrez (${why}).`, '#e8dcc0');
+    else this.sys(`♟️ ${r === 'w' ? w : b} le ganó a ${r === 'w' ? b : w} al ajedrez (${why}).`, '#e8dcc0');
+  }
+  _chessLeave(p, id) {
+    const c = this.chess.get(id);
+    if (!c) return;
+    let changed = false;
+    for (const col of ['w', 'b']) {
+      if (c.seats[col] !== p.id) continue;
+      c.seats[col] = 0; changed = true;
+      if (!c.res && c.n > 0) this._chessOver(c, col === 'w' ? 'b' : 'w', 'el otro se levantó');
+    }
+    if (!changed) return;
+    if (!c.seats.w && !c.seats.b) c.ai = null;
+    this.broadcast({ t: 'chess', ...this._chessPub(id) });
+  }
+  onChess(p, msg) {
+    const c = this.chess.get(msg.b), def = CHESS_BOARDS.find((d) => d.id === msg.b);
+    if (!c || !def) return;
+    const mine = c.seats.w === p.id ? 'w' : c.seats.b === p.id ? 'b' : null, other = mine === 'w' ? 'b' : 'w';
+    switch (msg.a) {
+      case 'sit': {
+        const col = msg.c === 'b' ? 'b' : 'w', at = p.st?.p;
+        if (mine || c.seats[col] || c.ai === col) return;
+        if (!Array.isArray(at) || Math.hypot(at[0] - def.c[0], at[2] - def.c[2]) > 4 || Math.abs(at[1] - def.c[1]) > 3) return;
+        for (const id of this.chess.keys()) if (id !== msg.b) this._chessLeave(p, id);
+        if (c.res || (!c.seats.w && !c.seats.b)) Object.assign(c, this._chessNew());
+        c.seats[col] = p.id;
+        break;
+      }
+      case 'leave': this._chessLeave(p, msg.b); return;
+      case 'ai': { // jugar contra el Conde (o dejar de): partida nueva
+        if (!mine || c.seats[other]) return;
+        c.ai = msg.on ? other : null;
+        Object.assign(c, this._chessNew());
+        break;
+      }
+      case 'move': {
+        if (c.res || !mine) return;
+        const turn = c.st.turn;
+        if (turn !== mine && !(msg.ai && c.ai === turn)) return;
+        const mm = Array.isArray(msg.m) ? msg.m : [], m = { f: mm[0] | 0, t: mm[1] | 0 }; // m: [desde, hasta, coronación]
+        if (['q', 'r', 'b', 'n'].includes(mm[2])) m.p = mm[2];
+        if (m.f < 0 || m.f > 63 || m.t < 0 || m.t > 63 || !chessLegal(c.st, m)) return;
+        c.st = chessApply(c.st, m).st; c.last = m; c.n++;
+        const s = chessStatus(c.st);
+        if (s.over) this._chessOver(c, s.result, s.why === 'mate' ? 'jaque mate' : s.why);
+        break;
+      }
+      case 'resign': if (!mine || c.res || !c.n) return; this._chessOver(c, other, 'abandono'); break;
+      case 'reset': { // revancha: terminada, contra el Conde o solo en la mesa (nunca a mitad de una partida entre dos)
+        if (!mine || (!c.res && c.n && c.seats.w && c.seats.b)) return;
+        Object.assign(c, this._chessNew());
+        break;
+      }
+      default: return;
+    }
+    this.broadcast({ t: 'chess', ...this._chessPub(msg.b) });
   }
 
   // ------------------------------------------------------------------ admin (ui/admin.js)

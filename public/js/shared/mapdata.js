@@ -279,6 +279,21 @@ for (const s of SURFACES) {
 export const SURFACE_BY_ID = Object.fromEntries(SURFACES.map((s) => [s.id, s]));
 
 // ---------------------------------------------------------------- Pantallas (YouTube)
+// ---------------------------------------------------------------- Ajedrez (game/chess.js, reglas en shared/chess.js)
+// c: el centro de la cara de juego del tablero; yaw: las blancas quedan del lado -z local del tablero. seats: dónde se
+// sienta cada color (x, z, yaw mirando a la mesa; y = el almohadón). El piso de arriba del castillo está en 10.3
+// (world/castle-expansion.js UPPER_FLOOR).
+export const CHESS_BOARDS = [
+  {
+    id: 'condes', name: 'Ajedrez del cuarto de los condes', c: [-14, 10.3 + 0.768, -118.1], yaw: Math.PI / 2,
+    seats: { w: { x: -15.3, y: 10.3 + 0.46, z: -118.1, yaw: Math.PI / 2 }, b: { x: -12.7, y: 10.3 + 0.46, z: -118.1, yaw: -Math.PI / 2 } },
+  },
+  {
+    id: 'biblioteca', name: 'Ajedrez de la biblioteca', c: [12.3, CASTLE.keep.floor + 0.768, -108.4], yaw: 0,
+    seats: { w: { x: 12.3, y: CASTLE.keep.floor + 0.46, z: -109.35, yaw: 0 }, b: { x: 12.3, y: CASTLE.keep.floor + 0.46, z: -107.45, yaw: Math.PI } },
+  },
+];
+
 // ---------------------------------------------------------------- Cámaras de seguridad (game/cctv.js)
 // eye: ojo del castillo (si no, cámara común). p: dónde está; look: adónde apunta de reposo. Cada una tiene un altavoz:
 // se habla por ahí desde la sala de monitores y suena la música de YouTube de 'cctv_pa' (ver SCREENS).

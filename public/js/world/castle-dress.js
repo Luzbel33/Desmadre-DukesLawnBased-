@@ -305,7 +305,7 @@ function dressUpperCastle({ d, c, r, col }) {
   B.add('c_commode', -22.8, y, -118.0, PI / 2, 1, { shadow: true }); col(-22.8, y, -118, 0.7, 1.2, 1.3);
   B.add('c_frame_stand', -22.75, y + 1.21, -118, PI / 2, 1).add('c_vase_b3', -22.75, y + 1.21, -118.4, 0, 1);
   B.add('c_roundtable', -14, y, -118.1, 0, 1, { shadow: true }); col(-14, y, -118.1, 0.9, 0.75, 0.9);
-  B.add('c_chess', -14, y + 0.75, -118.1, 0.4, 1);
+  // el ajedrez de la mesa es jugable: lo arma game/chess.js (CHESS_BOARDS en shared/mapdata.js)
   chair(-15.3, -118.1, PI / 2); chair(-12.7, -118.1, -PI / 2);
   wallChart(d, 'lineage', -18.5, y + 3.83, -125.59, 0, 1.05, 1.15, 121);
   curtains(d, -23.72, -124, 'z', 1, y + 0.05, 14.5, 0.7, r);
@@ -706,7 +706,7 @@ function dressLibrary({ d, c, r, col }) {
   // mesa de ajedrez junto a la ventana con dos banquitos
   B.add('c_roundtable', 12.3, F0, -108.4, 0, 1, { shadow: true });
   col(12.3, F0, -108.4, 0.8, 0.75, 0.8);
-  B.add('c_chess', 12.3, F0 + 0.75, -108.4, 0.2, 1).add('c_stool2', 12.3, F0, -107.45, PI, 1).add('c_stool2', 12.3, F0, -109.35, 0, 1);
+  B.add('c_stool2', 12.3, F0, -107.45, PI, 1).add('c_stool2', 12.3, F0, -109.35, 0, 1);
   // escalera baja apoyada entre dos estantes y un baúl-cajonera contra el tabique
   B.add('c_ladder2', 12.05, F0, -114.2, 0, 1, { shadow: true });
   B.add('c_drawer', 9.05, F0, -111.0, PI / 2, 1, { shadow: true });

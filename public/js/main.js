@@ -28,6 +28,7 @@ import { ClubGame } from './game/club.js';
 import { Villagers } from './game/villagers.js';
 import { Cctv } from './game/cctv.js';
 import { Gags, GAGS } from './game/gags.js';
+import { ChessGame } from './game/chess.js';
 import { BunkerItems } from './game/bunker-items.js';
 import { pbrReady } from './world/builder.js';
 import { yieldToBrowser, prepareScene } from './core/startup.js';
@@ -606,7 +607,7 @@ function updatePrompt() {
     state.promptAction = x;
     canUse = true;
     if (x.kind === 'vehicle') H.hint('use-veh', keys.label('use'), `Subir a ${({ tractor: 'el tractor', cart: 'el carrito', racecar: 'el auto de carrera', moto: x.item.seats?.[0] ? 'la moto (atrás)' : 'la moto' })[x.item.type] || 'la cortadora'}`);
-    else if (x.kind === 'seat') H.hint('use-seat', keys.label('use'), x.item.poker ? 'Sentarse a jugar al póker' : 'Sentarse');
+    else if (x.kind === 'seat') H.hint('use-seat', keys.label('use'), x.item.poker ? 'Sentarse a jugar al póker' : x.item.chess ? `Jugar al ajedrez (${x.item.chess.c === 'w' ? 'blancas' : 'negras'})` : 'Sentarse');
     else H.hint('use-' + x.item.k, keys.label('use'), x.item.label);
   }
   // objetos al alcance
@@ -634,10 +635,11 @@ function interact() {
   const a = state.promptAction;
   if (!a) return;
   if (a.kind === 'exitVehicle') return state.vehicles.exitCurrent();
-  if (a.kind === 'stand') { if (L.seat?.poker) G.poker?.leave(); L.standUp(); return; }
+  if (a.kind === 'stand') { if (L.seat?.poker) G.poker?.leave(); if (L.seat?.chess) { G.chess?.leave(); return; } L.standUp(); return; }
   if (a.kind === 'vehicle') return state.vehicles.enter(a.item);
   if (a.kind === 'seat') {
     if (a.item.poker) { G.poker?.sit(a.item); return; }
+    if (a.item.chess) { G.chess?.sit(a.item); return; }
     L.sitAt(a.item);
     return;
   }
@@ -688,6 +690,7 @@ function nearestSeat() {
     if (Math.abs(L.pos.y - (s.y - 0.46)) > 0.9) continue;
     const d = Math.hypot(L.pos.x - s.x, L.pos.z - s.z);
     if (s.poker && G.poker?.st?.seats?.[s.seatIndex]) continue; // silla de póker ocupada (jugador o parroquiano)
+    if (s.chess && G.chess?.taken(s)) continue; // silla de ajedrez ocupada (alguien o el Conde)
     if (d < 1.35 && (!best || d < best.dist) && !s.taken) best = { kind: 'seat', item: s, dist: d + 0.2 };
   }
   return best;
@@ -1528,6 +1531,7 @@ function setupNetHandlers(net) {
     getSocialUI().begin(m.room, $('m-name').value.trim(), m.chatHistory || []);
     G.voice?.connectAll((m.players || []).map((p) => p.id));
     if (m.poker) G.poker?.applyState(m.poker);
+    G.chess?.syncAll(m.chess);
     if (m.fb) G.football?.applyState(m.fb);
     state.props.load(m.props || []);
     state.vehicles.load(m.vehicles || []);
@@ -1587,6 +1591,7 @@ function setupNetHandlers(net) {
   net.on('ms', (m) => { state.media[m.s] = m.st; G.media?.apply(m.s, m.st); if (state.mediaScreen === m.s) renderMedia(); });
   net.on('set', (m) => { G.settings = { ...G.settings, ...(m.settings || {}) }; updateDesmadreUI(); applyGod(); if (state.mode === 'admin') G.admin?.render(); });
   net.on('adm', onAdmin);
+  net.on('chess', (m) => G.chess?.sync(m));
   net.on('close', () => {
     if (!G.inGame) return;
     G.inGame = false; G.input.enabled = false; G.sfx?.stop(); G.media?.stop();
@@ -1768,6 +1773,13 @@ function setupUIEvents() {
   $('ritual-cancel').addEventListener('click', () => G.club?.closeRitual());
   $('cctv-prev').addEventListener('click', () => cctvStep(-1));
   $('cctv-next').addEventListener('click', () => cctvStep(1));
+  {
+    // ajedrez: el mouse libre sobre el tablero (game/chess.js elige la casilla)
+    const cv = (e) => state.mode === 'chess' && G.renderer && e.target === G.renderer.domElement;
+    const at = (e) => { const r = G.renderer.domElement.getBoundingClientRect(); return [((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1]; };
+    addEventListener('mousemove', (e) => { if (cv(e)) G.chess?.pointer(...at(e), G.camera, false); });
+    addEventListener('mousedown', (e) => { if (cv(e) && e.button === 0) G.chess?.pointer(...at(e), G.camera, true); });
+  }
   $('cctv-talk').addEventListener('click', () => cctvTalk(!state.cctvTalk));
   $('cctv-music').addEventListener('click', () => cctvMusic());
   {
@@ -1865,6 +1877,7 @@ function setupUIEvents() {
     // panel de admin: F9 (configurable) lo abre y lo cierra; Esc también lo cierra
     if (state.mode === 'admin' && (e.key === 'Escape' || kc === 'F9')) { e.preventDefault(); closeOverlayToGame(e.key === 'Escape'); return; }
     if (kc === 'F9' && !typing && state.mode === 'game') { e.preventDefault(); G.admin?.open(); G.input.unlock(); return; }
+    if (state.mode === 'chess' && (e.key === 'Escape' || kc === 'KeyX')) { e.preventDefault(); state.escT = performance.now(); G.chess?.leave(); return; }
     if (state.mode === 'cctv') {
       if (e.key === 'Escape' || kc === 'KeyX') { e.preventDefault(); state.escT = performance.now(); closeCctv(); return; }
       if (kc === 'KeyA' || e.code === 'ArrowLeft') { cctvStep(-1); return; }
@@ -2491,6 +2504,12 @@ async function boot() {
     } catch (e) { console.warn('aldeanos', e); }
     // cámaras de seguridad (ojos en el castillo) y la pared de monitores del Búnker
     try { G.cctv = new Cctv({ scene: G.scene, renderer, world: G.world, getLocal: () => state.local }).build(); } catch (e) { console.warn('cámaras', e); }
+    // ajedrez en las mesas del castillo (game/chess.js): sentarse = jugar; la cámara va arriba del tablero
+    G.chess = new ChessGame({
+      scene: G.scene, getLocal: () => state.local, getNet: () => state.net, bigMessage,
+      onSit: (seat) => { const L = state.local; if (!L) return; if (L.vehicle) state.vehicles?.exitCurrent(); L.sitAt(seat); setMode('chess'); G.input.unlock(); },
+      onLeave: () => { if (state.local?.seat?.chess) state.local.standUp(); if (state.mode === 'chess') { setMode('game'); setTimeout(() => G.input.lock(), 0); } },
+    }).build(G.world?.seats || (G.world.seats = []));
     G.items = new BunkerItems({
       getLocal: () => state.local, getNet: () => state.net,
       kick: (k) => { camKick.v.x -= k * 12; }, shake: (k) => { state.shake = Math.max(state.shake || 0, k); },
@@ -2583,6 +2602,7 @@ async function boot() {
         // sentado al póker: el mouse mira alrededor de la mesa y la rueda elige cuánto apostar
         if (state.mode === 'poker' && G.poker && G.input.locked) { G.poker.lookAround(G.input.dx, G.input.dy); G.poker.wheel(G.input.wheel); }
         if (state.mode === 'poker' && G.poker?.cameraPose(G.camera, dt)) state.local.char.setVisibleHead(false); // cámara en los ojos: sin ver la propia cabeza
+        else if (state.mode === 'chess' && G.chess?.cameraPose(G.camera, dt)) state.local.char.setVisibleHead(true);
         else {
           if (Math.abs(G.camera.fov - G.opts.fov) > 0.01) { G.camera.fov = G.opts.fov; G.camera.updateProjectionMatrix(); }
           updateCamera(dt);
@@ -2590,7 +2610,7 @@ async function boot() {
         }
         G.poker?.update(G.camera, dt);
         updateNameTags(); updatePrompt(); updateHud(dt); updatePost();
-        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.club?.update(dt); G.villagers?.update(dt, G.camera); G.adminNpcs?.update(dt, G.camera); G.circuit?.update(dt, G.camera); G.race?.update(dt); G.cctv?.update(dt, G.camera); G.items?.update(dt); G.owner?.update(dt);
+        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.club?.update(dt); G.villagers?.update(dt, G.camera); G.adminNpcs?.update(dt, G.camera); G.circuit?.update(dt, G.camera); G.race?.update(dt); G.cctv?.update(dt, G.camera); G.chess?.update(dt); G.items?.update(dt); G.owner?.update(dt);
         { const hide = (G.world.storm?.indoor || 0) > 0.95; for (const m of G.grass.meshes) m.visible = !hide; }
         G.fx.update(dt, G.camera); G.gags?.update(dt); G.blood.update(dt); G.football?.update(dt); G.gore?.update(dt); state.graffiti?.flush();
         G.bag?.update(dt);
