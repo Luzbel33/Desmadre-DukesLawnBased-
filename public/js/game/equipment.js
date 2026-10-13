@@ -94,7 +94,50 @@ export function createEquippedModel(slot){
     group.add(mesh(new THREE.CylinderGeometry(.003,.003,.12,6),new THREE.MeshStandardMaterial({color:0xd8c29a,roughness:.9}),0,0,0));
   }
   if(slot>=11&&slot<=19)consumableModel(slot,group);
+  if(slot>=24&&slot<=27)relicModel(slot,group);
   return group;
+}
+
+// Las reliquias del cofre del laberinto (shared/relics.js). Las partes con nombre las anima EquipmentView al usarlas:
+// la mandíbula y los ojos de la calavera, el humo de la bola, la panza del patito
+function relicModel(slot,group){
+  const gold=new THREE.MeshStandardMaterial({color:0xe0b03a,metalness:1,roughness:.22,emissive:0x3a2400,emissiveIntensity:.25});
+  const dark=new THREE.MeshStandardMaterial({color:0x080604,roughness:.9});
+  if(slot===24){ // calavera de oro: cráneo, pómulos, cuencas negras con ojos que se prenden y la mandíbula suelta
+    const skull=new THREE.Group();skull.position.y=.05;group.add(skull);
+    const head=mesh(new THREE.SphereGeometry(.055,24,18),gold,0,.012,-.004);head.scale.set(.92,1,1.12);skull.add(head);
+    const face=mesh(new THREE.BoxGeometry(.07,.045,.05),gold,0,-.022,.026);skull.add(face);
+    for(const sx of[-1,1]){
+      const sock=mesh(new THREE.SphereGeometry(.0155,14,10),dark,sx*.021,-.004,.05);sock.scale.set(1,1.1,.6);skull.add(sock);
+      const eye=mesh(new THREE.SphereGeometry(.007,10,8),new THREE.MeshBasicMaterial({color:0xff2010,transparent:true,opacity:0}),sx*.021,-.004,.054);eye.name='eyes';skull.add(eye);
+    }
+    const nose=mesh(new THREE.ConeGeometry(.008,.016,3),dark,0,-.026,.052);nose.rotation.x=Math.PI;skull.add(nose);
+    for(let k=0;k<6;k++)skull.add(mesh(new THREE.BoxGeometry(.007,.01,.006),new THREE.MeshStandardMaterial({color:0xf2e6c0,roughness:.4}),-.0175+k*.007,-.043,.048));
+    const jaw=new THREE.Group();jaw.name='jaw';jaw.position.set(0,-.045,.0);skull.add(jaw);
+    const jb=mesh(new THREE.BoxGeometry(.06,.016,.05),gold,0,-.008,.022);jaw.add(jb);
+    for(let k=0;k<6;k++)jaw.add(mesh(new THREE.BoxGeometry(.007,.009,.006),new THREE.MeshStandardMaterial({color:0xf2e6c0,roughness:.4}),-.0175+k*.007,.002,.046));
+  } else if(slot===25){ // bola de cristal en su pie de bronce, con humo violeta adentro
+    const glass=new THREE.MeshPhysicalMaterial({color:0xd8ccff,roughness:.02,metalness:0,transparent:true,opacity:.32,clearcoat:1,depthWrite:false});
+    const core=mesh(new THREE.SphereGeometry(.038,18,14),new THREE.MeshBasicMaterial({color:0x8a40ff,transparent:true,opacity:.55,blending:THREE.AdditiveBlending,depthWrite:false}),0,.07,0);core.name='core';core.castShadow=false;group.add(core);
+    const ball=mesh(new THREE.SphereGeometry(.055,24,18),glass,0,.07,0);ball.castShadow=false;group.add(ball);
+    const brass=new THREE.MeshStandardMaterial({color:0x9a6a28,metalness:.85,roughness:.35});
+    group.add(mesh(new THREE.CylinderGeometry(.03,.042,.022,20),brass,0,.008,0));
+    const ring=mesh(new THREE.TorusGeometry(.033,.006,8,24),brass,0,.024,0);ring.rotation.x=Math.PI/2;group.add(ring);
+  } else if(slot===26){ // silbato de la muerte: una calaverita de barro con el pico para soplar
+    const clay=new THREE.MeshStandardMaterial({color:0x8a6a4a,roughness:.95});
+    const head=mesh(new THREE.SphereGeometry(.026,16,12),clay,0,.03,0);head.scale.set(1,1.05,1.1);group.add(head);
+    for(const sx of[-1,1]){const e=mesh(new THREE.SphereGeometry(.0075,10,8),dark,sx*.01,.034,.024);group.add(e);}
+    group.add(mesh(new THREE.BoxGeometry(.012,.006,.004),dark,0,.019,.027));
+    const pipe=mesh(new THREE.CylinderGeometry(.006,.008,.03,10),clay,0,.03,-.035);pipe.rotation.x=Math.PI/2;group.add(pipe);
+    const cord=mesh(new THREE.TorusGeometry(.012,.0018,6,14),new THREE.MeshStandardMaterial({color:0x6a1a10,roughness:.9}),0,.06,0);group.add(cord);
+  } else if(slot===27){ // patito de goma, pero de oro
+    const duck=new THREE.Group();duck.name='duck';duck.position.y=.03;group.add(duck);
+    const body=mesh(new THREE.SphereGeometry(.04,20,14),gold,0,0,0);body.scale.set(1,.78,1.25);duck.add(body);
+    const tail=mesh(new THREE.ConeGeometry(.016,.03,10),gold,0,.012,-.05);tail.rotation.x=-1.0;duck.add(tail);
+    const head=mesh(new THREE.SphereGeometry(.024,16,12),gold,0,.04,.026);duck.add(head);
+    const beak=mesh(new THREE.ConeGeometry(.011,.026,10),new THREE.MeshStandardMaterial({color:0xd06a10,metalness:.8,roughness:.3}),0,.036,.054);beak.rotation.x=Math.PI/2;beak.scale.set(1.3,1,.6);duck.add(beak);
+    for(const sx of[-1,1])duck.add(mesh(new THREE.SphereGeometry(.0045,8,6),dark,sx*.012,.048,.044));
+  }
 }
 
 // Lo que se pide en el Búnker (shared/consumables.js): tragos, blunt, habano, pipa, bong y brownie
@@ -191,7 +234,7 @@ export { billTexture };
 export class EquipmentView {
   constructor(scene){this.scene=scene;this.group=null;this.slot=0;}
   update(char,slot,yaw,action,actionT=0,hidden=false){
-    const desired=hidden||!([1,2,3,5,6,7,8,9,10].includes(slot)||SLOT_KIND[slot])?0:slot;
+    const desired=hidden||!([1,2,3,5,6,7,8,9,10,24,25,26,27].includes(slot)||SLOT_KIND[slot])?0:slot;
     if(desired!==this.slot){this.dispose();this.slot=desired;if(desired){this.group=createEquippedModel(desired);this.scene.add(this.group);}}
     if(!this.group)return;
     char.root.updateWorldMatrix(true,true);char.handR.getWorldPosition(this.group.position);
@@ -199,9 +242,23 @@ export class EquipmentView {
     if(action==='drink'&&(slot===1||slot===8||SLOT_KIND[slot]==='drink'||slot===18))this.group.rotateX(-1.3*Math.sin(Math.min(1,actionT/1.7)*Math.PI));
     if(slot===2||SLOT_KIND[slot]==='smoke'){if(slot===2)this.group.position.y+=.018;const ember=this.group.getObjectByName('ember');if(ember)ember.material.emissiveIntensity=action==='smoke'||(slot===18&&action==='drink')?2:.65;}
     if(slot===3&&action==='spray')this.group.rotateX(-.15);
+    if(slot>=24&&slot<=27)this._relic(slot,action==='relic'?actionT:-1);
     if(slot===6){this.group.rotateX(-(char.aimPitch||0));const f=this.group.getObjectByName('flash');if(f){this.flashT=Math.max(0,(this.flashT||0)-1/60);f.material.opacity=this.flashT>0?1:0;}}
   }
   shoot(){this.flashT=.05;}
+  // las reliquias al usarlas (t: segundos desde el click, -1 en reposo)
+  _relic(slot,t){
+    const g=this.group,on=t>=0&&t<1.6;
+    if(slot===24){
+      const jaw=g.getObjectByName('jaw');if(jaw)jaw.rotation.x=on?.25+.25*Math.sin(t*38):0;
+      g.traverse(o=>{if(o.name==='eyes')o.material.opacity=on?Math.min(1,t*4):Math.max(0,o.material.opacity-.05);});
+      if(on)g.rotateZ(Math.sin(t*20)*.06);
+    } else if(slot===25){
+      const c=g.getObjectByName('core');if(c){const k=on?1:0;c.material.opacity=.4+.4*k+.15*Math.sin(performance.now()*.004);c.scale.setScalar(.8+.25*Math.sin(performance.now()*.003)+.25*k);c.material.color.setHSL(.75+.08*Math.sin(performance.now()*.001),1,.5+.2*k);}
+    } else if(slot===27){
+      const d=g.getObjectByName('duck');if(d){const sq=on&&t<.35?Math.sin(t/.35*Math.PI):0;d.scale.set(1+sq*.18,1-sq*.3,1+sq*.12);}
+    }
+  }
   dispose(){
     if(this.group){const geos=new Set(),mats=new Set(),maps=new Set();this.group.traverse(o=>{if(o.geometry)geos.add(o.geometry);for(const m of o.material?Array.isArray(o.material)?o.material:[o.material]:[]){mats.add(m);if(m.map)maps.add(m.map);}});this.group.removeFromParent();for(const g of geos)g.dispose();for(const m of mats)m.dispose();for(const t of maps)t.dispose();}
     this.group=null;this.slot=0;

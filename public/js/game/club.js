@@ -19,6 +19,7 @@ import { polePlace } from '../char/pole-dance.js';
 import { getMat } from '../world/builder.js';
 import { ClubMix } from '../audio/clubmix.js';
 import { BUNKER_SCREENS } from '../world/club-screens.js';
+import { MazeGame } from './maze.js';
 
 const HAS_DOM = typeof document !== 'undefined';
 const F0 = CASTLE.keep.floor;
@@ -92,6 +93,7 @@ export class ClubGame {
     this._makeNpcs();
     this._makeWingNpcs();
     this._interact();
+    try { this.maze = new MazeGame(this); } catch (e) { console.warn('laberinto', e); }
   }
 
   // ---------------------------------------------------------------- puntos de X
@@ -132,6 +134,7 @@ export class ClubGame {
         if (!this.pick?.(DRUG_MENU, (m) => { const P = this.getLocal(); if (P) { this._drug(P, m.drug); this.shaman?.say(lines[Math.floor(Math.random() * lines.length)], 2.6); } })) this._drug(L, 'acid');
         break;
       }
+      case 'mazeChest': this.maze?.useChest(); break;
       case 'cctvPower': {
         // la pared de monitores: apagada no dibuja nada (cada pantalla es un render más de la escena)
         const m = { e: 'cctv', on: G.cctv?.power ? 0 : 1 };
@@ -195,6 +198,7 @@ export class ClubGame {
     else if (m.e === 'auth' && m.id) this.authIds.add(m.id);
     else if (m.e === 'bell') this._bellApply(m);
     else if (m.e === 'cctv') G.cctv?.setPower(!!m.on);
+    else if (m.e === 'mazeChest') this.maze?.remote(m);
   }
 
   // ---------------------------------------------------------------- la tumba y la escalera
@@ -1029,7 +1033,7 @@ export class ClubGame {
       n.update(Math.min(0.2, n._lodAcc), cam, show);
       n._lodAcc = 0;
     }
-    if (this.club.visible) this._lavaStep(dt);
+    if (this.club.visible) { this._lavaStep(dt); this.maze?.update(dt); }
     // la música: cada sala con la suya (audio/clubmix.js) y la de al lado ahogada, más fuerte cerca de la puerta;
     // en la antesala y el ascensor, la del club ahogada; nada afuera. El techno se calla con un video puesto
     const p = cam?.position;

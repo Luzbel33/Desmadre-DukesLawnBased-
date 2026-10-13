@@ -19,6 +19,7 @@ import { PoseContact } from './pose-contact.js';
 import { gripCandidate } from './grip-target.js';
 import { releaseEquipped, recoverEquipped } from './held-release.js';
 import { CONSUMABLES, consumable } from '../shared/consumables.js';
+import { RELICS, relic } from '../shared/relics.js';
 import { Ragdoll, PART } from './ragdoll.js';
 import { HitReact, ROLL } from './react.js';
 import { EquipmentView } from './equipment.js';
@@ -47,7 +48,7 @@ const PLAYER_DMG_K = 0.6;
 export const CASH_BUNDLES = 10;
 export const CASH_PER_BUNDLE = 25; // billetes por fajo
 const KICK_SPEED = 6.5; // m/s con que cuenta una patada que toca en su ventana de golpe
-export const ITEM_EQ = { beer: 1, smoke: 2, spray: 3, cash: 5, pistol: 6, grenade: 7, potion: 8, chori: 9, apple: 10, ...Object.fromEntries(Object.entries(CONSUMABLES).map(([k, c]) => [k, c.slot])) };
+export const ITEM_EQ = { beer: 1, smoke: 2, spray: 3, cash: 5, pistol: 6, grenade: 7, potion: 8, chori: 9, apple: 10, ...Object.fromEntries(Object.entries(CONSUMABLES).map(([k, c]) => [k, c.slot])), ...Object.fromEntries(Object.entries(RELICS).map(([k, r]) => [k, r.slot])) };
 // la parte de la que cuelga cada una (un antebrazo ya no se corta si se fue el brazo entero)
 const PARENT_PART = [-1, 0, 1, 1, 3, 1, 5, 0, 7, 0, 9];
 // desangrarse por un miembro cortado no mata solo: la vida no baja de acá por la sangre (otro golpe sí)
@@ -1661,6 +1662,14 @@ export class LocalPlayer {
     // lo que se compra en la feria: la poción se toma de un trago; el choripán y la manzana, de a mordiscos
     if (h.item === 'potion') { startScript(a, 'drink', 1.5); this.setAction('drink-arm', 1.5); return 'potion'; }
     if (h.item === 'chori' || h.item === 'apple') { startScript(a, 'eat', 1.1); return 'food'; }
+    // las reliquias del laberinto: la calavera y la bola se acercan a la cara; el silbato a la boca; el patito se aprieta
+    if (relic(h.item)) {
+      if (h.item === 'silbato') startScript(a, 'smoke', 1.3);
+      else if (h.item === 'patito') startScript(a, 'throw', 0.32, this._aimLocal(side, V3, 0.45));
+      else startScript(a, 'eat', 1.4);
+      this.setAction('relic', 1.6);
+      return 'relic';
+    }
     // lo que se pide en el Búnker (tragos, blunt, habano, pipa, bong, brownie): el gesto según qué es
     const C = consumable(h.item);
     if (C) {

@@ -23,6 +23,11 @@ export const HELD_ITEMS = {
   pocion_liebre: { slot: 21, shape: 'ball', r: .07, oy: 0, mass: .28, breakDv: 7, glass: 0x2affb0, label: 'poción de liebre' },
   pocion_salto: { slot: 22, shape: 'ball', r: .07, oy: 0, mass: .28, breakDv: 7, glass: 0x3a8cff, label: 'poción de salto' },
   pocion_colores: { slot: 23, shape: 'ball', r: .07, oy: 0, mass: .28, breakDv: 7, glass: 0xff3ad8, label: 'poción de colores' },
+  // las reliquias del cofre del laberinto (shared/relics.js)
+  calavera_oro: { slot: 24, shape: 'ball', r: .085, oy: .02, mass: 1.6, label: 'calavera de oro' },
+  bola_cristal: { slot: 25, shape: 'ball', r: .075, oy: .03, mass: 1.2, breakDv: 9, glass: 0xb070ff, label: 'bola de cristal' },
+  silbato: { slot: 26, shape: 'ball', r: .04, oy: 0, mass: .15, label: 'silbato de la muerte' },
+  patito: { slot: 27, shape: 'ball', r: .055, oy: .02, mass: .9, label: 'patito dorado' },
 };
 export const heldType = item => Object.hasOwn(HELD_ITEMS, item) ? 'held_' + item : null;
 export const HELD_PROP_DEFS = Object.fromEntries(Object.entries(HELD_ITEMS).map(([item, d]) => [heldType(item), { ...d, item, kind: 'blunt', grip: [0, 0, 0] }]));

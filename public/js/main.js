@@ -69,6 +69,7 @@ import { playHabit, drinkPlan } from './audio/habits.js';
 import { YouTubeScreenManager } from './media/screens.js';
 import { youtubeId, mediaPosition } from './media/youtube.js';
 import { ZONES, zoneAt, isPvpAt, INTERACT, SCREENS, SCREEN_BY_ID, FIELD, STORM, CASTLE, MOON } from './shared/mapdata.js';
+import { relic, PROPHECIES } from './shared/relics.js';
 
 const $ = (id) => document.getElementById(id);
 const loadingText = $('loading-text');
@@ -553,6 +554,7 @@ function updatePrompt() {
     else if (it === 'potion') H.hint('potion', 'Click', 'Tomarse la poción (vaya uno a saber qué hace)');
     else if (it === 'chori') H.hint('chori', 'Click', 'Morder el choripán');
     else if (it === 'apple') H.hint('apple', 'Click', 'Morder la manzana acaramelada');
+    else if (relic(it)) H.hint(it, 'Click', relic(it).use);
     else if (consumable(it)) { const C = consumable(it); H.hint(it, 'Click', `${C.kind === 'drink' ? 'Tomar' : C.kind === 'smoke' ? 'Pitar' : 'Comer'}: ${C.label} (${C.uses - (L.hands.r.bites || 0)})`); }
   };
   const popcornHint = () => {
@@ -1018,6 +1020,50 @@ function throwCashFrom(side, all) {
   updateHotbar();
 }
 
+// Las reliquias del cofre del laberinto (shared/relics.js): el efecto sale cuando el gesto llega (y lo ven todos)
+function useRelic(L, item, stillHeld) {
+  const wait = item === 'patito' ? 140 : item === 'silbato' ? 520 : item === 'bola_cristal' ? 950 : 260;
+  setTimeout(() => {
+    if (!stillHeld()) return;
+    relicFx(item, L, true);
+    state.net?.send({ t: 'ev', k: 'relic', r: item });
+    if (item === 'bola_cristal') crystalVision(L);
+  }, wait);
+}
+function relicFx(item, P, mine) {
+  const at = P.char?.handR ? P.char.handR.getWorldPosition(new THREE.Vector3()) : P.pos.clone().setY(P.pos.y + 1.2);
+  if (item === 'calavera_oro') {
+    G.sfx?.trigger('devil-laugh', at, 0.75, { full: 3, max: 30, rate: 1.5 });
+    G.fx?.sparks(at, new THREE.Vector3(0, 1, 0), 8);
+  } else if (item === 'bola_cristal') {
+    G.sfx?.trigger('whisper', at, 0.45, { full: 2, max: 10 });
+  } else if (item === 'patito') {
+    G.sfx?.trigger('squeak', at, 0.8, { full: 2, max: 22 });
+    G.fx?.sparks(at, new THREE.Vector3(0, 1, 0), 5);
+  } else if (item === 'silbato') {
+    G.sfx?.trigger('death-whistle', at, 1, { full: 6, max: 45 });
+    // a los que están cerca se les hiela la sangre (al que sopla, apenas); la gente grita y se da vuelta
+    const me = state.local, d = me ? me.pos.distanceTo(P.pos) : 99;
+    if (!mine && d < 32) { G.haunt?.scare?.(Math.max(0.35, 1 - d / 32)); state.shake = Math.max(state.shake || 0, 0.6 * (1 - d / 32)); }
+    if (mine) state.shake = Math.max(state.shake || 0, 0.25);
+    for (const n of G.allNpcs?.() || []) {
+      if (n.dead || n.pos.distanceTo(P.pos) > 16 || Math.random() < 0.35) continue;
+      n.lookAt = P.pos;
+      n.say?.(['¡¿QUÉ FUE ESO?!', '¡LA PUTA MADRE!', 'Ay, Dios...', '¿Quién gritó?', '¡Pará con eso!'][Math.floor(Math.random() * 5)], 2.2);
+    }
+  }
+}
+// la bola de cristal te muestra dónde anda alguien (otro jugador al azar); si estás solo, te tira una profecía
+function crystalVision(L) {
+  const others = [...G.players.values()].filter((p) => p.pos && p.name && !p.invisible && !p.inv);
+  L.pill = Math.max(L.pill || 0, 0.22);
+  if (!others.length) { bigMessage('🔮 LA BOLA DICE...', PROPHECIES[Math.floor(Math.random() * PROPHECIES.length)], 3200); return; }
+  const p = others[Math.floor(Math.random() * others.length)], z = zoneAt(p.pos.x, p.pos.z);
+  const where = z ? ZONES[z].name : p.pos.y > 2.5 ? 'en las alturas' : 'perdido en el pasto';
+  const doing = p.seat ? ', sentado' : p.vehicle ? ', manejando' : p.dead ? ', muerto (otra vez)' : '';
+  bigMessage('🔮 LA BOLA TE MUESTRA...', `${p.name} anda por ${where}${doing}`, 3200);
+}
+
 function doTap(side) {
   const L = state.local;
   if (!L) return;
@@ -1066,7 +1112,8 @@ function doTap(side) {
       hand.bites = (hand.bites || 0) + 1;
       if (hand.bites >= 3) { hand.item = null; hand.bites = 0; hand.itemGeneration = generation + 1; updateHotbar(); }
     }, 450);
-  } else if (r === 'consume') consume(L, hand, item, generation, stillHeld);
+  } else if (r === 'relic') useRelic(L, item, stillHeld);
+  else if (r === 'consume') consume(L, hand, item, generation, stillHeld);
   else if (r === 'cash' || r === 'cashall') G.sfx?.trigger('swing', null, 0.3); // los billetes salen al final del envión ('cashthrow')
   else if (r === 'shoot') G.items?.shoot(L);
   else if (r === 'nade') { G.items?.throwNade(L,side); updateHotbar(); }
@@ -1150,6 +1197,9 @@ function handleEvent(m) {
       }
       break;
     }
+    case 'relic': // otro usó una reliquia del laberinto: se oye (y el silbato asusta)
+      if (rp && relic(m.r)) relicFx(m.r, rp, false);
+      break;
     case 'puff':
       if (rp) puffFrom(rp, clamp(+m.a || 1, 0.5, 3));
       break;

@@ -176,7 +176,7 @@ function wraithMaterial() {
       }`,
   });
 }
-class Wraith {
+export class Wraith {
   constructor(scene) {
     this.root = new THREE.Group();
     this.root.visible = false;
@@ -489,6 +489,7 @@ export class Haunt {
     this.lastScare = t;
     return true;
   }
+  scare(k = 1) { this._scare(k); } // lo usan otros (el laberinto del Búnker, el silbato de la muerte)
   _scare(k = 1) {
     this.heart = Math.max(this.heart, 0.9 * k);
     this.overlayK = Math.max(this.overlayK, 0.7 * k);
