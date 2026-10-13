@@ -7,27 +7,15 @@
 // (cada una ~4 veces por segundo), chiquitas y sin recalcular sombras.
 import * as THREE from 'three';
 import { G } from '../core/G.js';
+import { CCTV_CAMS } from '../shared/mapdata.js';
 
 const HAS_DOM = typeof document !== 'undefined';
 const V1 = new THREE.Vector3();
 const V2 = new THREE.Vector3();
 const Q1 = new THREE.Quaternion();
 
-// eye: ojo del castillo (si no, cámara común). p: dónde está; look: adónde apunta de reposo
-export const CAMS = [
-  { id: 'porton', name: 'PORTÓN', p: [5.6, 5.2, -74.4], look: [0, 0.5, -60] },
-  { id: 'feria', name: 'LA FERIA', p: [-7.6, 5.2, -74.4], look: [-22, 0.5, -62] },
-  { id: 'taberna', name: 'LA TABERNA', p: [31, 4.6, -77.7], look: [22, 0.8, -62] },
-  { id: 'fogon', name: 'EL FOGÓN', p: [-14.3, 4.2, -102.6], look: [-27, 0.6, -91], eye: true },
-  { id: 'cementerio', name: 'CEMENTERIO', p: [26.4, 4.2, -129.3], look: [35, 0.6, -115], eye: true },
-  { id: 'huerta', name: 'LA HUERTA', p: [-26.4, 4.2, -129.3], look: [-36, 0.6, -114], eye: true },
-  { id: 'patio', name: 'PATIO', p: [25.7, 5, -102.5], look: [28, 0.6, -88], eye: true },
-  { id: 'cripta', name: 'LA CRIPTA', p: [22.9, 2.3, -124.2], look: [13, 0.4, -112], eye: true },
-  { id: 'bar', name: 'BAR CORTACÉSPED', p: [96.2, 3.6, -41.3], look: [106, 0.6, -30] },
-  { id: 'cancha', name: 'LA CANCHA', p: [-31.5, 6.5, 17.5], look: [0, 0, 35], pole: true },
-  { id: 'galpon', name: 'EL GALPÓN', p: [-86.5, 4.5, -21.5], look: [-94, 0.5, -14] },
-  { id: 'pista', name: 'BÚNKER · PISTA', p: [-22.5, 6.2, -476.5], look: [0, 0.5, -460] },
-];
+// las cámaras (y sus altavoces) están en shared/mapdata.js: el servidor también las usa para la música de los parlantes
+export const CAMS = CCTV_CAMS;
 
 function eyeTexture() {
   const cv = document.createElement('canvas'); cv.width = 256; cv.height = 128;
@@ -142,11 +130,13 @@ export class Cctv {
         void main(){
           vec3 c = texture2D(tFeed, vUv).rgb;
           float l = dot(c, vec3(0.3, 0.59, 0.11));
-          l = pow(clamp(l * 2.6, 0.0, 1.0), 0.75);            // visión nocturna: todo más claro, en verde
-          vec3 col = vec3(0.55, 1.0, 0.6) * l;
-          col += (h(floor(vUv * vec2(240.0, 135.0)) + floor(uT * 24.0)) - 0.5) * 0.12;
-          col *= 0.86 + 0.14 * sin(vUv.y * 420.0 + uT * 18.0);
-          col *= smoothstep(0.95, 0.4, length(vUv - 0.5));
+          // color lavado de cámara de seguridad; donde está oscuro pasa a visión nocturna (verde y aclarado)
+          vec3 day = mix(vec3(l), c, 0.6) * 1.35;
+          vec3 night = vec3(0.55, 1.0, 0.6) * pow(clamp(l * 3.2, 0.0, 1.0), 0.7);
+          vec3 col = mix(night, day, smoothstep(0.05, 0.22, l));
+          col += (h(floor(vUv * vec2(384.0, 216.0)) + floor(uT * 24.0)) - 0.5) * 0.06;
+          col *= 0.93 + 0.07 * sin(vUv.y * 560.0 + uT * 18.0);
+          col *= smoothstep(1.05, 0.45, length(vUv - 0.5));
           col = mix(vec3(h(vUv * 300.0 + uT) * 0.4), col, uOn);   // sin señal: estática
           vec4 lb = texture2D(tLabel, vUv);
           col = mix(col, lb.rgb, lb.a);
@@ -158,8 +148,8 @@ export class Cctv {
         }`,
     });
     for (let r = 0; r < 2; r++) for (let k = 0; k < 3; k++) {
-      const rt = new THREE.WebGLRenderTarget(256, 144, { colorSpace: THREE.SRGBColorSpace });
-      const cv = document.createElement('canvas'); cv.width = 256; cv.height = 144;
+      const rt = new THREE.WebGLRenderTarget(384, 216, { colorSpace: THREE.SRGBColorSpace });
+      const cv = document.createElement('canvas'); cv.width = 384; cv.height = 216;
       const label = new THREE.CanvasTexture(cv);
       const m = new THREE.Mesh(new THREE.PlaneGeometry(1.44, 0.81), mat(rt, label));
       m.position.set(A.x + 0.13, A.y + 0.5 - r * 0.95, A.z + 1.5 - k * 1.5);
@@ -184,22 +174,28 @@ export class Cctv {
       const s = this.screens[i];
       s.cam = (this.rot * this.screens.length + i) % this.cams.length;
       const g = s.cv.getContext('2d');
-      g.clearRect(0, 0, 256, 144);
-      g.font = 'bold 15px monospace'; g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(4, 4, 150, 20);
-      g.fillStyle = '#b8ffb0'; g.fillText(`CAM ${String(s.cam + 1).padStart(2, '0')} ${this.cams[s.cam].name}`, 8, 19);
+      g.clearRect(0, 0, 384, 216);
+      g.font = 'bold 20px monospace'; const txt = `CAM ${String(s.cam + 1).padStart(2, '0')} ${this.cams[s.cam].name}`;
+      g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(6, 6, g.measureText(txt).width + 14, 28);
+      g.fillStyle = '#e8ffe0'; g.fillText(txt, 13, 27);
       s.label.needsUpdate = true;
     }
   }
 
-  // pone una cámara (de las del mapa) en la pose de la cámara de seguridad i
-  pose(i, cam, t = 0) {
+  // pone una cámara (de las del mapa) en la pose de la cámara de seguridad i. look (pantalla completa): el que mira
+  // la gira con el mouse (yaw/pitch, en radianes respecto de adonde apunta) y hace zoom (fov)
+  pose(i, cam, t = 0, look = null) {
     const c = this.cams[((i % this.cams.length) + this.cams.length) % this.cams.length];
     cam.position.copy(c.pos);
-    // se corre un poquito hacia adelante (que no se vea el propio ojo/cuerpo) y hace un paneo lento
+    // se corre un poquito hacia adelante (que no se vea el propio ojo/cuerpo)
     V1.copy(c.aim).sub(c.pos).normalize();
     cam.position.addScaledVector(V1, 0.35);
-    V2.copy(c.aim).add(V1.set(Math.sin(t * 0.25) * 1.5, 0, Math.cos(t * 0.21) * 1.0));
+    if (look?.moved) {
+      const yaw = Math.atan2(V1.x, V1.z) + look.yaw, pitch = Math.max(-1.4, Math.min(1.2, Math.asin(Math.max(-1, Math.min(1, V1.y))) + look.pitch));
+      V2.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)).add(cam.position);
+    } else V2.copy(c.aim).add(V1.set(Math.sin(t * 0.25) * 1.5, 0, Math.cos(t * 0.21) * 1.0)); // paneo lento solo
     cam.lookAt(V2);
+    if (look && cam.fov !== look.fov) { cam.fov = look.fov; cam.updateProjectionMatrix(); }
     return c;
   }
 

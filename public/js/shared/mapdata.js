@@ -279,6 +279,24 @@ for (const s of SURFACES) {
 export const SURFACE_BY_ID = Object.fromEntries(SURFACES.map((s) => [s.id, s]));
 
 // ---------------------------------------------------------------- Pantallas (YouTube)
+// ---------------------------------------------------------------- Cámaras de seguridad (game/cctv.js)
+// eye: ojo del castillo (si no, cámara común). p: dónde está; look: adónde apunta de reposo. Cada una tiene un altavoz:
+// se habla por ahí desde la sala de monitores y suena la música de YouTube de 'cctv_pa' (ver SCREENS).
+export const CCTV_CAMS = [
+  { id: 'porton', name: 'PORTÓN', p: [5.6, 5.2, -74.4], look: [0, 0.5, -60] },
+  { id: 'feria', name: 'LA FERIA', p: [-7.6, 5.2, -74.4], look: [-22, 0.5, -62] },
+  { id: 'taberna', name: 'LA TABERNA', p: [31, 4.6, -77.7], look: [22, 0.8, -62] },
+  { id: 'fogon', name: 'EL FOGÓN', p: [-14.3, 4.2, -102.6], look: [-27, 0.6, -91], eye: true },
+  { id: 'cementerio', name: 'CEMENTERIO', p: [26.4, 4.2, -129.3], look: [35, 0.6, -115], eye: true },
+  { id: 'huerta', name: 'LA HUERTA', p: [-26.4, 4.2, -129.3], look: [-36, 0.6, -114], eye: true },
+  { id: 'patio', name: 'PATIO', p: [25.7, 5, -102.5], look: [28, 0.6, -88], eye: true },
+  { id: 'cripta', name: 'LA CRIPTA', p: [22.9, 2.3, -124.2], look: [13, 0.4, -112], eye: true },
+  { id: 'bar', name: 'BAR CORTACÉSPED', p: [96.2, 3.6, -41.3], look: [106, 0.6, -30] },
+  { id: 'cancha', name: 'LA CANCHA', p: [-31.5, 6.5, 17.5], look: [0, 0, 35], pole: true },
+  { id: 'galpon', name: 'EL GALPÓN', p: [-86.5, 4.5, -21.5], look: [-94, 0.5, -14] },
+  { id: 'pista', name: 'BÚNKER · PISTA', p: [-22.5, 6.2, -476.5], look: [0, 0.5, -460] },
+];
+
 export const SCREENS = [
   {
     id: 'cine', name: 'Cine Gran Desmadre', c: [122.6, 4.3, 2], yaw: -Math.PI / 2, w: 13, h: 7.3125,
@@ -318,6 +336,12 @@ export const SCREENS = [
   {
     id: 'bunker_psico', name: 'Pantalla de La Mente', c: [-41.8, 3.0, -477.9], yaw: 0, w: 3.2, h: 1.8,
     box: CLUB.wings.psico, hearFull: 0, hearMax: 7, idle: true,
+  },
+  // los parlantes de las cámaras: no tiene pantalla (hidden); se elige desde la sala de monitores y se oye cerca de
+  // cualquier cámara (pa: dónde están los altavoces)
+  {
+    id: 'cctv_pa', name: 'Altavoces de las cámaras', c: [-20.1, 1.0, -448.5], yaw: -Math.PI / 2, w: 1.6, h: 0.9,
+    hidden: true, pa: CCTV_CAMS.map((c) => c.p), hearFull: 2.5, hearMax: 15,
   },
 ];
 export const SCREEN_BY_ID = Object.fromEntries(SCREENS.map((s) => [s.id, s]));

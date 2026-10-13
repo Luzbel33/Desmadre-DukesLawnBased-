@@ -471,8 +471,12 @@ button.big:hover { filter: brightness(1.06); }
 /* cámaras de seguridad a pantalla completa */
 #cctv { position: fixed; inset: 0; z-index: 38; pointer-events: none; font-family: 'Courier New', monospace; color: #b8ffb0; text-shadow: 0 0 6px rgba(80, 255, 90, 0.7); }
 #cctv.hidden { display: none; }
-#cctv .scan { position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.18) 0 2px, transparent 2px 4px), radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.7)); mix-blend-mode: multiply; }
-#cctv::after { content: ''; position: absolute; inset: 0; background: rgba(40, 255, 80, 0.12); mix-blend-mode: color; }
+#cctv .scan { position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.07) 0 1px, transparent 1px 3px), radial-gradient(ellipse at center, transparent 65%, rgba(0, 0, 0, 0.45)); mix-blend-mode: multiply; }
+#cctv::after { content: ''; position: absolute; inset: 0; background: rgba(40, 255, 80, 0.04); mix-blend-mode: color; pointer-events: none; }
+#cctv #cctv-air { color: #ff4a3a; text-shadow: 0 0 8px rgba(255, 60, 40, 0.8); animation: cctvrec 0.8s steps(2) infinite; }
+#cctv #cctv-air.hidden { display: none; }
+#cctv .bottom .dim { opacity: 0.6; font-size: 13px; }
+#cctv .bottom button.on { background: rgba(120, 0, 0, 0.7); border-color: #ff5a4a; color: #ffd0c8; }
 #cctv .top { position: absolute; top: 18px; left: 22px; right: 22px; display: flex; gap: 18px; font-size: 20px; letter-spacing: 1px; }
 #cctv .rec { color: #ff3030; animation: cctvrec 1s steps(2) infinite; }
 @keyframes cctvrec { 50% { opacity: 0; } }

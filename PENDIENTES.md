@@ -48,8 +48,9 @@ Fuente única de trabajo pendiente.
 - [ ] Cavar en el suelo y construir (tipo minecraft pero orgánico, sin cubos).
 
 ### Búnker
-- [ ] Cámaras de vigilancia: ver mejor la imagen, hablar por las cámaras (altavoz que oigan los de ahí) y poner
-      música de YouTube por los altavoces.
+- [ ] Cámaras de vigilancia (hecho 13/10): imagen en color y más nítida, arrastrar/rueda para girar y hacer zoom,
+      F = hablar por el altavoz de la cámara, P = música de YouTube por todos los altavoces (`cctv_pa`). Probar la voz
+      por altavoz con gente real (que se oiga bien y no se acople).
 
 ---
 

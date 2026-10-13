@@ -1738,6 +1738,8 @@ async function joinGame() {
     state.net = new Net(); G.net = state.net;
     G.voice?.dispose();
     G.voice = new VoiceChat({ net: state.net, opts: G.opts, getCtx: () => G.sfx?.ctx, onState: updateMicUI });
+    // el que habla desde la sala de monitores sale por el altavoz de la cámara que está mirando
+    G.voice.speakerAt = (rp) => { const k = rp.stateData?.spk | 0; return k > 0 ? G.cctv?.cams[k - 1]?.pos || null : null; };
     G.media?.dispose();
     G.media = new YouTubeScreenManager({ scene: G.scene, net: state.net, opts: G.opts, changed: (id) => { if (state.mediaScreen === id) renderMediaStatus(); } });
     state.props = new PropManager(state.net, state.local); G.props = state.props;
@@ -1855,6 +1857,20 @@ function setupUIEvents() {
   $('ritual-cancel').addEventListener('click', () => G.club?.closeRitual());
   $('cctv-prev').addEventListener('click', () => cctvStep(-1));
   $('cctv-next').addEventListener('click', () => cctvStep(1));
+  $('cctv-talk').addEventListener('click', () => cctvTalk(!state.cctvTalk));
+  $('cctv-music').addEventListener('click', () => cctvMusic());
+  {
+    let drag = null;
+    addEventListener('mousedown', (e) => { if (state.mode === 'cctv' && !e.target.closest?.('button')) drag = [e.clientX, e.clientY]; });
+    addEventListener('mouseup', () => { drag = null; });
+    addEventListener('mousemove', (e) => {
+      if (!drag || state.mode !== 'cctv') return;
+      const z = (state.cctvLook?.fov || 58) / 58; // con zoom gira más fino
+      cctvLook((e.clientX - drag[0]) * 0.004 * z, -(e.clientY - drag[1]) * 0.004 * z, 0);
+      drag = [e.clientX, e.clientY];
+    });
+    addEventListener('wheel', (e) => { if (state.mode === 'cctv') cctvLook(0, 0, Math.sign(e.deltaY) * 4); }, { passive: true });
+  }
   $('owner-cancel').addEventListener('click', closeOwnerModal);
   $('owner-key').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); verifyOwnerKey(); }
@@ -1930,7 +1946,7 @@ function setupUIEvents() {
     if (!G.inGame) return;
     const kc = keys.map(e.code); // teclas configurables
     const typing = e.target?.matches?.('input, textarea, select, [contenteditable="true"]');
-    if (!typing && !e.repeat && ['game', 'poker'].includes(state.mode)) {
+    if (!typing && !e.repeat && ['game', 'poker', 'cctv'].includes(state.mode)) {
       if (kc === 'KeyM') { G.sfx?.unlock(); G.voice?.toggleMic(); }
       if (kc === 'KeyV') { G.sfx?.unlock(); G.voice?.setPTT(true); }
     }
@@ -1942,6 +1958,9 @@ function setupUIEvents() {
       if (e.key === 'Escape' || kc === 'KeyX') { e.preventDefault(); state.escT = performance.now(); closeCctv(); return; }
       if (kc === 'KeyA' || e.code === 'ArrowLeft') { cctvStep(-1); return; }
       if (kc === 'KeyD' || e.code === 'ArrowRight' || kc === 'Space') { cctvStep(1); return; }
+      if (kc === 'KeyF' && !e.repeat) { cctvTalk(!state.cctvTalk); return; }
+      if (kc === 'KeyP' && !e.repeat) { cctvMusic(); return; }
+      if (e.code === 'ArrowUp' || e.code === 'ArrowDown') { cctvLook(0, e.code === 'ArrowUp' ? 0.08 : -0.08, 0); return; }
     }
     if (state.mode === 'shop' && e.key === 'Escape') { e.preventDefault(); state.escT = performance.now(); G.villagers?.close(); return; }
     if (state.mode === 'club' && e.key === 'Escape') { e.preventDefault(); state.escT = performance.now(); if (state.clubUI === 'ritual') G.club?.closeRitual(); else G.club?.closePassword(); return; }
@@ -2119,22 +2138,44 @@ function openCctv() {
   setMode('cctv'); G.input.unlock();
   cctvStep(0);
 }
-function closeCctv() { state.cctvOn = false; closeOverlayToGame(true); }
+function closeCctv() { cctvTalk(false); state.cctvOn = false; closeOverlayToGame(true); }
 function cctvStep(d) {
   const n = G.cctv.cams.length;
   state.cctv = ((state.cctv + d) % n + n) % n;
   state.cctvOn = true;
+  state.cctvLook = { yaw: 0, pitch: 0, fov: 58, moved: false }; // cada cámara arranca derecha y con su paneo
   const c = G.cctv.cams[state.cctv];
   $('cctv-name').textContent = `CAM ${String(state.cctv + 1).padStart(2, '0')} · ${c.name}`;
+  if (state.cctvTalk && state.local) state.local.speaker = state.cctv + 1;
   G.sfx?.trigger('ui', null, 0.3);
 }
+// girar (arrastrando el mouse o con las flechas) y hacer zoom (rueda) la cámara que se mira
+function cctvLook(dy, dp, dz) {
+  const k = state.cctvLook; if (!k) return;
+  k.moved = true;
+  k.yaw = clamp(k.yaw - dy, -1.4, 1.4); k.pitch = clamp(k.pitch + dp, -0.9, 0.6);
+  k.fov = clamp(k.fov + dz, 16, 75);
+}
+// hablar por el altavoz de la cámara: el micrófono queda abierto y la voz sale de la cámara (los de ahí la oyen)
+function cctvTalk(on) {
+  on = !!on;
+  if (on === !!state.cctvTalk) return;
+  state.cctvTalk = on;
+  if (state.local) state.local.speaker = on ? state.cctv + 1 : 0;
+  G.sfx?.unlock(); G.voice?.setPTT(on);
+  $('cctv-talk').classList.toggle('on', on);
+  $('cctv-air').classList.toggle('hidden', !on);
+  G.sfx?.trigger(on ? 'ui-ok' : 'ui-select', null, 0.5);
+}
+// la música de YouTube por todos los altavoces de las cámaras
+function cctvMusic() { cctvTalk(false); state.cctvOn = false; openMedia('cctv_pa'); }
 
 function updateCamera(dt) {
   const L = state.local; if (!L) return;
   if (state.mode === 'cctv' && state.cctvOn && G.cctv) {
     cameraBoom.reset();
     // mirando una cámara de seguridad: la vista es la de la cámara (el cuerpo queda en la silla)
-    G.cctv.pose(state.cctv, G.camera, G.time);
+    G.cctv.pose(state.cctv, G.camera, G.time, state.cctvLook);
     L.char.setVisibleHead(true);
     $('cctv-time').textContent = new Date().toLocaleTimeString('es-AR');
     return;

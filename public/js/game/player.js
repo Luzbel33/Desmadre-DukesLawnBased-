@@ -2715,6 +2715,7 @@ export class LocalPlayer {
       af: this.attackFlags(),
       tk: r3(this.talk),
       sv: this.gore,
+      spk: this.speaker || 0, // hablando por el altavoz de la cámara n (n-1; ver game/cctv.js)
       rb,
     };
   }

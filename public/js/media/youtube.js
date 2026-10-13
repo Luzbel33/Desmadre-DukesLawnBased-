@@ -26,7 +26,9 @@ export function screenGain(screen, pos) {
   // box: the room it plays in (the Búnker dance floors); zone: a map zone
   const zone=screen.box||ZONES[screen.zone];
   let d;
-  if(zone) {
+  // pa: altavoces repartidos (los de las cámaras); cuenta el más cercano
+  if(screen.pa) d=Math.min(...screen.pa.map(q=>Math.hypot(pos.x-q[0],(pos.y??q[1])-q[1],pos.z-q[2])));
+  else if(zone) {
     // Distance to the room, NOT the wall-mounted screen; the whole cinema is audible.
     d=Math.hypot(Math.max(zone.x0-pos.x,0,pos.x-zone.x1),Math.max(zone.z0-pos.z,0,pos.z-zone.z1));
   } else d=Math.hypot(pos.x-screen.c[0],pos.z-screen.c[2]);

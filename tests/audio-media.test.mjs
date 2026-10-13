@@ -150,3 +150,11 @@ test('seeking a cued video in a paused room must not accidentally start it',()=>
   c.setState(active({paused:true,pos:25}));c.tick({active:true,volume:1});
   assert.equal(p.time,25);assert.equal(p.status,2);
 });
+
+test('altavoces de las cámaras: la música de cctv_pa se oye cerca de cualquier cámara y no en el resto del mapa', () => {
+  requireModule(helpers);
+  const pa = SCREENS.find((s) => s.id === 'cctv_pa');
+  assert.ok(pa?.hidden && pa.pa.length >= 10, 'sin pantalla, con un altavoz por cámara');
+  for (const q of pa.pa) assert.ok(helpers.screenGain(pa, { x: q[0], y: q[1] - 3, z: q[2] }) > 0.5, 'debajo de la cámara se oye');
+  assert.equal(helpers.screenGain(pa, { x: 0, y: 1, z: 0 }), 0, 'lejos de las cámaras, nada');
+});

@@ -225,7 +225,7 @@ export class VoiceChat {
     peer.audio.play?.().catch(() => {});
     if (!ctx) return;
     if (peer.nodes) {
-      for (const node of [peer.nodes.src, peer.nodes.analyser, peer.nodes.gain, peer.nodes.panner]) {
+      for (const node of [peer.nodes.src, peer.nodes.analyser, peer.nodes.gain, peer.nodes.filter, peer.nodes.panner].filter(Boolean)) {
         try { node.disconnect(); } catch { /* */ }
       }
     }
@@ -233,6 +233,8 @@ export class VoiceChat {
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 512;
     const gain = ctx.createGain();
+    // filtro de altavoz (cuando habla por una cámara de seguridad); si no, pasa todo
+    const filter = ctx.createBiquadFilter?.() || null; if (filter) filter.type = 'allpass';
     const panner = ctx.createPanner();
     panner.panningModel = 'HRTF';
     panner.distanceModel = 'linear';
@@ -241,9 +243,9 @@ export class VoiceChat {
     panner.rolloffFactor = 1;
     src.connect(analyser);
     analyser.connect(gain);
-    gain.connect(panner);
+    if (filter) { gain.connect(filter); filter.connect(panner); } else gain.connect(panner);
     panner.connect(this.bus);
-    peer.nodes = { src, analyser, gain, panner, buf: new Uint8Array(analyser.fftSize) };
+    peer.nodes = { src, analyser, gain, filter, panner, buf: new Uint8Array(analyser.fftSize) };
   }
 
   remove(id) {
@@ -300,7 +302,11 @@ export class VoiceChat {
       peer.level = Math.max(lvl * 6, peer.level * 0.85);
       if (rp) {
         rp.talk = Math.min(1, peer.level);
-        const hp = rp.headPosition();
+        // por el altavoz de una cámara: la voz sale de ahí, finita y con el pito del parlante
+        const spk = this.speakerAt?.(rp) || null;
+        const hp = spk || rp.headPosition();
+        const ft = spk ? 'bandpass' : 'allpass';
+        if (n.filter && n.filter.type !== ft) { n.filter.type = ft; if (spk) { n.filter.frequency.value = 1700; n.filter.Q.value = 0.7; } }
         const spatial = this.opts.voiceSpatial !== false;
         if (spatial) {
           if (n.panner.positionX) { n.panner.positionX.value = hp.x; n.panner.positionY.value = hp.y; n.panner.positionZ.value = hp.z; }
@@ -311,9 +317,9 @@ export class VoiceChat {
           else n.panner.setPosition(p.x, p.y, p.z);
         }
         // paredes: si uno está adentro y el otro afuera (o en otro edificio), se escucha amortiguado
-        const theirZone = zoneAt(rp.pos.x, rp.pos.z);
+        const theirZone = zoneAt(hp.x, hp.z);
         const wall = spatial && myZone !== theirZone && (INTERIOR.has(myZone) || INTERIOR.has(theirZone));
-        n.gain.gain.value = peer.muted || this.adminMuted?.has(peer.id) ? 0 : wall ? 0.3 : 1;
+        n.gain.gain.value = peer.muted || this.adminMuted?.has(peer.id) ? 0 : (wall ? 0.3 : 1) * (spk ? 2.2 : 1);
       }
     }
     if (this.myAnalyser && this.transmitting) {

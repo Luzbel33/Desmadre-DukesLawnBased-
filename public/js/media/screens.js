@@ -32,7 +32,7 @@ export class YouTubeScreenManager {
     // Alpha cutout into the WebGL canvas. Real foreground geometry retains depth occlusion.
     const mat=new THREE.MeshBasicMaterial({color:0x000000,opacity:0,transparent:true,blending:THREE.NoBlending,depthWrite:true,depthTest:true,toneMapped:false,side:THREE.FrontSide});
     const hole=new THREE.Mesh(new THREE.PlaneGeometry(def.w,def.h),mat);hole.name=`youtube-aperture-${def.id}`;
-    hole.position.fromArray(def.c);hole.rotation.y=def.yaw;hole.renderOrder=-1000;this.world.add(hole);
+    hole.position.fromArray(def.c);hole.rotation.y=def.yaw;hole.renderOrder=-1000;hole.visible=!def.hidden;this.world.add(hole);
     const focusCamera=new THREE.OrthographicCamera(-def.w/2,def.w/2,def.h/2,-def.h/2,.01,100);
     focusCamera.position.set(0,0,10);
     focusCamera.lookAt(0,0,0);focusCamera.updateMatrixWorld();
@@ -102,13 +102,13 @@ export class YouTubeScreenManager {
       const toCamera=e.toCamera.subVectors(camera.position,e.center);
       const projected=e.projected.copy(e.center).project(camera);
       const facing=toCamera.dot(e.normal)>0;
-      const visible=facing&&projected.z>-1&&projected.z<1&&Math.abs(projected.x)<1.7&&Math.abs(projected.y)<1.7&&toCamera.lengthSq()<160*160;
+      const visible=!e.def.hidden&&facing&&projected.z>-1&&projected.z<1&&Math.abs(projected.x)<1.7&&Math.abs(projected.y)<1.7&&toCamera.lengthSq()<160*160;
       // idle screens (the Búnker floors) show their own WebGL visualizer until someone queues a video
       const idle=!!e.def.idle&&!e.control.state.cur;
       const showLayer=active&&(focused||(visible&&!idle));
       const gain=focused?1:screenGain(e.def,pos);
       const playing=active&&pageVisible&&(focused||(!this.focused&&(visible||gain>.01)));
-      e.hole.visible=active&&!focused&&!idle;
+      e.hole.visible=active&&!focused&&!idle&&!e.def.hidden;
       e.layer.style.display=showLayer?'':'none';
       e.object.visible=true;
       let w=innerWidth,h=innerHeight;
