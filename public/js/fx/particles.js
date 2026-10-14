@@ -320,12 +320,14 @@ export class FX {
         onLand: i % 5 === 0 && this.onBloodLand ? (q) => this.onBloodLand(q.x, q.z, 0.08 + Math.random() * 0.2 * amount, col) : null });
     }
   }
-  vomit(pos, dir) {
-    for (let i = 0; i < 2; i++) {
+  // los pedazos del vómito: salen con el chorro (también para arriba si apunta para arriba)
+  vomit(pos, dir, speed = 3.5) {
+    for (let i = 0; i < 3; i++) {
+      const sp = speed * (0.7 + Math.random() * 0.4);
       this.drops.spawn({
         x: pos.x, y: pos.y, z: pos.z,
-        vx: dir.x * (2 + Math.random() * 1.5) + (Math.random() - 0.5) * 0.6, vy: -0.5 + Math.random(), vz: dir.z * (2 + Math.random() * 1.5) + (Math.random() - 0.5) * 0.6,
-        life: 2, s: 0.01 + Math.random() * 0.012, col: Math.random() < 0.5 ? 0x9a9a2a : 0xb0a040, grav: -9.8, bounce: 0,
+        vx: dir.x * sp + (Math.random() - 0.5) * 0.6, vy: dir.y * sp + (Math.random() - 0.5) * 0.5, vz: dir.z * sp + (Math.random() - 0.5) * 0.6,
+        life: 2, s: 0.012 + Math.random() * 0.016, col: Math.random() < 0.5 ? 0x9a9a2a : 0xb0a040, grav: -9.8, bounce: 0,
         onLand: i === 0 && this.onVomitLand ? (q) => this.onVomitLand(q.x, q.z) : null,
       });
     }
@@ -391,7 +393,7 @@ export class Decals {
     const tex = new THREE.CanvasTexture(c);
     const geo = new THREE.PlaneGeometry(1, 1);
     geo.rotateX(-Math.PI / 2);
-    const mat = new THREE.MeshStandardMaterial({ alphaMap: tex, transparent: true, depthWrite: false, roughness: 0.15,
+    const mat = new THREE.MeshStandardMaterial({ alphaMap: tex, transparent: true, depthWrite: false, roughness: 0.32, envMapIntensity: 0.45,
       polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, color: 0xffffff });
     this.im = new THREE.InstancedMesh(geo, mat, max);
     this.im.count = 0;
@@ -404,7 +406,20 @@ export class Decals {
     this.m = new THREE.Matrix4();
     this.c = new THREE.Color();
   }
-  add(x, z, size, color = 0x5a0006, y = 0.03, life = 240) {
+  // merge: si ya hay una mancha del mismo color al lado, crece esa (un chorro no llena el cupo y tapa la sangre)
+  add(x, z, size, color = 0x5a0006, y = 0.03, life = 240, merge = 0) {
+    if (merge > 0) {
+      for (let i = this.list.length - 1, n = 0; i >= 0 && n < 40; i--, n++) {
+        const d = this.list[i];
+        if (d.color !== color || Math.abs(d.y - y) > 0.05) continue;
+        const dd = Math.hypot(d.x - x, d.z - z);
+        if (dd > d.size * 0.45) continue;
+        d.size = Math.min(merge, Math.hypot(d.size, size * 0.45));
+        d.age = Math.min(d.age, 1);
+        this.dirty = true;
+        return;
+      }
+    }
     if (this.list.length >= this.max) this.list.shift();
     this.list.push({ x, z, y, size, rot: Math.random() * 6.28, color, age: 0, life });
     this.dirty = true;

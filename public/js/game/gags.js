@@ -14,7 +14,7 @@ export const GAGS = new Set(['mear', 'vomitar', 'eructar', 'pedo', 'cagar']);
 // la acción del cuerpo y cuánto dura (cagar: gesto)
 const ACTION = { mear: ['pee', 5.2], vomitar: ['puke', 3.4], eructar: ['burp', 2.0], pedo: ['fart', 2.2] };
 const COL = { mear: 0xd8c24a, vomitar: 0x9aa23a, caca: 0x4a2a10 };
-const PUDDLE = { mear: 0xb89a28, vomitar: 0x8a8a2a };
+const PUDDLE = { mear: 0x8f7a26, vomitar: 0x5f5c22 };
 const SAY = {
   mear: ['¡¿ME ESTÁS MEANDO?!', '¡Está caliente! ¡¿Qué es esto?!', '¡Animal! ¡Me measte!', '¡Ehhh, cochino!'],
   vomitar: ['¡¡ME VOMITASTE ENCIMA!!', '¡Buaj, tiene pedazos!', '¡Noooo, la ropa nueva!'],
@@ -51,6 +51,7 @@ export class Gags {
     setTimeout(() => {
       if (n.dead) return;
       n.action = 'puke'; n.actionT = 0; n.actionEnd = 3.4;
+      n.aimPitch = -0.8; setTimeout(() => { n.aimPitch = 0; }, 3500); // del asco se dobla y vomita al piso
       this.live.push({ P: n, kind: 'vomitar', t: 0, mine: false, npc: true, done: {} });
     }, 500 + Math.random() * 700);
   }
@@ -59,7 +60,7 @@ export class Gags {
   _pos(P, out) { return P.char?.root && P.npcWorld !== false && !P.stateData && P !== this.getLocal() ? P.char.root.getWorldPosition(out) : out.copy(P.pos); }
   _aim(P) {
     if (P === this.getLocal()) { const a = this.getAim(); return { yaw: a.yaw, pitch: a.pitch }; }
-    return { yaw: P.yaw || 0, pitch: P.stateData ? +P.stateData.ap || 0 : 0 };
+    return { yaw: P.yaw || 0, pitch: P.stateData ? +P.stateData.ap || 0 : +P.aimPitch || 0 };
   }
   _fwd(P) { const y = this._aim(P).yaw; return V2.set(Math.sin(y), 0, Math.cos(y)); }
   _at(P, up, fwd) { const f = this._fwd(P), p = this._pos(P, new THREE.Vector3()); return p.set(p.x + f.x * fwd, p.y + up, p.z + f.z * fwd); }
@@ -147,7 +148,7 @@ export class Gags {
         if (t > 0.55 && t < 4.6) {
           const from = this._at(P, 0.88, 0.2);
           const dir = V1.set(f.x * cp, sp + 0.25, f.z * cp).normalize(), speed = 3.7;
-          G.fx?.liquid(from, dir, 3, speed, COL.mear, (q) => G.blood?.add(q.x, q.z, 0.12 + Math.random() * 0.1, PUDDLE.mear, (q.y ?? 0) + 0.031, 120));
+          G.fx?.liquid(from, dir, 3, speed, COL.mear, (q) => G.blood?.add(q.x, q.z, 0.1 + Math.random() * 0.08, PUDDLE.mear, (q.y ?? 0) + 0.031, 120, 0.55));
           const step = Math.floor((t - 0.55) / 1.1);
           if (once('s' + step, 0.55 + step * 1.1)) G.sfx?.trigger('pee', this._at(P, 0.3, 0.9), 0.55, { full: 2, max: 14 });
           if (g.mine && once('h' + Math.floor(t / 0.15), Math.floor(t / 0.15) * 0.15)) this._trace(P, from, dir.clone().multiplyScalar(speed), 'mear');
@@ -157,15 +158,17 @@ export class Gags {
         if (t > 5.3) { this.live.splice(i, 1); continue; }
       } else if (g.kind === 'vomitar') {
         if (once('retch', 0.35)) G.sfx?.trigger('retch', this._pos(P, V3), 0.85, { full: 2, max: 18 });
-        // tres arcadas (las mismas de la animación 'puke': 1.0, 1.6 y 2.1 s)
-        for (const [c, w] of [[1.0, 0.32], [1.6, 0.26], [2.1, 0.18]]) {
+        // tres arcadas (las mismas de la animación 'puke': 1.0, 1.6 y 2.1 s), casi seguidas: un chorro a presión que va
+        // adonde apuntás (arriba, al frente, a la cara de alguien o al piso), como en POSTAL 2
+        for (const [c, w] of [[1.0, 0.5], [1.6, 0.42], [2.1, 0.32]]) {
           if (t > c - 0.05 && t < c + w) {
             const m = P.char?.mouthWorld ? P.char.mouthWorld(new THREE.Vector3()) : this._at(P, 1.45, 0.2);
-            const pp = aim.pitch - 0.5, dir = V1.set(f.x * Math.cos(pp), Math.sin(pp), f.z * Math.cos(pp)).normalize();
-            const speed = 2.6 + (c === 1.0 ? 1.2 : 0); // la primera sale con todo
-            G.fx?.liquid(m, dir, 4, speed, Math.random() < 0.5 ? 0x9a9a2a : 0xb0a040, (q) => G.blood?.add(q.x, q.z, 0.18 + Math.random() * 0.15, PUDDLE.vomitar, (q.y ?? 0) + 0.031, 140));
-            G.fx?.vomit(m, dir);
-            if (g.mine && once('h' + c + Math.floor(t / 0.12), 0)) this._trace(P, m, dir.clone().multiplyScalar(speed), 'vomitar');
+            const pp = Math.max(-1.45, aim.pitch - 0.1), dir = V1.set(f.x * Math.cos(pp), Math.sin(pp), f.z * Math.cos(pp)).normalize();
+            const surge = Math.max(0, 1 - (t - c) / w); // cada arcada sale con todo y se va apagando
+            const speed = (c === 1.0 ? 5.6 : 4.6) * (0.55 + 0.45 * surge);
+            G.fx?.liquid(m, dir, 5, speed, Math.random() < 0.5 ? 0x9a9a2a : 0xb0a040, (q) => G.blood?.add(q.x, q.z, 0.12 + Math.random() * 0.1, PUDDLE.vomitar, (q.y ?? 0) + 0.031, 140, 0.7));
+            G.fx?.vomit(m, dir, speed);
+            if (g.mine && once('h' + c + Math.floor(t / 0.1), 0)) this._trace(P, m, dir.clone().multiplyScalar(speed), 'vomitar');
           }
         }
         if (once('nose', 1.4) && !g.npc) this._npcs(P, ['¡Qué asco!', '¡Ehh, en el piso no!', 'Uh, se descompuso.'], 5, 0.2);

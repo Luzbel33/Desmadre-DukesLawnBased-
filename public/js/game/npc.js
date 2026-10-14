@@ -98,6 +98,8 @@ export class Npc {
     this.rag = null;
     this.down = 0; // segundos que le quedan tirado
     this.hp = 100;
+    this.balance = 100; // equilibrio: los golpes lo gastan y se recupera solo; en 0 se cae
+    this.stag = null; // trastabillando: { vx, vz, t } (pasos para atrás/al costado con el golpe)
     this.snap = { head: new THREE.Vector2(), headV: new THREE.Vector2(), torso: new THREE.Vector2(), torsoV: new THREE.Vector2() };
     this.onHurt = null; // (npc, s, point, byPlayer) => void
     // muerte y vuelta: tirado un rato, desaparece y reaparece entero en su lugar
@@ -203,7 +205,10 @@ export class Npc {
     const now = performance.now();
     if (now - (this._hitCd || 0) < 90) return; // el mismo golpe no cuenta dos veces
     this._hitCd = now;
-    const s = Math.min(2.2, (speed / 7) * Math.sqrt(Math.max(0.5, mass)));
+    // fuerza del golpe: con el cuerpo (piña 1, cabezazo 4, patada 6) según qué pega; con un arma o algo
+    // revoleado, según su masa. Antes la patada valía como un mazazo (masa 6) y siempre lo volteaba
+    const body = !weapon && kind === 'blunt' && (mass === 1 || mass === 4 || mass === 6);
+    const s = body ? Math.min(1.8, speed / (mass === 6 ? 4.6 : mass === 4 ? 5 : 7)) : Math.min(2.2, (speed / 7) * Math.sqrt(Math.max(0.5, mass)));
     // la parte más cercana al punto
     let part = PART.TORSO, best = 1e9;
     if (this.rag?.alive) for (let i = 0; i < 11; i++) { if (this.lost & (1 << i)) continue; const t = this.rag.bodies[i].translation(); const d = V1.set(t.x, t.y, t.z).distanceToSquared(point); if (d < best) { best = d; part = i; } }
@@ -214,7 +219,7 @@ export class Npc {
     const k = part === PART.HEAD ? this.snap.headV : this.snap.torsoV;
     k.x += -fwd * 11 * s; k.y += side * 9 * s;
     this.snap.torsoV.x += -fwd * 4 * s;
-    if (!this.sit && !this.down) { this.pos.x += dir.x * 0.12 * s; this.pos.z += dir.z * 0.12 * s; }
+    if (!this.sit && !this.down && s < 0.35) { this.pos.x += dir.x * 0.05 * s; this.pos.z += dir.z * 0.05 * s; }
     try { this.char.wound(part, this.char.worldToPart(part, point, V2), kind === 'blunt' ? 'blunt' : 'cut', Math.min(1.6, 0.3 + s * 0.7), null, (Math.random() * 1e6) | 0); } catch { /* */ }
     // el daño: como a los jugadores (cabeza x1.7, brazos y piernas menos), según qué pega
     const base = kind === 'bullet' ? 42 : kind === 'cut' ? 30 : mass >= 3 ? 22 : 14;
@@ -228,15 +233,35 @@ export class Npc {
     if (byPlayer && !this.onHurt && !MODELS[this.look?.model]?.mask) startNpcDefense(this, G.me);
     if (s > 0.2) this.vocal(s > 1 || kind !== 'blunt' ? 'scream' : 'hurt');
     const vel = V1.copy(dir).multiplyScalar(2 + s * 2.5).setY(1 + s * 0.6);
-    // gore: filo o bala cortan; un mazazo brutal a la cabeza la revienta
-    if (kind !== 'blunt' || (s > 1.6 && part === PART.HEAD && mass >= 3)) {
+    // gore: filo o bala cortan; un mazazo brutal a la cabeza la revienta (con un arma pesada: una patada o un
+    // cabezazo nunca)
+    if (kind !== 'blunt' || (!body && s > 1.6 && part === PART.HEAD && mass >= 3)) {
       const g = goreFor(part, s * 1.35, kind === 'blunt' ? 'blunt' : kind, byPlayer ? 'remote' : 'npc');
       if (g.headPop) { this._popHead(vel.clone()); return; }
       if (g.sever >= 0) this.loseLimb(g.sever, vel.clone());
     }
     if (this.hp <= 0) { this.die(vel.clone()); return; }
-    // tumba: un golpe muy fuerte, una patada voladora, o si ya está hecho pelota
-    if (!this.down && (s > 1.15 || (this.hp < 30 && s > 0.6))) this.knockout(vel.clone(), 2.5 + s);
+    if (this.down > 0) return;
+    // equilibrio (estilo GTA): cada golpe lo gasta, la cabeza más; se cae por una ráfaga, un golpe tremendo o
+    // estando hecho pelota. Si no, trastabilla con el golpe y se rehace
+    this.balance -= s * (part === PART.HEAD ? 46 : 34);
+    if (s > (body ? 1.65 : 1.5) || this.balance <= 0 || (this.hp < 22 && s > 0.6)) {
+      this.balance = 70;
+      this.knockout(V1.copy(dir).multiplyScalar(1.4 + s * 1.6).setY(0.6 + s * 0.4), 2 + s * 1.2);
+      return;
+    }
+    if (s > 0.3) this.stagger(dir, s);
+  }
+
+  // trastabillar con un golpe o un empujón: unos pasos para el lado del golpe, brazos sueltos, y se rehace
+  stagger(dir, s = 0.6) {
+    if (this.sit || this.down > 0 || this.dead || this.noCollide || !this.char) return;
+    // una piña: medio paso; una patada: un par de pasos (velocidad que se apaga en t segundos)
+    const sp = Math.min(3.6, 0.6 + s * 1.6), t = 0.22 + Math.min(0.42, s * 0.22);
+    this.stag = { vx: dir.x * sp, vz: dir.z * sp, t, t0: t };
+    const c = Math.cos(this.yaw), sn = Math.sin(this.yaw);
+    this._stagLocal = { x: dir.x * c - dir.z * sn, z: dir.x * sn + dir.z * c };
+    this.action = 'stagger'; this.actionT = 0; this.actionEnd = t + 0.2;
   }
   // números de daño que suben (y la barra de vida arriba de la cabeza unos segundos)
   _floatDmg(n, point, crit) {
@@ -399,7 +424,14 @@ export class Npc {
     // prendido fuego no hace caso a su rol: corre en pánico (ver _burnStep). Tirado, tampoco: antes el rol seguía
     // andando con el cuerpo en el piso y la posición "lógica" perseguía y pegaba sola (el guardia invisible)
     const moveX = this.pos.x, moveZ = this.pos.z;
-    if (simulate && !(this.burnT > 0) && !(this.down > 0) && !stepNpcDefense(this, dt)) this.role?.(this, dt);
+    this.balance = Math.min(100, (this.balance ?? 100) + dt * 18);
+    if (this.stag) {
+      // trastabillando: el golpe manda (el rol espera); la velocidad se apaga y los pies dan los pasos
+      const g = this.stag, k = Math.max(0, g.t / g.t0);
+      this.pos.x += g.vx * k * dt; this.pos.z += g.vz * k * dt;
+      g.t -= dt;
+      if (g.t <= 0 || this.down > 0 || this.dead) this.stag = null;
+    } else if (simulate && !(this.burnT > 0) && !(this.down > 0) && !stepNpcDefense(this, dt)) this.role?.(this, dt);
     if (simulate) this._resolveMove();
     if (simulate && !this.sit && !this.down && !this.dead && !(this.burnT > 0) && dt > 0) this.speed = Math.min(5, Math.hypot(this.pos.x - moveX, this.pos.z - moveZ) / dt);
     // mirar a alguien: la cabeza primero, el cuerpo si hace falta
@@ -443,7 +475,7 @@ export class Npc {
         else this._getUp();
       }
     } else {
-      if (updatePose) ch.animate({ speed: this.speed, grounded: true, sit: this.sit, table: this.table, crouch: this.crouch, aimPitch: this.aimPitch, headYaw: this.headYaw, emote: this.emote, emoteT: this.emoteT, action: this.action, actionT: this.actionT, held: this.item || (this.prop && !this.propHang) ? 'item' : null }, dt);
+      if (updatePose) ch.animate({ speed: this.speed, grounded: true, sit: this.sit, table: this.table, crouch: this.crouch, aimPitch: this.aimPitch, headYaw: this.headYaw, emote: this.emote, emoteT: this.emoteT, action: this.action, actionT: this.actionT, actionDur: this.actionEnd, stagger: this._stagLocal, kickKind: this.kickKind, held: this.item || (this.prop && !this.propHang) ? 'item' : null }, dt);
       if (this.propHang) ch.grip.r = 1; // el farol cuelga del puño cerrado, con el brazo suelto
       // resortes de los golpes (subamortiguados: la cabeza se va y vuelve)
       const S = this.snap, w = 22, z = 0.35;

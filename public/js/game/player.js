@@ -413,6 +413,7 @@ export class LocalPlayer {
     this.action = name;
     this.actionT = 0;
     this.actionDur = duration;
+    this.actionStart = (this.actionStart || 0) + 1; // cada acción nueva (para contar un golpe por patada)
     if (name === 'eat') { this.guard = false; startScript(this.arm.r, 'eat', duration); }
   }
   setEmote(name) { this.emote = name || null; this.emoteT = 0; }
@@ -963,9 +964,10 @@ export class LocalPlayer {
     if (distance > 1.8 || Math.abs(this.pos.y - at.y) > 1.2 || speed < 4.2 || dx * m.v[0] + dz * m.v[2] < -.1) return false;
     this._receivedBumpT = G.time + 1;
     const direction = new THREE.Vector3(m.v[0], 0, m.v[2]).normalize();
-    // Ordinary walking remains harmless; sprinting actually displaces the struck body.
-    if (speed > 6.4) this.knockout(.9, m.id, direction.multiplyScalar(Math.min(4.5, speed * .5)).setY(.65));
-    else this.stun(.45, direction.multiplyScalar(2.4));
+    // caminando no pasa nada; corriendo te lleva puesto (trastabillás); solo a una velocidad bestial (poción de
+    // velocidad + carrera) te voltea
+    if (speed > 8.6) this.knockout(.9, m.id, direction.multiplyScalar(Math.min(4.5, speed * .45)).setY(.55));
+    else this.stun(.3 + speed * .03, direction.multiplyScalar(1.2 + speed * .25));
     return true;
   }
 
@@ -985,16 +987,21 @@ export class LocalPlayer {
       if (d < R) { const v = Math.min(3.5, (R - d) * 12); sep.x += nx * v; sep.y += nz * v; ns.push(nx, nz); }
     }
   }
-  // me lo llevé puesto corriendo: tropiezo (al piso un ratito, rodando para adelante); un NPC se cae también
+  // me lo llevé puesto corriendo: hombrazo (como en GTA): el otro trastabilla para donde iba yo y yo pierdo un poco
+  // de velocidad y me sacudo, sin caerme. Solo a una velocidad bestial el NPC se va al piso
   _trip(at, npc) {
-    this._tripT = G.time + 1.5;
+    this._tripT = G.time + 1.2;
     const sp = Math.hypot(this.velocity.x, this.velocity.y);
     const fx = this.velocity.x / (sp || 1), fz = this.velocity.y / (sp || 1);
-    if (npc) { npc.knockout(V1.set(fx * sp * 0.8, 1.2, fz * sp * 0.8), 2.5); npc.say?.(['¡Mirá por dónde vas!', '¡Pelotudo!', '¡Uh!'][Math.floor(Math.random() * 3)], 2); npc.vocal?.('hurt'); }
-    this._vocal('hurt');
-    this.onEvent?.('move', { k: 'bonk' });
-    if (sp > 6.8) this.tumble(V2.set(fx, 0, fz), sp * 0.7, 1.6);
-    else this.stun(0.7, V2.set(-fx * 1.5, 0, -fz * 1.5));
+    if (npc) {
+      if (sp > 8.6) npc.knockout?.(V1.set(fx * sp * 0.6, 1.0, fz * sp * 0.6), 2);
+      else if (npc.stagger) npc.stagger(V1.set(fx, 0, fz), 0.5 + sp * 0.06);
+      npc.say?.(['¡Mirá por dónde vas!', '¡Pelotudo!', '¡Uh!', '¡Ey, cuidado!'][Math.floor(Math.random() * 4)], 2); npc.vocal?.('hurt');
+    }
+    this.onEvent?.('move', { k: 'bump' });
+    this.velocity.multiplyScalar(0.55);
+    this._flinch(V2.set(-fx, 0, -fz), 0.5);
+    if (sp > 7.5) this.stun(0.3, V2.set(-fx * 0.8, 0, -fz * 0.8));
   }
 
   // Aviso al otro jugador de que mi mano/pie/arma le pegó (él valida y decide el daño)
@@ -1065,8 +1072,8 @@ export class LocalPlayer {
   _attacking(i) {
     if ((i === PART.FARM_R || i === PART.UARM_R) && this.arm.r.armed > 0) return true;
     if ((i === PART.FARM_L || i === PART.UARM_L) && this.arm.l.armed > 0) return true;
-    if ((i === PART.SHIN_R || i === PART.THIGH_R) && this.action === 'kick' && this.actionT >= .12 && this.actionT <= .3) return true;
-    if (i === PART.HEAD && this.action === 'headbutt' && this.actionT >= .035 && this.actionT <= .18) return true;
+    if ((i === PART.SHIN_R || i === PART.THIGH_R) && this.action === 'kick' && this.actionT >= (this.kickKind === 'stomp' ? .15 : .11) && this.actionT <= (this.kickKind === 'stomp' ? .3 : .29)) return true;
+    if (i === PART.HEAD && this.action === 'headbutt' && this.actionT >= .09 && this.actionT <= .23) return true;
     return false;
   }
   // arma en la mano de la parte i (para que el otro calcule un golpe con arma)
@@ -1087,8 +1094,9 @@ export class LocalPlayer {
     if (this.dead || this.state === 'driving') return;
     let by = hit.by || 0;
     if (by === G.myId) by = 0;
-    const self = hit.src === 'remote' && part === PART.HEAD && this.action === 'headbutt';
-    let s = clamp(sev, 0, 3) * (self ? 0.45 : 1);
+    // mi cabeza contra la del otro mientras le doy el cabezazo: duele un poco, nada más (antes te tumbaba a vos)
+    const self = (hit.src === 'remote' || hit.src === 'npc') && part === PART.HEAD && this.action === 'headbutt';
+    let s = clamp(sev, 0, 3) * (self ? 0.15 : 1);
     const pvp = G.settings.desmadre || isPvpAt(this.pos.x, this.pos.z);
     // afuera de las zonas PvP los golpes de otros jugadores empujan pero no lastiman (autos y caídas sí)
     // el dueño en modo inmortal: lo empujan, pero no lo lastiman
@@ -1113,8 +1121,10 @@ export class LocalPlayer {
       const strength = clamp(0.3 + s * 0.8, 0, 2.2) * (blocked ? 0.5 : 1);
       this.char.wound(part, local, kind, strength, null, (Math.random() * 1e6) | 0);
       this.onEvent?.('wound', { p: part, l: [r3(local.x), r3(local.y), r3(local.z)], k: kind, s: r3(strength) });
-      // gore: miembros cortados, cabeza reventada, tripas afuera
-      const g = blocked ? { sever: -1, headPop: false, guts: false } : goreFor(part, s, kind, hit.src);
+      // gore: miembros cortados, cabeza reventada, tripas afuera. Solo armas, autos, tiros y explosiones: una piña,
+      // una patada, un cabezazo o darse contra el piso/una pared nunca revientan nada
+      const bodyBlow = hit.src === 'world' || hit.src === 'remote' || hit.src === 'npc';
+      const g = blocked || bodyBlow ? { sever: -1, headPop: false, guts: false } : goreFor(part, s, kind, hit.src);
       if (g.headPop || g.sever >= 0 || g.guts) {
         const c = this._partCenter(part, V2);
         const away = V3.copy(c).sub(point).setY(0.35).normalize().multiplyScalar(1.5 + s * 2.2);
@@ -1142,17 +1152,23 @@ export class LocalPlayer {
       this.standUp();
     }
     const bal = prof?.bal ?? 1.2, push = prof?.push ?? 1.2;
-    if (!harmless) this.balance -= (dmg * (part === PART.HEAD ? 2.2 : 1.2) + s * 12) * bal;
-    const fall = (!blocked && !harmless && part === PART.HEAD && s > 1.35) || s > 2.1 || (hit.src === 'vehicle' && s > 0.5) || this.balance <= 0;
+    // equilibrio: cada golpe que entra lo gasta (la cabeza más) y se recupera solo. Al piso se va por acumulación
+    // (una ráfaga), por un golpe tremendo o por un auto: una piña o una patada sueltas te hacen trastabillar, no
+    // volar como un muñeco (estilo GTA: el cuerpo acusa, da pasos para no caerse y sigue)
+    if (!harmless && !self) this.balance -= (dmg * (part === PART.HEAD ? 1.5 : 0.8) + s * 9) * bal;
+    const fall = !self && ((!blocked && !harmless && part === PART.HEAD && s > 1.6) || s > (hit.src === 'remote' || hit.src === 'npc' ? 2.3 : 2.1) || (hit.src === 'vehicle' && s > 0.5) || this.balance <= 0);
     if (fall) {
-      this.balance = 55;
+      this.balance = 60;
       if (!harmless) this._vocal('scream');
       // cae con el golpe, sin salir volando (antes una piña que noqueaba lo mandaba a 4 m)
-      this.knockout(1.8 + s * 1.2, by, V2.copy(dir).multiplyScalar((1.2 + s * 1.8) * push).setY(0.6 + s * 0.5));
+      const body = hit.src === 'remote' || hit.src === 'npc';
+      this.knockout(body ? 1.3 + s * 0.7 : 1.8 + s * 1.2, by, V2.copy(dir).multiplyScalar((1.1 + s * 1.4) * push).setY(0.5 + s * 0.4));
       return;
     }
-    if (s > 0.5 && !blocked) this.stun(0.25 + s * 0.3, V2.copy(dir).multiplyScalar((1.8 + s * 2.6) * push));
+    // trastabillar: el cuerpo se va con el golpe y da unos pasos para no caerse (más cuanto más fuerte)
+    if (s > 0.45 && !blocked && !self) this.stun(0.3 + s * 0.28, V2.copy(dir).multiplyScalar((1.6 + s * 2.2) * push));
     else if (blocked) { this.push.x += dir.x * 0.8; this.push.y += dir.z * 0.8; }
+    else if (s > 0.12 && !self) { this.push.x += dir.x * s * 1.6; this.push.y += dir.z * s * 1.6; }
     // un golpe de verdad te hace soltar a quien tenías agarrado
     if (s > 0.7 && !blocked && !harmless) for (const sd of ['l', 'r']) if (this.hands[sd].joint === PLAYER_GRIP) this.release(sd, false);
     // cada golpe que entra tiene su quejido (fuerte: grito); un empujón fuera de la pelea, un quejido igual
@@ -1735,10 +1751,13 @@ export class LocalPlayer {
   }
 
   kick() {
-    if (this.combatBlocked || this.state !== 'active') return;
-    this.setAction('kick', 0.5);
-    this.push.x += Math.sin(this.yaw) * 1.3;
-    this.push.y += Math.cos(this.yaw) * 1.3;
+    if (this.combatBlocked || this.state !== 'active' || this.action === 'kick') return;
+    // mirando para abajo (alguien tirado, algo en el piso): pisotón; si no, patada frontal que empuja
+    this.kickKind = this.aimPitch < -0.42 ? 'stomp' : 'front';
+    this.setAction('kick', this.kickKind === 'stomp' ? 0.5 : 0.56);
+    const k = this.kickKind === 'stomp' ? 0.5 : 1.0;
+    this.push.x += Math.sin(this.yaw) * k;
+    this.push.y += Math.cos(this.yaw) * k;
   }
   headbutt() {
     if (this.combatBlocked || this.state !== 'active') return;
@@ -1973,7 +1992,7 @@ export class LocalPlayer {
         return;
       }
       if (kind === 'bag') {
-        if (now - (this._swBag || 0) > 0.2) { this._swBag = now; hit.info.ref?.punch(Math.min(14, speed * 0.85), pt, d, p.mass, true, 'blunt', p.type); }
+        if (now - (this._swBag || 0) > 0.2) { this._swBag = now; this._bagHit(hit.info.ref, Math.min(14, speed * 0.85), pt, d, p.mass, p.type); }
         a.v.multiplyScalar(0.55);
         return;
       }
@@ -1989,6 +2008,16 @@ export class LocalPlayer {
       }
       return;
     }
+  }
+
+  // Le pegué a un NPC (o a la bolsa): el golpe y lo que se siente del lado del que pega (frena la mano un instante,
+  // la cámara acusa, sonido de carne) igual que contra otro jugador
+  _bagHit(ref, speed, point, dir, mass, weapon) {
+    if (!ref?.punch) return;
+    const hp0 = ref.hp;
+    ref.punch(speed, point, dir, mass, true, 'blunt', weapon || null);
+    const landed = ref.hp !== hp0 || ref.kind === 'bag' || !ref.name;
+    if (landed) this.onEvent?.('hitnpc', { s: clamp(speed / 8, 0.2, 1.4) * (mass >= 4 ? 1.25 : 1), x: point.x, y: point.y, z: point.z });
   }
 
   // Botella (o algo frágil) en la mano contra algo duro: se rompe en la mano
@@ -2028,12 +2057,22 @@ export class LocalPlayer {
     const key = hit.collider.handle * 16 + i, now = performance.now();
     if (now - (this.hitCd.get(key) ?? -1000) < 220) return;
     this.hitCd.set(key, now);
-    const point = hit.contact.point1 || tip, info = hit.info;
+    const info = hit.info;
+    // una patada o un cabezazo pega UNA vez a cada uno (antes muslo y pierna contaban por separado: tres golpes)
+    const victim = info?.kind === 'remote' ? 'p' + info.id : info?.ref || hit.collider.handle;
+    if (leg || head) {
+      const tag = this.action + this.actionStart;
+      if (this._limbHitTag !== tag) { this._limbHitTag = tag; this._limbHits = new Set(); }
+      if (this._limbHits.has(victim)) return;
+      this._limbHits.add(victim);
+    }
+    // el punto de contacto de Rapier es un objeto plano: sin esto el golpe a un NPC tiraba error y cortaba el cuadro
+    const p1 = hit.contact.point1, point = p1 ? new THREE.Vector3(p1.x, p1.y, p1.z) : tip;
     const kind = leg ? 'k' : head ? 'h' : 'p';
     if (info?.kind === 'remote') this._claimHit(info.id, info.part ?? 1, speed, point, this._weaponOf(i), kind);
     else if (info?.kind === 'prop' && info.ref) {
       this._whack(info.ref, n.clone().negate(), Math.min(speed, 14), point, { mass: leg ? 6 : head ? 4 : 1 });
-    } else if (info?.kind === 'bag') info.ref?.punch(speed, point, n.clone().negate(), leg ? 6 : head ? 4 : 1, true, 'blunt', this._weaponOf(i));
+    } else if (info?.kind === 'bag') this._bagHit(info.ref, speed, point, n.clone().negate(), leg ? 6 : head ? 4 : 1, this._weaponOf(i));
     else this.onEvent?.('handwall', { x: point.x, y: point.y, z: point.z, s: speed });
     this.hitStop = Math.max(this.hitStop, .035);
   }
@@ -2131,7 +2170,7 @@ export class LocalPlayer {
       this._claimHit(hit.info.id, part, speed, to, w);
     } else if (bag && speed > 1.5 && G.time - a.hitT > 0.2) {
       a.hitT = G.time;
-      hit.info.ref?.punch(speed, to, d, Math.max(1, this._heldMass(side)), true, 'blunt', this.hands[side].prop ? G.props?.get(this.hands[side].prop)?.type : null);
+      this._bagHit(hit.info.ref, speed, to.clone(), d.clone(), Math.max(1, this._heldMass(side)), this.hands[side].prop ? G.props?.get(this.hands[side].prop)?.type : null);
     } else if (!body && !bag && vIn > 3 && G.time - a.hitT > 0.2) {
       a.hitT = G.time;
       this.onEvent?.('handwall', { x: to.x, y: to.y, z: to.z, s: vIn });
@@ -2442,10 +2481,13 @@ export class LocalPlayer {
     const tw = torsoTwist(this.arm), ln = torsoLean(this.arm) + (this.guard ? 0.1 : 0);
     if (Math.abs(tw) + ln > 1e-3) J[1].quaternion.multiply(Q1.setFromEuler(E1.set(ln, tw, 0)));
     if (this.action === 'headbutt') {
-      const p = clamp(this.actionT / 0.42, 0, 1);
-      const k = p < 0.35 ? p / 0.35 : 1 - (p - 0.35) / 0.65;
-      this.rig.joints[1].quaternion.multiply(Q1.setFromAxisAngle(V1.set(1, 0, 0), 0.55 * k));
-      this.rig.joints[2].quaternion.multiply(Q1.setFromAxisAngle(V1.set(1, 0, 0), 0.5 * k));
+      // se carga para atrás (0-0.1 s), revienta la cabeza para adelante con el torso (0.1-0.19: ahí pega) y vuelve
+      const t = this.actionT, sm = (x) => x * x * (3 - 2 * x);
+      const wind = sm(clamp(t / 0.1, 0, 1)), hit = sm(clamp((t - 0.1) / 0.09, 0, 1)), back = sm(clamp((t - 0.24) / 0.18, 0, 1));
+      const sp = (-0.16 * wind * (1 - hit) + 0.5 * hit) * (1 - back), nk = (-0.22 * wind * (1 - hit) + 0.6 * hit) * (1 - back);
+      J[0].quaternion.multiply(Q1.setFromAxisAngle(V1.set(1, 0, 0), 0.12 * hit * (1 - back)));
+      J[1].quaternion.multiply(Q1.setFromAxisAngle(V1.set(1, 0, 0), sp));
+      J[2].quaternion.multiply(Q1.setFromAxisAngle(V1.set(1, 0, 0), nk));
     }
   }
 
@@ -2571,6 +2613,7 @@ export class LocalPlayer {
       diveT: this.mv.diveT,
       action: rigAction,
       actionT: this.actionT,
+      kickKind: this.kickKind,
       aimPitch: this.aimPitch,
       headYaw: this.headYaw,
       held: this.hands.r.item ? 'item' : this.hands.r.prop ? 'weapon' : null,

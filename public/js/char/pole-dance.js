@@ -35,7 +35,7 @@ function roll(P, a) { P.hips[2] += a; P.hipL[2] -= a; P.hipR[2] -= a; }
 // ajustes finos de brazos y piernas, resueltos numéricamente sobre el modelo (manos una arriba de la otra sobre el
 // caño, el muslo del gancho abrazándolo, el cuerpo sin atravesarlo): se suman a la pose de cada movimiento
 const FIT = {
-  CHAIR: { elbowL: [0.195, 0, 0], elbowR: [0.067, 0, 0], shoulderL: [0.07, -0.891, -0.539], shoulderR: [0.227, 0, 0.047], spine: [0, -0.145, 0.018] },
+  CHAIR: { elbowR: [0.067, 0, 0], shoulderR: [0.227, 0, 0.047] },
   WAVE0: { elbowL: [0.164, 0, 0], elbowR: [0.336, 0, 0], shoulderL: [0.563, -0.406, -0.008], shoulderR: [0.25, 0.031, 0] },
   WAVE1: { elbowL: [0.008, 0, 0], shoulderL: [0.313, -0.359, -0.25], shoulderR: [0, 0.078, 0] },
   BACK0: { elbowL: [-0.159, 0, 0], elbowR: [-0.19, 0, 0], shoulderL: [-0.676, 0.731, -0.516], shoulderR: [-0.269, -0.191, 0.5], spine: [-0.228, 0, 0] },
@@ -105,13 +105,16 @@ const CHAIR = {
   len: 8, face: Math.PI / 2, r: 0.42,
   turn: (b) => -TAU * ease((b - 0.8) / 6.4) - 0.35 * ease(b / 1.2),
   up: (b) => 0.2 * env(b, 1, 2, 6.4, 7.6),
-  hands: (b) => ({ l: env(b, 1, 2.1, 6.3, 7.5), r: 1 }), pin: () => ({ l: 0, r: 1 }),
+  hands: () => ({ l: 0, r: 1 }), pin: () => ({ l: 0, r: 1 }),
   pose(b) {
     const P = blank(), a = env(b, 1, 2.1, 6.3, 7.5), sw = Math.sin(TAU * b / 4);
     P.shoulderR = [-0.3, 0, -2.6]; P.elbowR = [-0.2, 0, 0];
-    // la izquierda cruza por delante y agarra el caño más abajo; antes y después, abierta
-    P.shoulderL = [lerp(0.3, -1.2, a), 0, lerp(0.9, -0.55, a)]; P.elbowL = [lerp(-0.3, -1.0, a), 0, 0];
-    P.spine = [-0.15 * a, 0, -0.18 * a]; P.neck = [-0.1 - 0.35 * a, -0.2 * a, 0];
+    // giro de una mano: la izquierda se abre hacia afuera y arriba, larga, y acompaña el giro como en un ballet
+    // (antes cruzaba por delante a buscar el caño y el brazo se metía adentro del torso: con este cuerpo colgado de
+    // costado no hay forma de llegar sin atravesarlo; se probó resolviéndolo sobre el modelo)
+    const fl = Math.sin(TAU * b / 8);
+    P.shoulderL = [lerp(0.3, -0.55 + 0.15 * fl, a), 0, lerp(0.9, 1.75 + 0.2 * fl, a)]; P.elbowL = [lerp(-0.3, -0.28 - 0.12 * fl, a), 0, 0];
+    P.spine = [-0.15 * a, 0.12 * a, -0.18 * a]; P.neck = [-0.1 - 0.35 * a, -0.2 * a, 0];
     P.hips = [-0.15 * a, 0.12 * a, -0.22 * a];
     P.hipL = [lerp(-0.1, -1.45, a), 0, -0.04]; P.hipR = [lerp(0.1, -1.3, a), 0, 0.04];
     P.kneeL = [lerp(0.15, 1.75, a), 0, 0]; P.kneeR = [lerp(0.15, 1.85, a), 0, 0];

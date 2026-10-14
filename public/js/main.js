@@ -1380,6 +1380,7 @@ function moveSound(k, pos = null) {
   if (k === 'slide' || k === 'dive') G.sfx?.trigger(cloth, pos, 0.55);
   else if (k === 'land') { G.sfx?.trigger('hit-soft', pos, 0.55); G.sfx?.trigger(cloth, pos, 0.4); }
   else if (k === 'bonk') G.sfx?.trigger('hit', pos, 0.7);
+  else if (k === 'bump') { G.sfx?.trigger('hit-soft', pos, 0.6); G.sfx?.trigger(cloth, pos, 0.5); }
 }
 
 function onLocalEvent(type, d) {
@@ -1389,6 +1390,7 @@ function onLocalEvent(type, d) {
       moveSound(d.k);
       if (d.k === 'land') state.shake = Math.min(1, (state.shake || 0) + 0.18);
       if (d.k === 'bonk') { state.shake = Math.min(1, (state.shake || 0) + 0.5); addChat('', { html: '<i>Te la diste contra la pared.</i>' }); }
+      if (d.k === 'bump') { state.shake = Math.min(1, (state.shake || 0) + 0.2); camKick.v.z += (Math.random() - 0.5) * 0.8; }
       net?.send({ t: 'ev', k: 'mv', m: d.k });
       break;
     case 'wound':
@@ -1430,6 +1432,16 @@ function onLocalEvent(type, d) {
       state.shake = Math.min(1, (state.shake || 0) + clamp(d.dv / 40, 0.03, 0.15));
       contactFeedback(clamp(d.dv / 12, 0.3, 1));
       net?.send({ t: 'ev', k: 'hc', to: d.id, p: d.part, s: +d.dv.toFixed(2), x: +d.x.toFixed(2), y: +d.y.toFixed(2), z: +d.z.toFixed(2), w: d.w || 0, a: d.a || 'p' });
+      break;
+    }
+    case 'hitnpc': {
+      // le pegué a un NPC: la mano frena un instante y la vista acusa (el sonido y la sangre los pone el NPC)
+      const L = state.local, s = d.s;
+      L.hitStop = Math.max(L.hitStop, 0.04 + Math.min(0.07, s * 0.045));
+      camKick.v.x -= 0.4 + Math.min(1.3, s * 0.85);
+      camKick.v.z += (Math.random() - 0.5) * 0.8 * Math.min(1.5, s);
+      state.shake = Math.min(1, (state.shake || 0) + clamp(s * 0.12, 0.04, 0.16));
+      contactFeedback(clamp(s, 0.3, 1));
       break;
     }
     case 'handwall':
@@ -2471,7 +2483,7 @@ async function boot() {
       contactFeedback(clamp(speed / 12, 0.3, 1));
     };
     G.fx.onBloodLand = (x, z, size, col) => G.blood.add(x, z, size, col);
-    G.fx.onVomitLand = (x, z) => G.blood.add(x, z, 0.25 + Math.random() * 0.2, 0x8a8a2a);
+    G.fx.onVomitLand = (x, z) => G.blood.add(x, z, 0.08 + Math.random() * 0.08, 0x5f5c22, 0.031, 140, 0.7);
     G.input = new Input(canvas); G.input.enabled = false; keys.load(); G.input.map = (c) => keys.map(c);
     state.radial = new RadialMenu($('radial'));
     // Esc con el menú de gestos abierto: lo cierra (el navegador suelta el mouse igual; no es para pausar)

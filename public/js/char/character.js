@@ -881,18 +881,49 @@ export class Character {
         break;
       }
       case 'kick': {
-        // patada frontal: recoge la rodilla (0-0.13 s), estira de golpe (0.13-0.22 s: ahí pega) y vuelve.
-        // El cuerpo se tira un poco atrás para compensar y los brazos se abren (equilibrio).
-        const chamber = clamp(at / 0.13, 0, 1);
-        const snap = clamp((at - 0.13) / 0.09, 0, 1);
-        const back = clamp((at - 0.26) / 0.24, 0, 1);
-        const up = chamber * (1 - back);
-        J.hipR[0] = lerp(0, -1.35 - 0.2 * snap, up);
-        J.kneeR[0] = lerp(lerp(0.1, 1.9, chamber), 0.08, snap) * (1 - back) + 0.1 * back;
-        J.hipL[0] = 0.12 * up; J.kneeL[0] = 0.25 * up; // la pierna de apoyo se flexiona
-        J.spine[0] -= 0.32 * up;
-        J.shoulderL[2] = 0.55 * up; J.shoulderR[2] = -0.4 * up;
-        J.shoulderL[0] = -0.4 * up;
+        J.hips = J.hips || [0, 0, 0];
+        const sm = (x) => x * x * (3 - 2 * x), s = (a, b) => sm(clamp((at - a) / (b - a), 0, 1));
+        // guardia arriba durante toda la patada (como un peleador, no los brazos colgando)
+        const g = s(0, 0.08) * (1 - s(0.42, 0.56));
+        J.shoulderL[0] = lerp(J.shoulderL[0], -0.58, g); J.elbowL[0] = lerp(J.elbowL[0], -2.1, g); J.shoulderL[2] = lerp(J.shoulderL[2], -0.18, g);
+        J.shoulderR[0] = lerp(J.shoulderR[0], -0.42, g); J.elbowR[0] = lerp(J.elbowR[0], -2.0, g); J.shoulderR[2] = lerp(J.shoulderR[2], 0.2, g);
+        if (st.kickKind === 'stomp') {
+          // pisotón al que está en el piso: sube la rodilla bien alta y la clava para abajo y adelante con todo el
+          // peso; el torso se inclina sobre el golpe y la cadera baja
+          const lift = s(0, 0.15), drive = s(0.15, 0.24), back = s(0.34, 0.5);
+          J.hipR[0] = lerp(lerp(0, -1.55, lift), -0.55, drive) * (1 - back);
+          J.kneeR[0] = lerp(lerp(0.1, 2.0, lift), 0.22, drive) * (1 - back) + 0.08 * back;
+          J.hipL[0] -= 0.25 * lift * (1 - back); J.kneeL[0] += 0.45 * lift * (1 - back);
+          J.spine[0] += (-0.08 * lift + 0.38 * drive) * (1 - back); J.neck[0] += 0.3 * drive * (1 - back);
+          J.hips[0] += 0.12 * drive * (1 - back);
+          hipsY -= (0.04 * lift + 0.07 * drive) * (1 - back);
+          break;
+        }
+        // patada frontal (teep): recoge la rodilla (0-0.12), la cadera empuja y la pierna se estira de golpe (0.12-0.2:
+        // ahí pega), aguanta, vuelve a recoger (0.28-0.4) y apoya el pie ADELANTE (queda un paso más cerca, como de
+        // verdad). La pierna de apoyo se flexiona y gira, el torso se va atrás lo justo y la pelvis se abre.
+        const ch = s(0, 0.12), ext = s(0.12, 0.2), rech = s(0.28, 0.4), plant = s(0.4, 0.54);
+        const out = ext * (1 - rech);
+        J.hipR[0] = lerp(lerp(lerp(0, -1.6, ch), -1.38, out), -0.3, rech) * (1 - plant);
+        J.kneeR[0] = lerp(lerp(lerp(0.1, 2.15, ch), 0.06, out), 1.5 * (1 - plant), rech) + 0.06 * plant;
+        J.hipR[1] = -0.18 * out; // la punta del pie un poco hacia adentro: pega con la planta
+        J.hipL[0] = lerp(J.hipL[0], 0.18, ch * (1 - plant)); J.kneeL[0] = lerp(J.kneeL[0], 0.42, ch * (1 - plant));
+        J.hips[0] -= 0.28 * out; J.hips[1] += 0.22 * out; // la pelvis se abre y empuja
+        J.spine[0] += (-0.05 * ch - 0.13 * out) * (1 - plant); J.spine[1] -= 0.12 * out;
+        J.neck[0] += 0.22 * out; // la mirada sigue en el rival
+        hipsY -= 0.05 * ch * (1 - plant);
+        break;
+      }
+      case 'stagger': {
+        // trastabillar (NPC): pierde el equilibrio para el lado del golpe; los brazos se sueltan y se sacuden
+        // buscando dónde agarrarse, el torso se va con el golpe y vuelve. Las piernas dan los pasos solas (velocidad)
+        const k = clamp(at / 0.08, 0, 1) * clamp(1 - (at - (st.actionDur || 0.7) + 0.25) / 0.25, 0, 1);
+        const sx = st.stagger?.x || 0, sz = st.stagger?.z || 0; // empuje en el marco del cuerpo (+z adelante, +x izquierda)
+        const wl = Math.sin(t * 9.3) * 0.3 + Math.sin(t * 15.1) * 0.1, wr = Math.sin(t * 8.1 + 1.9) * 0.3 + Math.sin(t * 13.7 + 0.4) * 0.1;
+        J.shoulderL[0] = lerp(J.shoulderL[0], -0.25 + wl * 0.7, k); J.shoulderL[2] = lerp(J.shoulderL[2], 0.75 + wl * 0.35, k); J.elbowL[0] = lerp(J.elbowL[0], -0.65 + wl * 0.3, k);
+        J.shoulderR[0] = lerp(J.shoulderR[0], -0.25 + wr * 0.7, k); J.shoulderR[2] = lerp(J.shoulderR[2], -0.75 - wr * 0.35, k); J.elbowR[0] = lerp(J.elbowR[0], -0.65 + wr * 0.3, k);
+        J.spine[0] += clamp(sz * 0.3, -0.4, 0.4) * k; J.spine[2] += clamp(sx * 0.3, -0.35, 0.35) * k;
+        J.neck[0] += clamp(sz * 0.2, -0.35, 0.35) * k;
         break;
       }
       case 'dig': {
@@ -976,13 +1007,15 @@ export class Character {
           J.shoulderR[0] = lerp(J.shoulderR[0], -1.55, a); J.shoulderR[2] = lerp(J.shoulderR[2], 0.42, a); J.elbowR[0] = lerp(J.elbowR[0], -2.25, a);
           J.shoulderL[0] = lerp(J.shoulderL[0], -0.5, a); J.shoulderL[2] = lerp(J.shoulderL[2], -0.25, a); J.elbowL[0] = lerp(J.elbowL[0], -1.5, a);
           J.spine[0] += -0.08 * a + Math.max(0, Math.sin(at * 24)) * 0.05; J.neck[0] -= 0.1 * a;
-        } else if (at < 2.5) { // se dobla y larga todo en tres arcadas (las mismas de game/gags.js)
+        } else if (at < 2.5) { // larga todo en tres arcadas (las mismas de game/gags.js) hacia donde apunta
           const h = Math.exp(-(((at - 1.0) / 0.1) ** 2)) + Math.exp(-(((at - 1.6) / 0.1) ** 2)) + Math.exp(-(((at - 2.1) / 0.1) ** 2));
           const b = smooth(clamp((at - 0.6) / 0.3, 0, 1)) * k;
-          // doblado desde la cadera (la pelvis se inclina, los muslos compensan y las rodillas ceden)
-          J.hips = J.hips || [0, 0, 0]; J.hips[0] += 0.42 * b;
-          J.hipL[0] -= 0.5 * b; J.hipR[0] -= 0.5 * b; J.kneeL[0] += 0.38 * b; J.kneeR[0] += 0.38 * b;
-          J.spine[0] += (0.6 + 0.25 * h) * b; J.neck[0] += (-0.25 - 0.3 * h) * b;
+          // cuánto se dobla depende de adónde apunta: mirando al piso, doblado desde la cadera; al frente o para
+          // arriba, parado y con la cabeza apuntando (se le puede vomitar en la cara a alguien)
+          const bf = clamp(0.3 - pitch * 0.95, 0, 1);
+          J.hips = J.hips || [0, 0, 0]; J.hips[0] += 0.42 * b * bf;
+          J.hipL[0] -= 0.5 * b * bf; J.hipR[0] -= 0.5 * b * bf; J.kneeL[0] += (0.38 * bf + 0.12) * b; J.kneeR[0] += (0.38 * bf + 0.12) * b;
+          J.spine[0] += (0.6 * bf + 0.12 + 0.2 * h) * b; J.neck[0] += (-0.25 * bf - 0.12 - 0.22 * h) * b;
           J.shoulderL[0] = lerp(J.shoulderL[0], -0.95, b); J.elbowL[0] = lerp(J.elbowL[0], -0.15, b); J.shoulderL[2] = lerp(J.shoulderL[2], 0.08, b); // la mano a la rodilla
           J.shoulderR[0] = lerp(J.shoulderR[0], -0.5 - 0.5 * h, b); J.elbowR[0] = lerp(J.elbowR[0], -0.5, b); J.shoulderR[2] = lerp(J.shoulderR[2], -0.2, b);
           hipsY -= 0.1 * b;
@@ -1133,7 +1166,7 @@ export class Character {
         continue;
       }
       V[i].x = V[i].y = V[i].z = 0;
-      const kk = (st.action === 'kick' && (i === 9 || i === 10)) || (st.action === 'headbutt' && (i === 1 || i === 2)) ? kFast : k;
+      const kk = (st.action === 'kick' && (i <= 1 || i >= 7)) || (st.action === 'headbutt' && (i === 1 || i === 2)) ? kFast : k;
       c.x += (tgt[0] - c.x) * kk;
       c.y += (tgt[1] - c.y) * kk;
       c.z += (tgt[2] - c.z) * kk;
