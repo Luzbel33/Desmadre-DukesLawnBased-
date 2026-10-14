@@ -109,7 +109,7 @@ test('lo que se pide en el Búnker: cada cosa tiene modelo, versión física, n�
 test('firearm contact feedback requires a target hit and never fires on a miss or wall', async () => {
   const { BunkerItems } = await import('../public/js/game/bunker-items.js');
   let hit = null, contacts = 0, punches = 0, targets = 0, kicks = 0;
-  const messages = [], local = { handPos: (_, out) => out.set(0, 1.5, 0), equipment: { shoot() {} } };
+  const messages = [], local = { handPos: (_, out) => out.set(0, 1.5, 0), equipment: { shoot() {} }, hands: { r: { item: 'pistol' } }, yaw: 0, grounded: true };
   const items = new BunkerItems({ getLocal: () => local, getNet: () => ({ send: m => messages.push(m) }), kick: () => kicks++, contact: () => contacts++ });
   items.tracer = () => {};
   G.camera = new THREE.PerspectiveCamera(72); G.aimCam = null;

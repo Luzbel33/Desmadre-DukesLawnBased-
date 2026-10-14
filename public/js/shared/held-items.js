@@ -29,6 +29,10 @@ export const HELD_ITEMS = {
   silbato: { slot: 26, shape: 'ball', r: .04, oy: 0, mass: .15, label: 'silbato de la muerte' },
   patito: { slot: 27, shape: 'ball', r: .055, oy: .02, mass: .9, label: 'patito dorado' },
   lighter: { slot: 28, shape: 'box', hx: .02, hy: .032, hz: .011, oy: .03, mass: .06, harmless: true, label: 'encendedor' },
+  // armas de fuego (shared/guns.js)
+  revolver: { slot: 29, shape: 'box', hx: .022, hy: .07, hz: .16, oy: .015, mass: 1.1, label: 'revólver' },
+  shotgun: { slot: 30, shape: 'box', hx: .03, hy: .06, hz: .5, oy: .02, mass: 3.2, label: 'escopeta' },
+  smg: { slot: 31, shape: 'box', hx: .03, hy: .09, hz: .22, oy: .02, mass: 2.4, label: 'subfusil' },
 };
 export const heldType = item => Object.hasOwn(HELD_ITEMS, item) ? 'held_' + item : null;
 export const HELD_PROP_DEFS = Object.fromEntries(Object.entries(HELD_ITEMS).map(([item, d]) => [heldType(item), { ...d, item, kind: 'blunt', grip: [0, 0, 0] }]));

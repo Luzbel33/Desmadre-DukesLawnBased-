@@ -9,6 +9,7 @@ import { G, clamp } from '../core/G.js';
 import { RAPIER, GR, groups } from '../core/physics.js';
 import { billTexture } from './equipment.js';
 import { isPvpAt } from '../shared/mapdata.js';
+import { GUNS } from '../shared/guns.js';
 
 const V1 = new THREE.Vector3();
 const V2 = new THREE.Vector3();
@@ -18,8 +19,8 @@ const FUSE = 2.8, BLAST = 7.5;
 const SHOT_GROUPS = groups(0xffff, GR.WORLD | GR.REMOTE | GR.PROP | GR.VEHICLE | GR.RAGDOLL);
 
 export class BunkerItems {
-  constructor({ getLocal, getNet, kick, shake, contact }) {
-    this.getLocal = getLocal; this.getNet = getNet; this.kick = kick; this.shake = shake;
+  constructor({ getLocal, getNet, kick, shake, contact, recoil }) {
+    this.getLocal = getLocal; this.getNet = getNet; this.kick = kick; this.shake = shake; this.recoil = recoil;
     this.contact = contact;
     this.bills = [];
     this.tracers = [];
@@ -89,33 +90,80 @@ export class BunkerItems {
     this.billMesh.instanceMatrix.needsUpdate = true;
   }
 
-  // ---------------------------------------------------------------- pistola
-  shoot(L) {
-    if (!L || L.dead || L.combatBlocked || G.time < this.shotT) return false;
-    this.shotT = G.time + 0.3;
+  // ---------------------------------------------------------------- armas de fuego (shared/guns.js)
+  // aiming: apuntando (click derecho) la dispersión es la chica; de la cadera, la grande. Devuelve 'empty' sin balas.
+  shoot(L, aiming = false) {
+    const hand = L?.hands.r, gun = GUNS[hand?.item];
+    if (!gun || L.dead || L.combatBlocked || L.action === 'reload' || G.time < this.shotT) return false;
+    if (hand.gunItem !== hand.item) { hand.gunItem = hand.item; hand.ammo = gun.mag; } // arma nueva: cargador lleno
+    if (hand.ammo <= 0) { this.shotT = G.time + 0.25; G.sfx?.trigger('ui-err', null, 0.25, { rate: 2.2 }); L.reload?.(); return 'empty'; }
+    hand.ammo--;
+    this.shotT = G.time + gun.rate;
     const cam = G.aimCam || G.camera;
-    const o = cam.position.clone(), d = cam.getWorldDirection(new THREE.Vector3());
-    const hit = G.phys.raycast(o.x, o.y, o.z, d.x, d.y, d.z, 90, SHOT_GROUPS, null, (col) => {
-      const info = G.phys.info(col);
-      return !(info && (info.kind === 'me' || info.kind === 'player' || info.kind === 'gib' || info.holes));
-    });
-    const end = hit ? new THREE.Vector3(hit.x, hit.y, hit.z) : o.clone().addScaledVector(d, 90);
-    const muzzle = L.handPos('r', new THREE.Vector3()).addScaledVector(d, 0.25).add(V1.set(0, 0.035, 0));
-    if (hit) this._impact(L, hit, end, d);
-    this.tracer(muzzle, end);
-    L.equipment?.shoot?.();
-    G.sfx?.trigger('shot', null, 1);
-    this.kick?.(0.06);
-    this.getNet()?.send({ t: 'ev', k: 'shot', o: muzzle.toArray().map((x) => +x.toFixed(2)), e: end.toArray().map((x) => +x.toFixed(2)) });
+    const o = cam.position.clone(), d0 = cam.getWorldDirection(new THREE.Vector3());
+    // corriendo o en el aire se tira peor
+    const move = Math.min(1, Math.hypot(L.velocity?.x || 0, L.velocity?.y || 0) / 6) + (L.grounded ? 0 : 0.6);
+    const spread = (aiming ? gun.spread[1] : gun.spread[0]) * (1 + move * 1.5);
+    const muzzle = L.handPos('r', new THREE.Vector3()).addScaledVector(d0, gun.two ? 0.6 : 0.24).add(V1.set(0, 0.04, 0));
+    const ends = [];
+    const side = V2.crossVectors(d0, UP).normalize(), up = V3.crossVectors(side, d0).normalize();
+    const victims = new Map();
+    for (let i = 0; i < gun.pellets; i++) {
+      // dispersión en un cono (los perdigones de la escopeta se abren en un patrón parejo)
+      const a = Math.random() * Math.PI * 2, r = spread * (gun.pellets > 1 ? Math.sqrt(Math.random()) : Math.random() ** 0.7);
+      const d = d0.clone().addScaledVector(side, Math.cos(a) * r).addScaledVector(up, Math.sin(a) * r).normalize();
+      const hit = G.phys.raycast(o.x, o.y, o.z, d.x, d.y, d.z, gun.range, SHOT_GROUPS, null, (col) => {
+        const info = G.phys.info(col);
+        return !(info && (info.kind === 'me' || info.kind === 'player' || info.kind === 'gib' || info.holes));
+      });
+      const end = hit ? new THREE.Vector3(hit.x, hit.y, hit.z) : o.clone().addScaledVector(d, gun.range);
+      // la escopeta pierde fuerza con la distancia (a quemarropa es brutal; a 20 m, perdigones)
+      const fall = gun.pellets > 1 && hit ? Math.max(0.25, 1 - hit.dist / gun.range) : 1;
+      if (hit) this._impact(L, hit, end, d, gun, fall, victims);
+      if (i < 4) ends.push(end);
+    }
+    for (const [ref, v] of victims) if (typeof ref === 'object') ref.punch(gun.npc * v.fall * Math.min(2.6, 1 + v.n * 0.25), v.point, v.d, 1.6, true, 'bullet');
+    for (const e of ends) this.tracer(muzzle, e);
+    L.equipment?.shoot?.(gun.recoil / 0.05);
+    this._flash(muzzle);
+    this._shell(L, gun);
+    G.sfx?.trigger('shot', null, 1, { rate: gun.pitch * (0.95 + Math.random() * 0.1) });
+    if (gun.pellets > 1) G.sfx?.trigger('hit', null, 0.6, { rate: 0.5 });
+    this.kick?.(gun.kick);
+    this.recoil?.(gun.recoil * (aiming ? 0.7 : 1));
+    // el brazo acusa el culatazo
+    for (const sd of gun.two ? ['r', 'l'] : ['r']) { const a = L.arm?.[sd]; if (a?.v) { a.v.z -= gun.recoil * 18; a.v.y += gun.recoil * 14; } }
+    this.getNet()?.send({ t: 'ev', k: 'shot', o: muzzle.toArray().map((x) => +x.toFixed(2)), e: ends[0].toArray().map((x) => +x.toFixed(2)), ee: ends.slice(1).map((e) => e.toArray().map((x) => +x.toFixed(1))), g: hand.item });
     return true;
   }
-  _impact(L, hit, point, d) {
+  // luz del fogonazo: un instante, ilumina las paredes y la cara del que tira
+  _flash(p) {
+    const pool = G.world?.pool;
+    if (!pool) return;
+    if (!this.flashLight) { this.flashLight = { position: new THREE.Vector3(), color: new THREE.Color(0xffc070), intensity: 0, distance: 10, decay: 1.6, visible: false, priority: 5, base: 0 }; pool.add(this.flashLight); }
+    const l = this.flashLight; l.position.copy(p); l.intensity = 28 + Math.random() * 14; l.visible = true; this.flashT = 0.05;
+  }
+  // el casquillo sale para la derecha y arriba y rebota en el piso (la escopeta, el cartucho rojo)
+  _shell(L, gun) {
+    const p = L.handPos('r', new THREE.Vector3()).add(V1.set(0, 0.06, 0));
+    const r = V2.set(-Math.cos(L.yaw), 0, Math.sin(L.yaw));
+    G.fx?.bits?.spawn({ x: p.x, y: p.y, z: p.z, vx: r.x * (1.6 + Math.random()) + (Math.random() - 0.5) * 0.4, vy: 2 + Math.random(), vz: r.z * (1.6 + Math.random()) + (Math.random() - 0.5) * 0.4,
+      life: 2.5, s: gun.pellets > 1 ? 0.02 : 0.011, col: gun.pellets > 1 ? 0xa81e1e : 0xc8a040, grav: -9.8, bounce: 0.35 });
+    setTimeout(() => G.sfx?.trigger('metal', p, 0.12, { rate: 2.4 + Math.random() * 0.4, full: 2, max: 10 }), 380 + Math.random() * 200);
+  }
+  _impact(L, hit, point, d, gun = GUNS.pistol, fall = 1, victims = null) {
     const info = hit.info;
     if (info?.kind === 'remote') {
-      L._claimHit(info.id, info.part ?? 1, 22, point, 'pistol', 'g');
+      // un perdigón por víctima y parte se manda una vez (con la fuerza de la descarga); los demás solo salpican
+      const key = info.id * 16 + (info.part ?? 1), prev = victims?.get(key) || 0;
+      victims?.set(key, prev + 1);
+      if (!prev) L._claimHit(info.id, info.part ?? 1, Math.min(22, gun.s * fall * (gun.pellets > 1 ? 2.4 : 1)), point, 'pistol', 'g');
       G.fx?.blood(point.clone(), V1.copy(d).negate().add(UP).normalize(), 0.9);
     } else if (info?.kind === 'bag' && info.ref?.punch) {
-      info.ref.punch(16, point, d.clone(), 1.6, true, 'bullet');
+      // varios perdigones al mismo NPC: un solo golpe más fuerte (al terminar la descarga, en shoot)
+      const v = victims?.get(info.ref);
+      if (victims && gun.pellets > 1) { if (v) v.n++; else victims.set(info.ref, { n: 1, point: point.clone(), d: d.clone(), fall }); }
+      else info.ref.punch(gun.npc * fall, point, d.clone(), 1.6, true, 'bullet');
       if (info.ref !== G.bag) this.contact?.(0.8); // The practice bag already confirms through its onHit callback.
     } else if (info?.kind === 'target' && info.ref?.hit) {
       info.ref.hit(point); // los blancos del polígono del Arsenal (club-wings.js)
@@ -133,9 +181,14 @@ export class BunkerItems {
   remoteShot(m) {
     const o = new THREE.Vector3().fromArray(m.o || []), e = new THREE.Vector3().fromArray(m.e || []);
     if (!Number.isFinite(o.x + e.x)) return;
-    this.tracer(o, e);
-    G.sfx?.trigger('shot', o, 1, { full: 8, max: 120 });
-    G.fx?.sparks(e.clone(), V1.subVectors(o, e).normalize(), 6);
+    const gun = GUNS[m.g] || GUNS.pistol;
+    for (const ee of [e, ...(Array.isArray(m.ee) ? m.ee.slice(0, 3).map((a) => new THREE.Vector3().fromArray(a)) : [])]) {
+      if (!Number.isFinite(ee.x + ee.y + ee.z)) continue;
+      this.tracer(o, ee);
+      G.fx?.sparks(ee.clone(), V1.subVectors(o, ee).normalize(), 6);
+    }
+    this._flash(o);
+    G.sfx?.trigger('shot', o, 1, { full: 8, max: 120, rate: gun.pitch });
   }
   tracer(a, b) {
     const len = a.distanceTo(b);
@@ -256,6 +309,7 @@ export class BunkerItems {
   // ---------------------------------------------------------------- cada cuadro
   update(dt) {
     this._stepBills(dt);
+    if (this.flashLight && this.flashLight.visible) { this.flashT -= dt; if (this.flashT <= 0) { this.flashLight.visible = false; this.flashLight.intensity = 0; } else this.flashLight.intensity *= 0.6; }
     for (let i = this.tracers.length - 1; i >= 0; i--) {
       const tr = this.tracers[i];
       tr.t += dt;

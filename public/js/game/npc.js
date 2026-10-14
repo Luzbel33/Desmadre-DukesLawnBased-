@@ -243,8 +243,10 @@ export class Npc {
     if (this.down > 0) return;
     // equilibrio (estilo GTA): cada golpe lo gasta, la cabeza más; se cae por una ráfaga, un golpe tremendo o
     // estando hecho pelota. Si no, trastabilla con el golpe y se rehace
-    this.balance -= s * (part === PART.HEAD ? 46 : 34);
-    if (s > (body ? 1.65 : 1.5) || this.balance <= 0 || (this.hp < 22 && s > 0.6)) {
+    // un tiro duele mucho pero no voltea (trastabilla y se encoge); a quemarropa con la escopeta, sí
+    const bullet = kind === 'bullet';
+    this.balance -= s * (part === PART.HEAD ? 46 : 34) * (bullet ? 0.55 : 1);
+    if (s > (body ? 1.65 : bullet ? 2.15 : 1.5) || this.balance <= 0 || (this.hp < 22 && s > 0.6)) {
       this.balance = 70;
       this.knockout(V1.copy(dir).multiplyScalar(1.4 + s * 1.6).setY(0.6 + s * 0.4), 2 + s * 1.2);
       return;

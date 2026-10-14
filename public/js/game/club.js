@@ -8,6 +8,7 @@
 //    Diablo, X abre el ritual (el servidor lo valida) y te llevás al otro a los que elijas de los que están ahí,
 //    entre fuego, risas y humo.
 //  - El trono: el que se sienta sale en la pantalla de atrás, en vivo, con su nombre escrito en sangre y fuego.
+import { GUNS } from '../shared/guns.js';
 import { BAR_MENU, CAFE_MENU, DRUG_MENU, SLOT_KIND } from '../shared/consumables.js';
 import { priceOf } from '../shared/economy.js';
 import * as THREE from 'three';
@@ -124,7 +125,7 @@ export class ClubGame {
       case 'give':
         L.giveItem(it.item); G.sfx?.trigger('pickup'); this.onItems?.();
         if (it.item === 'cash') this.notify('💵 <b>Click izquierdo</b>: tirás un fajo · <b>derecho</b>: todos. Los dólares del Diablo no se terminan.');
-        else if (it.item === 'pistol') this.notify('🔫 <b>Click</b>: disparar (apuntás con la mira). El Búnker es zona PvP.');
+        else if (GUNS[it.item]) this.notify(`🔫 ${GUNS[it.item].label}: <b>click</b> dispara · <b>click derecho</b> sostenido apunta · <b>R</b> recarga (${GUNS[it.item].mag} tiros). El Búnker es zona PvP.`);
         else if (it.item === 'grenade') this.notify('💣 <b>Click</b>: revolearla. Explota a los 3 segundos.');
         break;
       case 'drug': this._drug(L, it.drug); break;

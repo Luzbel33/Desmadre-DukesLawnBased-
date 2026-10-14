@@ -23,6 +23,7 @@ import { RELICS, relic } from '../shared/relics.js';
 import { Ragdoll, PART } from './ragdoll.js';
 import { HitReact, ROLL } from './react.js';
 import { EquipmentView } from './equipment.js';
+import { GUNS, isGun } from '../shared/guns.js';
 import { goreFor, branchOf, GORE_HEAD_POP, GORE_GUTS } from './gore.js';
 import { defOf, holdOf, heldQuat, heldPos, gripPoints, bladePoints, handleAxis, curlOf } from './props.js';
 import {
@@ -48,7 +49,7 @@ const PLAYER_DMG_K = 0.6;
 export const CASH_BUNDLES = 10;
 export const CASH_PER_BUNDLE = 25; // billetes por fajo
 const KICK_SPEED = 6.5; // m/s con que cuenta una patada que toca en su ventana de golpe
-export const ITEM_EQ = { beer: 1, smoke: 2, spray: 3, cash: 5, pistol: 6, grenade: 7, potion: 8, chori: 9, apple: 10, ...Object.fromEntries(Object.entries(CONSUMABLES).map(([k, c]) => [k, c.slot])), ...Object.fromEntries(Object.entries(RELICS).map(([k, r]) => [k, r.slot])), lighter: 28 };
+export const ITEM_EQ = { beer: 1, smoke: 2, spray: 3, cash: 5, pistol: 6, revolver: 29, shotgun: 30, smg: 31, grenade: 7, potion: 8, chori: 9, apple: 10, ...Object.fromEntries(Object.entries(CONSUMABLES).map(([k, c]) => [k, c.slot])), ...Object.fromEntries(Object.entries(RELICS).map(([k, r]) => [k, r.slot])), lighter: 28 };
 // la parte de la que cuelga cada una (un antebrazo ya no se corta si se fue el brazo entero)
 const PARENT_PART = [-1, 0, 1, 1, 3, 1, 5, 0, 7, 0, 9];
 // desangrarse por un miembro cortado no mata solo: la vida no baja de acá por la sangre (otro golpe sí)
@@ -319,6 +320,7 @@ export class LocalPlayer {
     };
     this.arm = { l: new Arm('l'), r: new Arm('r') };
     this.guard = false; // las dos manos arriba (click izq + der)
+    this.aiming = false; // apuntando con un arma de fuego (click derecho sostenido)
     this.grabbedBy = new Map(); // "id:mano" -> { id, side, part, anchor, hand, joint } (otro jugador me agarra)
     this._gripV = new THREE.Vector2(); // tirón de los que me agarran (m/s)
     this._gripBend = new THREE.Vector3(); // hacia dónde me llevan (inclina el cuerpo)
@@ -1709,7 +1711,7 @@ export class LocalPlayer {
     // (abajo). Los billetes salen al final del envión ('cashthrow'); el fajo nunca sale volando entero (antes pegaba y
     // se juntaban fajos tirados).
     if (h.item === 'cash') { startScript(a, 'throw', 0.42, this._aimLocal(side, V3, 0.9)); a.cash = 1; return 'cash'; }
-    if (h.item === 'pistol') return 'shoot';
+    if (isGun(h.item)) return this.action === 'reload' ? null : 'shoot';
     if (h.item === 'grenade') { startScript(a, 'throw', 0.42, this._aimLocal(side, V3, 0.95)); return 'nade'; }
     const held = h.prop ? G.props?.get(h.prop) : null;
     if (held?.type === 'popcorn') { startScript(a, 'eat', 1.1); return 'eat'; }
@@ -1753,6 +1755,15 @@ export class LocalPlayer {
     return true;
   }
 
+  // R con un arma en la mano: recargar (la otra mano va al arma, el arma se inclina y suena el cargador)
+  reload() {
+    const h = this.hands.r, gun = GUNS[h.item];
+    if (!gun || this.combatBlocked || this.state === 'ko' || this.dead || this.action === 'reload') return false;
+    if ((h.ammo ?? gun.mag) >= gun.mag) return false;
+    this.setAction('reload', gun.reload);
+    h.reloading = h.item;
+    return true;
+  }
   kick() {
     if (this.combatBlocked || this.state !== 'active' || this.action === 'kick') return;
     // mirando para abajo (alguien tirado, algo en el piso): pisotón; si no, patada frontal que empuja
@@ -2116,6 +2127,26 @@ export class LocalPlayer {
         const anc = this._gripAnchor(hd, GA);
         if (anc) { ctx.wheel = WHEEL[side].copy(anc).sub(this.rig.shoulderWorld(side, V3)).applyAxisAngle(UP, -this.yaw); ctx.grip = true; ctx.guard = false; }
       }
+      // apuntando un arma: la mano del arma va estirada hacia la mira y la otra la sostiene (en la empuñadura si es
+      // una pistola; adelante, en el guardamanos, si es larga). Recargando, la otra mano va al arma
+      const gun = GUNS[this.hands.r.item];
+      if (gun && canUse && (this.aiming || this.action === 'reload') && !this.hands[side].joint) {
+        a.on = false; ctx.guard = false; ctx.grip = true;
+        if (a.script && a.script !== 'recoil') a.script = null;
+        const reach = this.aiming ? (gun.two ? (gun.auto ? 0.44 : 0.36) : 0.62) : 0.36; // las largas: codo doblado, culata al hombro
+        const aimR = this._aimLocal('r', V3, reach);
+        if (side === 'r') ctx.wheel = WHEEL.r.copy(aimR).setY(aimR.y - (this.aiming ? (gun.two ? 0.06 : 0.02) : 0.18));
+        else {
+          // la de apoyo: en mundo, adelante de la derecha (larga) o abrazándola (pistola); después al marco del hombro izquierdo
+          const shR = this.rig.shoulderWorld('r', V4), shL = this.rig.shoulderWorld('l', V5);
+          const w = V6.copy(aimR).setY(aimR.y - (this.aiming ? 0.02 : 0.18)).applyAxisAngle(UP, this.yaw).add(shR);
+          const cp = Math.cos(this.aimPitch), fwd = V1.set(Math.sin(this.viewYaw) * cp, Math.sin(this.aimPitch), Math.cos(this.viewYaw) * cp);
+          w.addScaledVector(fwd, this.action === 'reload' ? 0.02 : gun.two ? (gun.auto ? 0.2 : 0.3) : -0.02);
+          w.y -= gun.two ? 0.03 : 0.045;
+          ctx.wheel = WHEEL.l.copy(w).sub(shL).applyAxisAngle(UP, -this.yaw);
+          if (ctx.wheel.length() > L * 0.97) ctx.wheel.setLength(L * 0.97);
+        }
+      }
       const tugged = this._armHeld(side);
       if (tugged) {
         // me tienen del brazo: va hacia la mano del otro (con ese brazo no pego)
@@ -2302,7 +2333,7 @@ export class LocalPlayer {
       }
       if (!active) this.velocity.set(0, 0);
       const diff = angleDiff(this.yaw, viewYaw);
-      const busy = length > 0 || this.action || this.armActive() || this.guard || this.arm.l.script || this.arm.r.script
+      const busy = length > 0 || this.action || this.armActive() || this.guard || this.aiming || this.arm.l.script || this.arm.r.script
         || this.hands.r.item === 'spray' || this.hands.r.joint || this.hands.l.joint;
       if (active && busy) this.yaw = dampAngle(this.yaw, viewYaw, 12, dt);
       else if (active && Math.abs(diff) > 1.15) this.yaw = dampAngle(this.yaw, viewYaw - Math.sign(diff) * 1.0, 6, dt);
@@ -2583,7 +2614,10 @@ export class LocalPlayer {
     this.hitStop = Math.max(0, this.hitStop - dt);
     if (this.action) {
       this.actionT += dt * hs;
-      if (this.actionT >= this.actionDur) { this.action = null; this.actionT = 0; }
+      if (this.actionT >= this.actionDur) {
+        if (this.action === 'reload') { const h = this.hands.r; if (h.reloading === h.item && GUNS[h.item]) { h.ammo = GUNS[h.item].mag; this.onEvent?.('reloaded', {}); } h.reloading = null; }
+        this.action = null; this.actionT = 0;
+      }
     }
     if (this.emote) {
       this.emoteT += dt;

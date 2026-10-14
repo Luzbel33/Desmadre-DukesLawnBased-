@@ -20,7 +20,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const V1 = new THREE.Vector3();
 // lo que se puede tener en la mano (además de los objetos físicos)
 const HAND = [
-  ['beer', '🍺 Birra'], ['smoke', '🌿 Faso'], ['spray', '🎨 Aerosol'], ['cash', '💵 Dólares'], ['pistol', '🔫 Pistola'], ['grenade', '💣 Granada'],
+  ['beer', '🍺 Birra'], ['smoke', '🌿 Faso'], ['spray', '🎨 Aerosol'], ['cash', '💵 Dólares'], ['pistol', '🔫 Pistola'], ['revolver', '🔫 Revólver'], ['shotgun', '🔫 Escopeta'], ['smg', '🔫 Subfusil'], ['grenade', '💣 Granada'],
   ['potion', '🧪 Poción'], ['chori', '🌭 Choripán'], ['apple', '🍎 Manzana'],
   ...Object.entries(CONSUMABLES).map(([k, c]) => [k, `${c.icon} ${c.label}`]),
   ...Object.entries(RELICS).map(([k, r]) => [k, `${r.icon} ${r.label}`]),

@@ -33,6 +33,7 @@ import { PoolGame } from './game/pool.js';
 import { Money } from './game/money.js';
 import { priceOf } from './shared/economy.js';
 import { BunkerItems } from './game/bunker-items.js';
+import { GUNS } from './shared/guns.js';
 import { pbrReady } from './world/builder.js';
 import { yieldToBrowser, prepareScene } from './core/startup.js';
 
@@ -563,7 +564,7 @@ function updatePrompt() {
     else if (it === 'smoke') H.hint('smoke', 'Click', 'Pitar');
     else if (it === 'spray') H.hint('spray', 'Click', `Pintar (sostenido) · ${keys.label('palette')} colores`);
     else if (it === 'cash') H.hint('cash', 'Click', `Un billete (mantené: seguidos) · click der.: un fajo entero (mantené: fajos) · $${((L.hands.r.bills ?? CASH_BUNDLES * CASH_PER_BUNDLE) * 100).toLocaleString('es-AR')}`);
-    else if (it === 'pistol') H.hint('pistol', 'Click', 'Disparar');
+    else if (GUNS[it]) { const g = GUNS[it]; H.hint(it, 'Click', `Disparar${g.auto ? ' (sostenido: ráfaga)' : ''} · click der.: apuntar · R recargar · ${L.hands.r.gunItem === it ? L.hands.r.ammo : g.mag}/${g.mag}`); }
     else if (it === 'grenade') H.hint('grenade', 'Click', 'Revolear la granada (explota a los 3 s)');
     else if (it === 'potion') H.hint('potion', 'Click', 'Tomarse la poción (vaya uno a saber qué hace)');
     else if (it === 'chori') H.hint('chori', 'Click', 'Morder el choripán');
@@ -1444,6 +1445,9 @@ function onLocalEvent(type, d) {
       contactFeedback(clamp(s, 0.3, 1));
       break;
     }
+    case 'reloaded':
+      G.sfx?.trigger('pickup', null, 0.55, { rate: 1.3 });
+      break;
     case 'handwall':
       G.sfx?.trigger(d.s > 5 ? 'hit' : 'hit-soft', new THREE.Vector3(d.x, d.y, d.z), clamp(d.s / 10, 0.2, 0.7));
       break;
@@ -1979,7 +1983,8 @@ function updateInput(dt) {
     if (inp.hit('KeyG')) quickThrow();
   }
   if (inp.hit('KeyF') && onFoot) L.kick();
-  if (inp.hit('KeyR') && onFoot) L.headbutt();
+  // R: con un arma de fuego en la mano recarga; si no, cabezazo
+  if (inp.hit('KeyR') && onFoot) { if (GUNS[L.hands.r.item]) { if (L.reload()) G.sfx?.trigger('pickup', null, 0.45, { rate: 0.7 }); } else L.headbutt(); }
   emoteKeys(inp);
   if (inp.hit('KeyJ')) openActivities();
   if (inp.hit('KeyB') && L.hands.r.item === 'spray') openPalette();
@@ -2008,6 +2013,16 @@ function updateInput(dt) {
     }
   }
 
+  // arma de fuego en la derecha: click izquierdo dispara al apretar (el subfusil sigue mientras se sostiene), click derecho
+  // sostenido apunta (las dos manos al arma, zoom, menos dispersión). Sin control libre de los brazos ni guardia
+  const gun = !driving && !down && !L.combatBlocked && !L.frozen && !state.spectate ? GUNS[L.hands.r.item] : null;
+  L.aiming = !!gun && inp.btn(2) && L.state !== 'ko';
+  if (gun) {
+    L.armControl('r', false); L.armControl('l', false); L.setGuard(false);
+    if (inp.btnHit(0) || (gun.auto && inp.btn(0))) G.items?.shoot(L, L.aiming);
+    state.press = state.press || { l: 0, r: 0 };
+    state.press.r = state.press.l = -1e9;
+  }
   // brazos: click corto = usar / piña; sostenido = controlar el brazo con el mouse (parado o sentado)
   const now = performance.now();
   state.press = state.press || { l: 0, r: 0 };
@@ -2016,6 +2031,7 @@ function updateInput(dt) {
   const cashStream = (side) => cashSide && !driving && !down && (side === cashSide || (!L.hands[side].item && !L.hands[side].prop && !L.hands[side].joint));
   for (const [btn, side] of [[0, 'r'], [2, 'l']]) {
     if (state.spectate && inp.btnHit(btn)) { cycleSpectate(btn === 0 ? 1 : -1); continue; }
+    if (gun) continue;
     if (down || L.combatBlocked || L.frozen || state.spectate) { L.armControl(side, false); state.press[side] = -1e9; continue; }
     if (inp.btnHit(btn)) state.press[side] = now;
     if (cashStream(side) && inp.btn(btn) && now - state.press[side] > 170) {
@@ -2191,11 +2207,12 @@ function updateCamera(dt) {
   // el ascensor que arranca y frena: el cuerpo se queda atrás un instante (lo calcula game/club.js)
   pivot.y += (G.club?.camBob || 0) * motion;
   let dist = mode === 0 ? 4.2 : mode === 3 ? 2.1 : 2.4;
+  if (mode !== 3) dist *= 1 - 0.35 * (state.aimZoom || 0); // apuntando, la cámara se arrima al hombro
   if (L.vehicle) dist += 1.8;
   if (down) dist = 3.6;
   // Shoulder preferences affect only standing/seated third person, never first person, CCTV or front inspection.
   const shoulder = down ? 'left' : G.opts.cameraShoulder;
-  const side = (mode === 1 ? 0.45 : mode === 3 ? 0 : 0.25) * (shoulder === 'right' ? -1 : shoulder === 'center' ? 0 : 1);
+  const side = (mode === 1 ? 0.45 : mode === 3 ? 0 : 0.25 + 0.25 * (state.aimZoom || 0)) * (shoulder === 'right' ? -1 : shoulder === 'center' ? 0 : 1);
   const right = new THREE.Vector3(-Math.cos(state.viewYaw), 0, Math.sin(state.viewYaw));
   // de frente: la cámara va adelante (hacia donde mirás) y te mira a vos; un poco más baja que los ojos
   if (mode === 3) pivot.y -= 0.25;
@@ -2550,6 +2567,8 @@ async function boot() {
     G.items = new BunkerItems({
       getLocal: () => state.local, getNet: () => state.net,
       kick: (k) => { camKick.v.x -= k * 12; }, shake: (k) => { state.shake = Math.max(state.shake || 0, k); },
+      // el retroceso sube la mira de verdad (y la corre un poquito de costado): hay que bajarla con el mouse
+      recoil: (r) => { state.viewPitch = clamp(state.viewPitch + r, -1.32, 1.32); state.viewYaw += (Math.random() - 0.5) * r * 0.5; },
       contact: contactFeedback,
     });
     G.sfx.ambientHook = (dt, sfx) => {
@@ -2642,7 +2661,10 @@ async function boot() {
         else if (state.mode === 'chess' && G.chess?.cameraPose(G.camera, dt)) state.local.char.setVisibleHead(true);
         else if (state.mode === 'pool' && (G.pool?.input(G.input.dx, G.input.dy, state.shiftDown), G.pool?.cameraPose(G.camera, dt))) state.local.char.setVisibleHead(true);
         else {
-          if (Math.abs(G.camera.fov - G.opts.fov) > 0.01) { G.camera.fov = G.opts.fov; G.camera.updateProjectionMatrix(); }
+          // apuntando con un arma: zoom suave
+          state.aimZoom = (state.aimZoom || 0) + ((state.local.aiming ? 1 : 0) - (state.aimZoom || 0)) * (1 - Math.exp(-12 * dt));
+          const fov = G.opts.fov * (1 - 0.24 * state.aimZoom);
+          if (Math.abs(G.camera.fov - fov) > 0.01) { G.camera.fov = fov; G.camera.updateProjectionMatrix(); }
           updateCamera(dt);
           syncAim();
         }

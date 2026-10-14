@@ -13,6 +13,27 @@ function labelTexture(title, subtitle, background) {
 }
 function mesh(geo,material,x=0,y=0,z=0){const m=new THREE.Mesh(geo,material);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;return m;}
 function cylinder(radius,height,material,y=0){return mesh(new THREE.CylinderGeometry(radius,radius,height,32),material,0,y);}
+// fogonazo: un cono y una estrella cruzada, aditivos (se prenden un instante al disparar)
+// textura del fogonazo: un núcleo blanco que se abre en puntas anaranjadas (dibujada una vez)
+let _flashTex=null;
+function flashTex(){
+  if(_flashTex||typeof document==='undefined')return _flashTex;
+  const c=document.createElement('canvas');c.width=c.height=128;const g=c.getContext('2d');
+  g.translate(64,64);
+  for(let i=0;i<9;i++){const a=i/9*Math.PI*2+Math.random()*.3,l=34+Math.random()*28;const gr=g.createLinearGradient(0,0,Math.cos(a)*l,Math.sin(a)*l);gr.addColorStop(0,'rgba(255,240,200,1)');gr.addColorStop(1,'rgba(255,120,20,0)');g.fillStyle=gr;g.beginPath();g.moveTo(Math.cos(a+1.4)*6,Math.sin(a+1.4)*6);g.lineTo(Math.cos(a)*l,Math.sin(a)*l);g.lineTo(Math.cos(a-1.4)*6,Math.sin(a-1.4)*6);g.fill();}
+  const core=g.createRadialGradient(0,0,0,0,0,26);core.addColorStop(0,'rgba(255,255,240,1)');core.addColorStop(.5,'rgba(255,200,110,.8)');core.addColorStop(1,'rgba(255,120,20,0)');g.fillStyle=core;g.beginPath();g.arc(0,0,26,0,7);g.fill();
+  _flashTex=new THREE.CanvasTexture(c);_flashTex.colorSpace=THREE.SRGBColorSpace;return _flashTex;
+}
+// fogonazo: una estrella de frente y dos de costado (se ve de cualquier ángulo), aditivo, un instante al disparar
+function gunFlash(z,y,size=1){
+  const g=new THREE.Group();g.name='flash';g.position.set(0,y,z+.03*size);
+  const m=new THREE.MeshBasicMaterial({map:flashTex(),color:0xffffff,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide,toneMapped:false});
+  const front=new THREE.Mesh(new THREE.PlaneGeometry(.13*size,.13*size),m);g.add(front);
+  for(const [rx,ry,rz] of[[0,Math.PI/2,0],[Math.PI/2,0,Math.PI/2]]){const p=new THREE.Mesh(new THREE.PlaneGeometry(.2*size,.1*size),m);p.rotation.set(rx,ry,rz);p.position.z=.06*size;g.add(p);}
+  g.traverse(o=>{o.castShadow=false;});
+  g.userData.mat=m;
+  return g;
+}
 export function createEquippedModel(slot){
   const group=new THREE.Group();group.name=`equipped-${slot}`;
   const metal=new THREE.MeshStandardMaterial({color:0xb9b9ac,metalness:.8,roughness:.32});
@@ -57,8 +78,40 @@ export function createEquippedModel(slot){
     group.add(mesh(new THREE.BoxGeometry(.03,.034,.19),black,0,.035,.07));
     const g2=mesh(new THREE.BoxGeometry(.028,.11,.045),grip,0,-.02,-.005);g2.rotation.x=-.25;group.add(g2);
     const barrel=mesh(new THREE.CylinderGeometry(.007,.007,.03,12),black,0,.035,.17);barrel.rotation.x=Math.PI/2;group.add(barrel);
-    const flash=new THREE.Mesh(new THREE.ConeGeometry(.035,.14,10),new THREE.MeshBasicMaterial({color:0xffd070,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}));
-    flash.rotation.x=Math.PI/2;flash.position.set(0,.035,.25);flash.name='flash';group.add(flash);
+    group.add(gunFlash(.2,.035));
+  } else if(slot===29){
+    // revólver: tambor de seis, cañón largo con mira, empuñadura de madera
+    const steel=new THREE.MeshStandardMaterial({color:0x3a3a3c,roughness:.3,metalness:.85});
+    const wood=new THREE.MeshStandardMaterial({color:0x4a2a16,roughness:.6});
+    group.add(mesh(new THREE.BoxGeometry(.026,.04,.075),steel,0,.035,.02));
+    const drum=mesh(new THREE.CylinderGeometry(.021,.021,.04,6),steel,0,.033,.03);drum.rotation.x=Math.PI/2;group.add(drum);
+    const barrel=mesh(new THREE.CylinderGeometry(.0075,.0075,.16,12),steel,0,.044,.13);barrel.rotation.x=Math.PI/2;group.add(barrel);
+    group.add(mesh(new THREE.BoxGeometry(.004,.01,.012),steel,0,.054,.2));
+    const g2=mesh(new THREE.BoxGeometry(.024,.085,.034),wood,0,-.018,-.02);g2.rotation.x=-.35;group.add(g2);
+    const guard=mesh(new THREE.TorusGeometry(.014,.0025,6,12,Math.PI),steel,0,.008,.02);guard.rotation.y=Math.PI/2;guard.rotation.z=Math.PI;group.add(guard);
+    group.add(gunFlash(.235,.044));
+  } else if(slot===30){
+    // escopeta de corredera: culata de madera, cajón, cañón largo con el tubo del cargador y la corredera
+    const steel=new THREE.MeshStandardMaterial({color:0x2a2b2d,roughness:.35,metalness:.8});
+    const wood=new THREE.MeshStandardMaterial({color:0x5a3218,roughness:.55});
+    group.add(mesh(new THREE.BoxGeometry(.034,.05,.2),steel,0,.03,.04));
+    const stock=mesh(new THREE.BoxGeometry(.032,.06,.3),wood,0,.0,-.2);stock.rotation.x=.12;group.add(stock);
+    const g2=mesh(new THREE.BoxGeometry(.028,.07,.04),wood,0,-.02,-.04);g2.rotation.x=-.4;group.add(g2);
+    const barrel=mesh(new THREE.CylinderGeometry(.011,.011,.56,14),steel,0,.045,.42);barrel.rotation.x=Math.PI/2;group.add(barrel);
+    const tube=mesh(new THREE.CylinderGeometry(.009,.009,.44,12),steel,0,.022,.36);tube.rotation.x=Math.PI/2;group.add(tube);
+    const pump=mesh(new THREE.CylinderGeometry(.018,.018,.14,12),wood,0,.025,.3);pump.rotation.x=Math.PI/2;pump.name='pump';group.add(pump);
+    group.add(gunFlash(.73,.045,1.6));
+  } else if(slot===31){
+    // subfusil: cajón compacto, cargador largo, cañón corto con supresor de llama y culata plegada
+    const black=new THREE.MeshStandardMaterial({color:0x18181a,roughness:.4,metalness:.55});
+    const poly=new THREE.MeshStandardMaterial({color:0x232320,roughness:.75});
+    group.add(mesh(new THREE.BoxGeometry(.036,.06,.22),black,0,.035,.06));
+    const mag=mesh(new THREE.BoxGeometry(.022,.13,.03),black,0,-.045,.08);mag.rotation.x=.12;group.add(mag);
+    const g2=mesh(new THREE.BoxGeometry(.026,.08,.035),poly,0,-.02,-.03);g2.rotation.x=-.3;group.add(g2);
+    const barrel=mesh(new THREE.CylinderGeometry(.009,.009,.12,12),black,0,.045,.22);barrel.rotation.x=Math.PI/2;group.add(barrel);
+    const stock=mesh(new THREE.BoxGeometry(.012,.03,.2),poly,.02,.03,-.12);group.add(stock);
+    group.add(mesh(new THREE.BoxGeometry(.006,.018,.02),black,0,.072,.12));
+    group.add(gunFlash(.32,.045,.9));
   } else if(slot===7){
     // granada de mano con su palanca y el anillo
     const olive=new THREE.MeshStandardMaterial({color:0x3d4a26,roughness:.7,metalness:.2});
@@ -240,19 +293,29 @@ export { billTexture };
 export class EquipmentView {
   constructor(scene){this.scene=scene;this.group=null;this.slot=0;}
   update(char,slot,yaw,action,actionT=0,hidden=false){
-    const desired=hidden||!([1,2,3,5,6,7,8,9,10,24,25,26,27,28].includes(slot)||SLOT_KIND[slot])?0:slot;
+    const desired=hidden||!([1,2,3,5,6,7,8,9,10,24,25,26,27,28,29,30,31].includes(slot)||SLOT_KIND[slot])?0:slot;
     if(desired!==this.slot){this.dispose();this.slot=desired;if(desired){this.group=createEquippedModel(desired);this.scene.add(this.group);}}
     if(!this.group)return;
-    char.root.updateWorldMatrix(true,true);char.handR.getWorldPosition(this.group.position);
+    char.root.updateWorldMatrix(true,true);
+    // las armas de fuego van con la empuñadura adentro del puño cerrado (no en la muñeca: flotaba adelante)
+    if((slot===6||slot>=29&&slot<=31)&&char.fistWorld){char.fistWorld('r',this.group.position);this.group.position.y+=.012;}
+    else char.handR.getWorldPosition(this.group.position);
     this.group.rotation.set(0,yaw,0,'YXZ');
     if(action==='drink'&&(slot===1||slot===8||SLOT_KIND[slot]==='drink'||slot===18))this.group.rotateX(-1.3*Math.sin(Math.min(1,actionT/1.7)*Math.PI));
     if(slot===2||SLOT_KIND[slot]==='smoke'){if(slot===2)this.group.position.y+=.018;const ember=this.group.getObjectByName('ember');if(ember)ember.material.emissiveIntensity=action==='smoke'||(slot===18&&action==='drink')?2:.65;}
     if(slot===3&&action==='spray')this.group.rotateX(-.15);
     if(slot>=24&&slot<=27)this._relic(slot,action==='relic'?actionT:-1);
     if(slot===28){const f=this.group.getObjectByName('flame');if(f){const on=action==='fartflame'&&actionT>.25&&actionT<2;f.material.opacity=on?.9:0;f.scale.setScalar(on?1+Math.random()*.4:1);}}
-    if(slot===6){this.group.rotateX(-(char.aimPitch||0));const f=this.group.getObjectByName('flash');if(f){this.flashT=Math.max(0,(this.flashT||0)-1/60);f.material.opacity=this.flashT>0?1:0;}}
+    if(slot===6||slot>=29&&slot<=31){
+      // el arma apunta adonde mira (y se levanta un poco con el retroceso); recargando se inclina hacia el cuerpo
+      this.group.rotateX(-(char.aimPitch||0)-(this.recoil||0)*.6+(action==='reload'?.7*Math.sin(Math.min(1,actionT/.35)*Math.PI*.5):0));
+      if(action==='reload')this.group.rotateZ(.5*Math.sin(Math.min(1,actionT/.35)*Math.PI*.5));
+      this.recoil=Math.max(0,(this.recoil||0)-1/60*4);
+      if(slot===30){const p=this.group.getObjectByName('pump');if(p)p.position.z=.3-.08*Math.max(0,Math.sin(Math.min(1,(this.pumpT||0))*Math.PI));this.pumpT=Math.min(1,(this.pumpT??1)+1/60*2.2);}
+      const f=this.group.getObjectByName('flash');if(f){this.flashT=Math.max(0,(this.flashT||0)-1/60);f.userData.mat.opacity=this.flashT>0?1:0;f.rotation.z=Math.random()*6.3;f.scale.setScalar(.75+Math.random()*.6);}
+    }
   }
-  shoot(){this.flashT=.05;}
+  shoot(k=1){this.flashT=.05;this.recoil=Math.min(.3,(this.recoil||0)+.05*k);this.pumpT=0;}
   // las reliquias al usarlas (t: segundos desde el click, -1 en reposo)
   _relic(slot,t){
     const g=this.group,on=t>=0&&t<1.6;

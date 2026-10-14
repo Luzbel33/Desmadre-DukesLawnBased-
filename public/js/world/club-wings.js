@@ -858,6 +858,10 @@ export class ClubWings {
       this.light(x, 2.45, ar.z0 + 0.75, 0xe1eaff, 9, 7, { priority: 1.2, decay: 1.15 });
     }
     this.c.use('club_pistol', [bx, 1.1, bz + 0.9], 2.2, 'Agarrar una pistola', { e: 'give', item: 'pistol' });
+    // el resto del arsenal: revólver en la punta del banco, escopeta y subfusil en el armero de la pared
+    this.c.use('club_revolver', [bx + 1.6, 1.1, bz + 0.9], 1.3, 'Agarrar el revólver', { e: 'give', item: 'revolver' });
+    this.c.use('club_shotgun', [25.6, 1.1, -471.0], 1.4, 'Agarrar una escopeta', { e: 'give', item: 'shotgun' });
+    this.c.use('club_smg', [25.6, 1.1, -469.0], 1.4, 'Agarrar un subfusil', { e: 'give', item: 'smg' });
     this.anchors.sarge = new THREE.Vector3(37.4, 0, -457.6);
     this._range();
     // emplazamiento de bolsas de arena con la red de camuflaje y el reflector; el cajón abierto de granadas
