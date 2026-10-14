@@ -999,6 +999,22 @@ export class Character {
       // humor físico (game/gags.js pone el sonido y lo que sale): son del torso, las piernas siguen caminando
       case 'pee': {
         const k = smooth(clamp(at / 0.4, 0, 1)) * (at > 4.8 ? clamp(1 - (at - 4.8) / 0.4, 0, 1) : 1);
+        if (st.female) {
+          // ella: en cuclillas, rodillas abiertas, los antebrazos apoyados en las rodillas; mira para los costados
+          // (que no venga nadie) y al final se sacude un poco antes de pararse
+          J.hips = J.hips || [0, 0, 0];
+          J.hipL[0] = lerp(J.hipL[0], -1.75, k); J.hipR[0] = lerp(J.hipR[0], -1.75, k);
+          J.hipL[2] = lerp(J.hipL[2], 0.42, k); J.hipR[2] = lerp(J.hipR[2], -0.42, k);
+          J.kneeL[0] = lerp(J.kneeL[0], 2.25, k); J.kneeR[0] = lerp(J.kneeR[0], 2.25, k);
+          J.hips[0] += 0.18 * k; J.spine[0] += 0.38 * k;
+          J.shoulderL[0] = lerp(J.shoulderL[0], -0.85, k); J.shoulderR[0] = lerp(J.shoulderR[0], -0.85, k);
+          J.shoulderL[2] = lerp(J.shoulderL[2], -0.12, k); J.shoulderR[2] = lerp(J.shoulderR[2], 0.12, k);
+          J.elbowL[0] = lerp(J.elbowL[0], -0.55, k); J.elbowR[0] = lerp(J.elbowR[0], -0.55, k);
+          J.neck[0] += -0.25 * k; J.neck[1] += Math.sin(at * 0.9) * 0.55 * k;
+          if (at > 4.3 && at < 4.8) J.hips[2] += Math.sin(at * 30) * 0.06 * k;
+          hipsY -= 0.62 * k;
+          break;
+        }
         // las dos manos adelante, a la altura de la bragueta
         J.shoulderL[0] = lerp(J.shoulderL[0], -0.28, k); J.shoulderR[0] = lerp(J.shoulderR[0], -0.28, k);
         J.shoulderL[2] = lerp(J.shoulderL[2], -0.32, k); J.shoulderR[2] = lerp(J.shoulderR[2], 0.32, k);

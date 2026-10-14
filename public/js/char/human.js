@@ -716,6 +716,7 @@ export class HumanCharacter {
   // ---------------------------------------------------------------- API compatible con Character
   animate(st, dt) {
     if (this.mode !== 'anim') return;
+    st.female = MODELS[this.modelKey]?.gender === 'f';
     Character.prototype.animate.call(this, st, dt);
     // agarre de manos según lo que hace
     const act = st.action || '';

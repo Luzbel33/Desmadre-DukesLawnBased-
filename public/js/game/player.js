@@ -2278,7 +2278,9 @@ export class LocalPlayer {
       const cDown = active && input.key('KeyC');
       const cHit = cDown && !mo.cPrev;
       mo.cPrev = cDown;
-      const slow = st === 'stun' ? 0.3 : st === 'getup' ? 0.15 : 1;
+      // meando en cuclillas (playermodel de mujer) no se camina
+      const squat = this.action === 'pee' && this.char?.gender === 'f';
+      const slow = squat ? 0 : st === 'stun' ? 0.3 : st === 'getup' ? 0.15 : 1;
       // cargar algo pesado o estar en guardia te hace más lento
       const load = clamp(1 - (this._heldMass('l') + this._heldMass('r')) / 30, 0.55, 1) * (this.guard ? 0.7 : 1);
       const legGone = this.gore & ((1 << PART.THIGH_L) | (1 << PART.SHIN_L) | (1 << PART.THIGH_R) | (1 << PART.SHIN_R));
@@ -2662,6 +2664,7 @@ export class LocalPlayer {
       action: rigAction,
       actionT: this.actionT,
       kickKind: this.kickKind,
+      female: this.char?.gender === 'f',
       aimPitch: this.aimPitch,
       headYaw: this.headYaw,
       held: this.hands.r.item ? 'item' : this.hands.r.prop ? 'weapon' : null,

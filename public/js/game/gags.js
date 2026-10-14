@@ -146,8 +146,10 @@ export class Gags {
       const f = this._fwd(P).clone(), aim = this._aim(P), cp = Math.cos(aim.pitch), sp = Math.sin(aim.pitch);
       if (g.kind === 'mear') {
         if (t > 0.55 && t < 4.6) {
-          const from = this._at(P, 0.88, 0.2);
-          const dir = V1.set(f.x * cp, sp + 0.25, f.z * cp).normalize(), speed = 3.7;
+          // ella en cuclillas: sale de abajo, corto y hacia el piso (no se apunta); él, adonde apunta
+          const fem = MODELS[P.look?.model]?.gender === 'f';
+          const from = fem ? this._at(P, 0.36, 0.08) : this._at(P, 0.88, 0.2);
+          const dir = fem ? V1.set(f.x * 0.35, -0.75, f.z * 0.35).normalize() : V1.set(f.x * cp, sp + 0.25, f.z * cp).normalize(), speed = fem ? 1.6 : 3.7;
           G.fx?.liquid(from, dir, 3, speed, COL.mear, (q) => G.blood?.add(q.x, q.z, 0.1 + Math.random() * 0.08, PUDDLE.mear, (q.y ?? 0) + 0.031, 120, 0.55));
           const step = Math.floor((t - 0.55) / 1.1);
           if (once('s' + step, 0.55 + step * 1.1)) G.sfx?.trigger('pee', this._at(P, 0.3, 0.9), 0.55, { full: 2, max: 14 });

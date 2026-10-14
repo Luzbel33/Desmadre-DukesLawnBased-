@@ -7,9 +7,10 @@
 import * as THREE from 'three';
 import { G, rng } from '../core/G.js';
 import { Builder } from './builder.js';
-import { mergeVertices, mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildPuddles } from '../fx/puddles.js';
-import { grassAllowed, GRASSMAP } from '../shared/mapdata.js';
+import { whenAsset, instanceModel } from '../game/assets.js';
+import { grassAllowed, GRASSMAP, FIELD } from '../shared/mapdata.js';
 
 const HAS_DOM = typeof document !== 'undefined';
 const PI = Math.PI, TAU = PI * 2;
@@ -159,7 +160,7 @@ function trashBags(b, x, y, z, rnd) {
     const g = new THREE.SphereGeometry(0.26 + rnd() * 0.1, 8, 6), p = g.attributes.position;
     for (let k = 0; k < p.count; k++) { const s = 1 + 0.15 * Math.sin(p.getX(k) * 21 + p.getZ(k) * 17); p.setXYZ(k, p.getX(k) * s, p.getY(k) * (0.8 + 0.15 * s), p.getZ(k) * s); }
     g.translate(x + (rnd() - 0.5) * 0.7, y + 0.22 + (i === 2 ? 0.25 : 0), z + (rnd() - 0.5) * 0.7);
-    b.geo(rnd() < 0.7 ? 'black' : 'darkgray', g);
+    b.geo(rnd() < 0.7 ? 'latex' : 'leatherBlack', g); // bolsa de consorcio: plástico negro brillante
     const knot = new THREE.ConeGeometry(0.05, 0.12, 5); knot.translate(x + (rnd() - 0.5) * 0.6, y + 0.52, z + (rnd() - 0.5) * 0.6); b.geo('black', knot);
   }
   return 0.9;
@@ -220,26 +221,31 @@ function mailbox(b, x, y, z, yaw) {
   b.box('white', x + Math.sin(yaw) * 0.18, y + 1.2, z + Math.cos(yaw) * 0.18, 0.28, 0.04, 0.02, { yaw, collide: false, noShadow: true });
   return 0.6;
 }
+// la naturaleza va con modelos fotogramétricos (Poly Haven: piedras con musgo, helechos, plantas con flor), instanciados
+// al final (una llamada de dibujo por tipo). Antes eran bolas facetadas grises con manchas planas: horribles de cerca.
+const NATURE = { c_mossrocks: [], c_fern: [], c_periwinkle: [] };
+const natMat = (x, y, z, yaw, s) => new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw), new THREE.Vector3(s, s, s));
 function rock(b, x, y, z, rnd, big = false) {
-  const s = (big ? 0.5 : 0.25) + rnd() * (big ? 0.5 : 0.3);
-  let g = mergeVertices(new THREE.IcosahedronGeometry(s, 2)); const p = g.attributes.position;
-  for (let k = 0; k < p.count; k++) { const v = 1 + 0.22 * Math.sin(p.getX(k) * 9 + p.getZ(k) * 7 + x) + 0.1 * Math.cos(p.getY(k) * 13); p.setXYZ(k, p.getX(k) * v * (1.1 + rnd() * 0.3), p.getY(k) * v * 0.7, p.getZ(k) * v); }
-  g.computeVertexNormals(); g.translate(x, y + s * 0.3, z);
-  b.geo('gray', g);
-  if (big || rnd() < 0.4) { const m = new THREE.SphereGeometry(s * 0.8, 8, 4, 0, TAU, 0, PI / 2); m.scale(1, 0.4, 1); m.translate(x + (rnd() - 0.5) * s * 0.4, y + s * 0.78, z + (rnd() - 0.5) * s * 0.4); b.geo('moss', m); }
-  if (big) G.phys.cylinder(x, y + s * 0.5, z, s * 0.5, s * 0.9, { mat: 'rock' });
-  return s * 2;
+  const s = big ? 2.4 + rnd() * 1.2 : 1.2 + rnd() * 0.8; // el juego de piedras mide 34 cm de alto
+  NATURE.c_mossrocks.push(natMat(x, y - 0.03, z, rnd() * TAU, s));
+  if (big) G.phys.cylinder(x, y + 0.17 * s * 0.5, z, 0.17 * s * 0.5, 0.35 * s, { mat: 'rock' });
+  return 0.5 * s;
 }
 function flowers(b, x, y, z, rnd) {
-  const col = ['yellow', 'cream', 'pink', 'red'][Math.floor(rnd() * 5)];
-  for (let i = 0; i < 12; i++) { const px = x + (rnd() - 0.5) * 1.1, pz = z + (rnd() - 0.5) * 1.1, h = 0.18 + rnd() * 0.18; b.cylinder('green', px, y + h / 2, pz, 0.004, 0.006, h, 3, { collide: false, noShadow: true }); const f = new THREE.SphereGeometry(0.03 + rnd() * 0.02, 5, 4); f.translate(px, y + h, pz); b.geo(col, f); }
+  for (let i = 0; i < 2 + Math.floor(rnd() * 3); i++) NATURE.c_periwinkle.push(natMat(x + (rnd() - 0.5) * 0.9, y, z + (rnd() - 0.5) * 0.9, rnd() * TAU, 0.8 + rnd() * 0.5));
   return 1;
 }
 function bush(b, x, y, z, rnd) {
-  const n = 5 + Math.floor(rnd() * 4);
-  for (let i = 0; i < n; i++) { const g = new THREE.IcosahedronGeometry(0.3 + rnd() * 0.25, 1); g.translate(x + (rnd() - 0.5) * 0.9, y + 0.3 + rnd() * 0.3, z + (rnd() - 0.5) * 0.9); b.geo('hedge', g); }
-  G.phys.cylinder(x, y + 0.45, z, 0.45, 0.65, { mat: 'wood' });
+  for (let i = 0; i < 3 + Math.floor(rnd() * 3); i++) NATURE.c_fern.push(natMat(x + (rnd() - 0.5) * 0.8, y, z + (rnd() - 0.5) * 0.8, rnd() * TAU, 1.3 + rnd() * 0.7));
+  if (rnd() < 0.5) NATURE.c_mossrocks.push(natMat(x + (rnd() - 0.5) * 0.5, y - 0.03, z + (rnd() - 0.5) * 0.5, rnd() * TAU, 1.1));
   return 1.4;
+}
+function flushNature(world) {
+  for (const [type, mats] of Object.entries(NATURE)) {
+    if (!mats.length) continue;
+    const list = mats.splice(0);
+    whenAsset(type, () => { for (const m of instanceModel(world.scene, type, list) || []) { m.name = 'ambient-' + type; m.userData.static = true; } });
+  }
 }
 function logPile(b, x, y, z, yaw, rnd) {
   const n = 3 + Math.floor(rnd() * 3);
@@ -311,6 +317,8 @@ function dressZone(world, zone, rnd) {
       if (!freeAround(x, y, z, kind === 'bush' ? 1.0 : 0.6)) continue;
       const yaw = rnd() * TAU;
       if (!fits(world, kind, x, y, z, kind === 'benchRoad' || kind === 'mailbox' ? -PI / 2 : yaw)) continue;
+      // piedras, helechos y flores solo en el pasto (nunca en caminos, veredas, empedrado ni en la cancha)
+      if ((kind === 'rock' || kind === 'bush' || kind === 'flowers' || kind === 'logs') && (!grassAllowed()[gridIdx(x, z)] || (Math.abs(x - FIELD.cx) < FIELD.hx + 6 && Math.abs(z - FIELD.cz) < FIELD.hz + 6))) continue;
       if (kind === 'oil') decal(world.scene, oilTex(), x, y, z, 0.8 + rnd() * 1.6, 0.8 + rnd() * 1.4, 0, 1, 0, rnd() * TAU, 0.85);
       else if (kind === 'puddle') { if (grassAllowed()[gridIdx(x, z)]) continue; PUDDLES.push({ x, y: y + 0.03, z, rx: 0.5 + rnd() * 1.0, rz: 0.4 + rnd() * 0.6, rot: rnd() * TAU }); } // en el pasto el pasto lo taparía de cerca
       else if (kind === 'leaves') decal(world.scene, leavesTex(), x, y, z, 1.4 + rnd() * 1.6, 1.4 + rnd() * 1.6, 0, 1, 0, rnd() * TAU, 0.95);
@@ -481,6 +489,7 @@ export function dressAmbient(world) {
     try { autocine(world, rnd); } catch (e) { console.warn('ambiente autocine', e); }
     try { facades(world); } catch (e) { console.warn('ambiente fachadas', e); }
     try { flushDecals(world.scene); } catch (e) { console.warn('ambiente calcomanías', e); }
+    try { flushNature(world); } catch (e) { console.warn('ambiente plantas', e); }
     try { buildPuddles(world.scene, PUDDLES); PUDDLES.length = 0; } catch (e) { console.warn('ambiente charcos', e); }
   };
 }
