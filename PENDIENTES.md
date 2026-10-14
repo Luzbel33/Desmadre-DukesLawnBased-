@@ -47,6 +47,17 @@ Fuente única de trabajo pendiente.
 - [ ] Skates con ollies y trucos.
 - [ ] Escobas voladoras / vehículos voladores y un minijuego con eso.
 
+### Pulido general "triple A" (pedido 13/10)
+- [x] Hecho 13/10: patio del castillo (huerta con tierra natural, cementerio, fachada, torres con cubiertas; `world/castle-yard.js`),
+      paredes del torreón (tapices, trofeos, armas, candeleros, mugre; `world/castle-walls.js`), pala del sepulturero, baile
+      de caño (espalda), caminata/idle con resortes, calavera-palanca con máscara de toro, sangre del ahorcado, props
+      decimados. Nuevo `world/ambient-props.js`: afiches, grafitis, charcos, manchas de aceite, hojas, basura, cajones,
+      barriles, cubiertas, rocas, arbustos y flores repartidos por callejón, estacionamiento, bar, cine, galpón, entrada,
+      pasto y cancha (todo validado con rayos de física); lámparas en el galpón.
+- [ ] Falta: banderas con colisiones mal (no ubicadas), puerta secreta del cementerio (qué hay del otro lado), interiores
+      aún oscuros (bar, cine, castillo), arsenal del Búnker (variedad y arreglos), armas (animaciones, apuntar, variedad),
+      NPC de las peleas del Búnker que solo peleen si el jugador las activa, LOD de personajes (30-45k tris cada NPC).
+
 ### Mapa
 - [ ] Expandir el mapa: más lugares, edificios, ascensores, abismos con pinchos, una prisión, más atmósfera,
       easter eggs, pasadizos secretos.

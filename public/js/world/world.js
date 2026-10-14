@@ -22,6 +22,7 @@ import {
 import { LightPool } from './lightpool.js';
 import { Castle } from './castle.js';
 import { decorateCastle } from './castle-decor.js';
+import { dressAmbient } from './ambient-props.js';
 import { Storm } from './storm.js';
 import { Flames, Embers, Smoke } from '../fx/flame.js';
 import { loadAssetsLater } from '../game/assets.js';
@@ -95,6 +96,7 @@ export class World {
     await yieldToBrowser();
     decorateCastle(this.castle);
     await yieldToBrowser();
+    dressAmbient(this); // basura, afiches, manchas, rocas y arbustos por todo el mapa (world/ambient-props.js)
     this.habitat = buildHabitat(scene);
     for (const s of this.castle.seats) this.seats.push({ ...s, id: this.seats.length });
     for (const it of this.castle.interact) INTERACT.push(it);

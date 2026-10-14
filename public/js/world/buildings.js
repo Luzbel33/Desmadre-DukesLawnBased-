@@ -216,6 +216,13 @@ export function buildGarage(b, scene) {
     g.translate(x, H, (Z0 + Z1) / 2);
     b.geo('metal', g);
   }
+  // lámparas colgadas del techo (sin ellas el galpón queda a oscuras): cable, pantalla de chapa y foco
+  for (const [lx, lz] of [[-97, -14], [-91, -14]]) {
+    b.cylinder('darkgray', lx, H + 0.55, lz, 0.015, 0.015, 1.5, 5, { collide: false, noShadow: true });
+    b.cylinder('iron', lx, H - 0.25, lz, 0.1, 0.34, 0.26, 12, { collide: false, noShadow: true });
+    b.cylinder('bulb', lx, H - 0.43, lz, 0.09, 0.09, 0.12, 8, { collide: false, noShadow: true });
+    const lamp = new THREE.PointLight(0xffc888, 16, 17, 1.7); lamp.position.set(lx, H - 0.6, lz); scene.add(lamp);
+  }
   // postes de la entrada
   b.box('darkgray', X1, H / 2, Z0 + 0.2, 0.3, H, 0.3);
   b.box('darkgray', X1, H / 2, Z1 - 0.2, 0.3, H, 0.3);
