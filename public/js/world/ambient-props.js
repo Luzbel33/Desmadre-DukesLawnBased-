@@ -8,6 +8,8 @@ import * as THREE from 'three';
 import { G, rng } from '../core/G.js';
 import { Builder } from './builder.js';
 import { mergeVertices, mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { buildPuddles } from '../fx/puddles.js';
+import { grassAllowed, GRASSMAP } from '../shared/mapdata.js';
 
 const HAS_DOM = typeof document !== 'undefined';
 const PI = Math.PI, TAU = PI * 2;
@@ -73,9 +75,6 @@ function leavesTex() {
     }
   });
 }
-function puddleTex() {
-  return canvasTex('puddle', 128, 128, (g, w, h) => { const gr = g.createRadialGradient(64, 64, 4, 64, 64, 62); gr.addColorStop(0, 'rgba(52,66,86,0.8)'); gr.addColorStop(0.7, 'rgba(30,40,56,0.62)'); gr.addColorStop(1, 'rgba(18,24,34,0)'); g.fillStyle = gr; g.beginPath(); g.ellipse(64, 64, 60, 46, 0, 0, TAU); g.fill(); g.fillStyle = 'rgba(190,210,235,0.16)'; g.beginPath(); g.ellipse(52, 56, 22, 9, -0.3, 0, TAU); g.fill(); });
-}
 // Las calcomanías se juntan por textura y se fusionan en una sola malla cada una (cientos de afiches, manchas y hojas: pocas
 // llamadas de dibujo). La opacidad y las opciones del material son las de la primera de cada grupo.
 const BATCH = new Map();
@@ -101,7 +100,7 @@ function flushDecals(scene) {
     // con luz (de noche las hojas y los afiches no brillan solos); solo las vitrinas iluminadas (toneMapped: false) no
     const lit = e.op.toneMapped !== false;
     const props = { map: e.tex, transparent: true, opacity: e.opacity, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, ...e.op };
-    const m = new THREE.Mesh(merged, lit ? new THREE.MeshStandardMaterial({ roughness: e.tex === TEX.get('puddle') ? 0.08 : 0.92, metalness: 0, ...props }) : new THREE.MeshBasicMaterial(props));
+    const m = new THREE.Mesh(merged, lit ? new THREE.MeshStandardMaterial({ roughness: 0.92, metalness: 0, ...props }) : new THREE.MeshBasicMaterial(props));
     m.receiveShadow = lit;
     m.renderOrder = 2; m.matrixAutoUpdate = false; m.userData.static = true;
     scene.add(m);
@@ -111,6 +110,8 @@ function flushDecals(scene) {
 
 // ---------------------------------------------------------------- sondeos con la física
 const NOT_ME = (c) => G.phys.info(c)?.kind !== 'me';
+const PUDDLES = [];
+const gridIdx = (x, z) => { const q = GRASSMAP, i = Math.floor((x - q.x0) / q.cell), j = Math.floor((z - q.z0) / q.cell); return j * q.w + i; };
 function groundAt(x, z, y0 = 3) {
   const h = G.phys.raycast(x, y0, z, 0, -1, 0, y0 + 1, undefined, null, NOT_ME);
   return h && h.ny > 0.9 ? h : null;
@@ -311,7 +312,7 @@ function dressZone(world, zone, rnd) {
       const yaw = rnd() * TAU;
       if (!fits(world, kind, x, y, z, kind === 'benchRoad' || kind === 'mailbox' ? -PI / 2 : yaw)) continue;
       if (kind === 'oil') decal(world.scene, oilTex(), x, y, z, 0.8 + rnd() * 1.6, 0.8 + rnd() * 1.4, 0, 1, 0, rnd() * TAU, 0.85);
-      else if (kind === 'puddle') decal(world.scene, puddleTex(), x, y, z, 1.0 + rnd() * 2.2, 0.8 + rnd() * 1.4, 0, 1, 0, rnd() * TAU, 0.9, { depthTest: true });
+      else if (kind === 'puddle') { if (grassAllowed()[gridIdx(x, z)]) continue; PUDDLES.push({ x, y: y + 0.03, z, rx: 0.5 + rnd() * 1.0, rz: 0.4 + rnd() * 0.6, rot: rnd() * TAU }); } // en el pasto el pasto lo taparía de cerca
       else if (kind === 'leaves') decal(world.scene, leavesTex(), x, y, z, 1.4 + rnd() * 1.6, 1.4 + rnd() * 1.6, 0, 1, 0, rnd() * TAU, 0.95);
       else if (kind === 'litter') paperLitter(b, x, y, z, rnd);
       else if (kind === 'cone') cone(b, x, y, z, rnd);
@@ -480,5 +481,6 @@ export function dressAmbient(world) {
     try { autocine(world, rnd); } catch (e) { console.warn('ambiente autocine', e); }
     try { facades(world); } catch (e) { console.warn('ambiente fachadas', e); }
     try { flushDecals(world.scene); } catch (e) { console.warn('ambiente calcomanías', e); }
+    try { buildPuddles(world.scene, PUDDLES); PUDDLES.length = 0; } catch (e) { console.warn('ambiente charcos', e); }
   };
 }

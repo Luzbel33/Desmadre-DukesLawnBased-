@@ -8,6 +8,7 @@ import { Builder, getMat } from './builder.js';
 import { assetBounds } from '../game/assets.js';
 import { whenAsset } from '../game/assets.js';
 import { dressTowerTop } from './tower-tops.js';
+import { buildPuddles } from '../fx/puddles.js';
 
 const HAS_DOM = typeof document !== 'undefined';
 const PI = Math.PI, TAU = PI * 2;
@@ -501,17 +502,9 @@ function cementerio(d) {
 // ================================================================ PLAZA DE ARMAS (el patio de adelante)
 function patio(d) {
   const b = new Builder(d.phys), rnd = d.r, c = d.c;
-  // charcos (lluvia): óvalos oscuros y brillantes a ras del empedrado
-  if (HAS_DOM) {
-    const pm = new THREE.MeshStandardMaterial({ color: 0x070b14, roughness: 0.03, metalness: 0.3, transparent: true, opacity: 0.72, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 });
-    for (const [x, z, s] of [[-8, -90, 1.6], [7, -95, 1.2], [14, -88, 2.0], [-20, -83, 1.4], [26, -99, 1.5], [-3, -98.5, 1.0], [3.5, -86, 1.3], [38, -85, 1.7], [-12.5, -101, 1.1], [20, -92, 1.0], [-30, -82, 1.3], [10, -81.5, 1.2], [41, -93, 1.1]]) {
-      const g = new THREE.CircleGeometry(1, 22);
-      const p = g.attributes.position;
-      for (let i = 0; i < p.count; i++) { const a = Math.atan2(p.getY(i), p.getX(i)); const k = 1 + 0.22 * Math.sin(a * 3 + x) + 0.12 * Math.sin(a * 5 + z); p.setXY(i, p.getX(i) * s * 1.4 * k, p.getY(i) * s * 0.9 * k); }
-      g.rotateX(-PI / 2); g.rotateY(rnd() * PI); g.translate(x, 0.014, z);
-      const m = new THREE.Mesh(g, pm); m.receiveShadow = false; m.renderOrder = 1; d.scene.add(m);
-    }
-  }
+  // charcos de lluvia en el empedrado (fx/puddles.js: agua que refleja, borde mojado y las gotas)
+  buildPuddles(d.scene, [[-8, -90, 1.6], [7, -95, 1.2], [14, -88, 2.0], [-20, -83, 1.4], [26, -99, 1.5], [-3, -98.5, 1.0], [3.5, -86, 1.3], [38, -85, 1.7], [-12.5, -101, 1.1], [20, -92, 1.0], [-30, -82, 1.3], [10, -81.5, 1.2], [41, -93, 1.1]]
+    .map(([x, z, s]) => ({ x, y: 0.055, z, rx: s * 1.3, rz: s * 0.85, rot: rnd() * PI })));
   // el herrero (contra la muralla este): fragua con brasas, yunque, tina de agua, fuelle y mesa de armas
   {
     const fx = 42.1, fz = -83.4;
