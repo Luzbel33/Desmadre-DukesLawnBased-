@@ -678,7 +678,13 @@ export class Character {
     let hipsY = 0;
     const spd = st.speed || 0;
     // largo de ciclo (2 pasos) = 4 * pierna * sin(amplitud): cada pisada cubre lo que avanza el cuerpo
-    if (st.grounded !== false) A.phase += spd * dt * (Math.PI * 2 / (1.95 + clamp((spd - 4) / 3, 0, 1) * 0.85));
+    // hacia dónde va respecto del cuerpo (caminando para atrás el ciclo de las piernas corre al revés; de costado, pasos
+    // cruzados hacia el lado)
+    const fwdS = st.fwdSpeed ?? spd, sideS = st.sideSpeed || 0;
+    const dirF = spd > 0.25 ? clamp(fwdS / spd, -1, 1) : 1, dirS = spd > 0.25 ? clamp(sideS / spd, -1, 1) : 0;
+    A.dirF = (A.dirF ?? 1) + (dirF - (A.dirF ?? 1)) * Math.min(1, dt * 8);
+    A.dirS = (A.dirS ?? 0) + (dirS - (A.dirS ?? 0)) * Math.min(1, dt * 8);
+    if (st.grounded !== false) A.phase += (A.dirF < -0.2 ? -1 : 1) * spd * dt * (Math.PI * 2 / (1.95 + clamp((spd - 4) / 3, 0, 1) * 0.85));
     const ph = A.phase;
     const run = clamp((spd - 4) / 3, 0, 1);
     const walkAmt = clamp(spd / 3.5, 0, 1);
@@ -738,8 +744,11 @@ export class Character {
       // caminar/correr
       const amp = lerp(0.55, 0.85, run) * walkAmt;
       const sw = Math.sin(ph);
-      J.hipL[0] = -sw * amp;
-      J.hipR[0] = sw * amp;
+      // de costado la pierna se abre en vez de ir adelante; para atrás, el paso es más corto
+      const fa = Math.abs(A.dirF), sa = A.dirS, back = A.dirF < 0 ? 0.75 : 1;
+      J.hipL[0] = -sw * amp * Math.max(0.25, fa) * back;
+      J.hipR[0] = sw * amp * Math.max(0.25, fa) * back;
+      J.hipL[2] += -sw * amp * 0.45 * sa; J.hipR[2] += sw * amp * 0.45 * sa; // se abren y se cierran (paso lateral)
       J.kneeL[0] = Math.max(0, Math.sin(ph + 1.3)) * amp * 1.6 + 0.05;
       J.kneeR[0] = Math.max(0, Math.sin(ph + 1.3 + Math.PI)) * amp * 1.6 + 0.05;
       J.shoulderL[0] = sw * amp * 0.9;
@@ -750,6 +759,9 @@ export class Character {
       // la pelvis gira con la pierna que avanza y el torso en contrafase (como camina la gente de verdad); la cabeza
       // se estabiliza (compensa casi todo ese giro) y el cuerpo se carga sobre el pie que apoya
       J.hips[1] = -sw * amp * 0.2; J.spine[1] = sw * amp * 0.42; J.neck[1] = -sw * amp * 0.16;
+      // de costado la cadera se orienta un poco hacia el paso (y el torso vuelve al frente)
+      const hipTurn = clamp(sa * Math.sign(A.dirF || 1), -1, 1) * 0.35 * walkAmt * (1 - fa * 0.5);
+      J.hips[1] += hipTurn; J.spine[1] -= hipTurn * 0.8;
       J.hips[2] = sw * 0.045 * walkAmt; J.spine[2] = -sw * 0.03 * walkAmt; J.neck[2] = sw * 0.02 * walkAmt;
       J.shoulderL[2] += Math.max(0, -sw) * 0.08 * walkAmt; J.shoulderR[2] -= Math.max(0, sw) * 0.08 * walkAmt;
       hipsY = -Math.abs(Math.cos(ph)) * (0.04 + run * 0.025) * walkAmt;

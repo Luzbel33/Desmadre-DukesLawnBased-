@@ -1948,6 +1948,7 @@ function updateInput(dt) {
   const L = state.local;
   const inp = G.input;
   const sens = 0.0022 * G.opts.sens;
+  L.firstPerson = state.cameraMode === 2; // en primera persona el cuerpo mira siempre adonde mira la cámara
   if (state.radial?.open) { stepRadial(inp); return; } // menú de gestos/vistas: el mouse elige, la cámara queda quieta
   viewKeys(inp);
   // al subirte a un vehículo la mirada baja un poco: se ven el volante, el tablero y las manos

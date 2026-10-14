@@ -1116,8 +1116,9 @@ export class LocalPlayer {
     const prof = hit.src === 'remote' || hit.src === 'npc' ? BODY_HITS[hit.body] || BODY_HITS.p : null;
     // contra el piso/las paredes (tropezón, porrazo del dive, rodar): duele poco y nunca tanto como una piña
     const world = hit.src === 'world';
-    const base = prof ? prof.base : hit.src === 'vehicle' ? 36 : world ? 8 : 22;
-    const dmg = harmless ? 0 : (world ? Math.min(s, 1.4) : s) * base * PART_DMG[part] * (kind === 'cut' ? 1.25 : kind === 'mulch' ? 3.5 : 1) * PLAYER_DMG_K;
+    const base = prof ? prof.base : hit.src === 'vehicle' ? 36 : world ? 5 : 22;
+    // contra el piso la cabeza no cuenta doble: rodar o caerse de espaldas raspa, no te deja medio muerto
+    const dmg = harmless ? 0 : (world ? Math.min(s, 1.4) : s) * base * (world ? Math.min(1, PART_DMG[part]) : PART_DMG[part]) * (kind === 'cut' ? 1.25 : kind === 'mulch' ? 3.5 : 1) * PLAYER_DMG_K;
     if (dmg > 0) {
       this.damage(dmg, by);
       if (kind === 'cut') this.blood = Math.max(0, this.blood - s * 6);
@@ -2304,7 +2305,8 @@ export class LocalPlayer {
       this._crouch(this.crouching || mo.slideT > 0 || mo.dive === 2 || mo.dive === 3);
       if (this.crouched && !mo.slideT && !mo.dive) this.crouching = true; // bajo un techo sigue agachado aunque sueltes C
       const targetSpeed = this.tuned('speed') * (walk && !this.crouching ? 1.75 : run && !this.guard && !legGone && !this.crouching ? 6.8 : 3.9) * (this.crouching ? 0.5 : 1) * (1 + 0.35 * clamp(this.speedHigh || 0, 0, 1)) * (1 - clamp(this.drunk, 0, 1) * 0.2) * (1 - 0.45 * clamp(this.keta || 0, 0, 1)) * slow * load * limp;
-      const blend = 1 - Math.exp(-(length ? 14 : 20) * dt);
+      // peso: arrancar a correr tarda un poco más que caminar, y frenar de una carrera también (no es un interruptor)
+      const blend = 1 - Math.exp(-(length ? (targetSpeed > 5 ? 7 : 11) : Math.hypot(this.velocity.x, this.velocity.y) > 5 ? 9 : 16) * dt);
       this.velocity.x += (dx * targetSpeed - this.velocity.x) * blend;
       this.velocity.y += (dz * targetSpeed - this.velocity.y) * blend;
       if (mo.slideT > 0) {
@@ -2333,10 +2335,18 @@ export class LocalPlayer {
       }
       if (!active) this.velocity.set(0, 0);
       const diff = angleDiff(this.yaw, viewYaw);
-      const busy = length > 0 || this.action || this.armActive() || this.guard || this.aiming || this.arm.l.script || this.arm.r.script
-        || this.hands.r.item === 'spray' || this.hands.r.joint || this.hands.l.joint;
-      if (active && busy) this.yaw = dampAngle(this.yaw, viewYaw, 12, dt);
-      else if (active && Math.abs(diff) > 1.15) this.yaw = dampAngle(this.yaw, viewYaw - Math.sign(diff) * 1.0, 6, dt);
+      // peleando, apuntando, usando algo o en primera persona el cuerpo mira adonde mira la cámara (y se camina de
+      // costado o para atrás); si no, como en GTA: el cuerpo gira y va para donde lo llevás
+      const combat = this.action || this.armActive() || this.guard || this.aiming || this.arm.l.script || this.arm.r.script
+        || this.hands.r.item === 'spray' || this.hands.r.joint || this.hands.l.joint || this.firstPerson || mo.dive || mo.slideT > 0;
+      this.freeRun = !combat;
+      if (active && combat) this.yaw = dampAngle(this.yaw, viewYaw, 12, dt);
+      else if (active && length > 0) {
+        const want = Math.atan2(dx, dz), turn = Math.abs(angleDiff(this.yaw, want));
+        // giro más lento corriendo (tiene inercia) y, si da la vuelta en seco, frena para pivotear
+        this.yaw = dampAngle(this.yaw, want, run ? 7.5 : 10, dt);
+        if (turn > 1.6 && this.speed > 3.5) { this.velocity.multiplyScalar(Math.exp(-6 * dt)); this.pivotT = 0.25; }
+      } else if (active && Math.abs(diff) > 1.15 && this.firstPerson) this.yaw = dampAngle(this.yaw, viewYaw - Math.sign(diff) * 1.0, 6, dt);
       this.coyote = this.grounded ? 0.09 : Math.max(0, this.coyote - dt);
       this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
       if (active && this.coyote > 0 && this.jumpBuffer > 0 && st === 'active' && !mo.dive) {
@@ -2406,7 +2416,9 @@ export class LocalPlayer {
         this.tumble(V2.set(-mo.dx, 0, -mo.dz), 3.5);
         this.onEvent?.('move', { k: 'bonk' });
       }
-      this.fwdSpeed = ((nx - tr.x) * fx + (nz - tr.z) * fz) / dt;
+      const bfx = Math.sin(this.yaw), bfz = Math.cos(this.yaw);
+      this.fwdSpeed = ((nx - tr.x) * bfx + (nz - tr.z) * bfz) / dt;
+      this.sideSpeed = ((nx - tr.x) * -bfz + (nz - tr.z) * bfx) / dt; // + hacia su derecha
     } else if (st === 'ko' || st === 'dead') {
       // el controlador sigue al cuerpo tirado (la cámara lo acompaña)
       const pt = this.rag.pelvis().translation();
@@ -2636,12 +2648,14 @@ export class LocalPlayer {
     this.keta = Math.max(0, (this.keta || 0) - dt * 0.03);
     this.dmt = Math.max(0, (this.dmt || 0) - dt * 0.08);
     this.jumpBoostT = Math.max(0, (this.jumpBoostT || 0) - dt);
-    this.headYaw = clamp(angleDiff(this.yaw, this.viewYaw), -1.35, 1.35);
+    const hyWant = this.freeRun && this.speed > 0.8 ? clamp(angleDiff(this.yaw, this.viewYaw), -0.9, 0.9) * 0.35 : clamp(angleDiff(this.yaw, this.viewYaw), -1.35, 1.35);
+    this.headYaw += (hyWant - (this.headYaw || 0)) * Math.min(1, dt * 8);
     // animación objetivo
     const rigAction = ['drink-arm', 'headbutt', 'eat'].includes(this.action) ? null : this.action;
     this.rig.animate({
       speed: this.state === 'ko' || this.state === 'dead' ? 0 : this.speed,
       fwdSpeed: this.fwdSpeed,
+      sideSpeed: this.sideSpeed,
       grounded: this.grounded || this.state === 'seated' || this.state === 'driving',
       vy: this.vy,
       crouch: this.crouching,
