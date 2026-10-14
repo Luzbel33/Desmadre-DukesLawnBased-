@@ -926,6 +926,46 @@ export class Character {
         hipsY -= 0.05 * ch * (1 - plant);
         break;
       }
+      case 'brace': {
+        // cayéndose: los brazos adelante y abajo para frenar el golpe, el cuerpo encogido y la cabeza metida
+        J.shoulderL[0] = -1.25; J.shoulderR[0] = -1.25; J.shoulderL[2] = 0.25; J.shoulderR[2] = -0.25;
+        J.elbowL[0] = -0.45; J.elbowR[0] = -0.45;
+        J.spine[0] = 0.4; J.neck[0] = 0.45;
+        J.hipL[0] = -0.45; J.hipR[0] = -0.25; J.kneeL[0] = 0.7; J.kneeR[0] = 0.45;
+        break;
+      }
+      case 'panic': {
+        // corriendo en pánico: los brazos sobre la cabeza (cubriéndose), el torso agachado hacia adelante
+        const k = clamp(at / 0.25, 0, 1), wob = Math.sin(t * 11) * 0.12;
+        J.shoulderL[0] = lerp(J.shoulderL[0], -2.3 + wob, k); J.shoulderR[0] = lerp(J.shoulderR[0], -2.3 - wob, k);
+        J.shoulderL[2] = lerp(J.shoulderL[2], -0.45, k); J.shoulderR[2] = lerp(J.shoulderR[2], 0.45, k);
+        J.elbowL[0] = lerp(J.elbowL[0], -1.9, k); J.elbowR[0] = lerp(J.elbowR[0], -1.9, k);
+        J.spine[0] += 0.28 * k; J.neck[0] += 0.25 * k;
+        break;
+      }
+      case 'cower': {
+        // en cuclillas, las dos manos agarrando la nuca, la cabeza entre las rodillas; tiembla
+        const k = clamp(at / 0.3, 0, 1), sh = Math.sin(t * 31) * 0.035;
+        J.hips = J.hips || [0, 0, 0];
+        J.hipL[0] = lerp(J.hipL[0], -1.9, k); J.hipR[0] = lerp(J.hipR[0], -1.9, k);
+        J.kneeL[0] = lerp(J.kneeL[0], 2.3, k); J.kneeR[0] = lerp(J.kneeR[0], 2.3, k);
+        J.hipL[2] = lerp(J.hipL[2], 0.15, k); J.hipR[2] = lerp(J.hipR[2], -0.15, k);
+        J.spine[0] += (0.75 + sh) * k; J.neck[0] += (0.6 + sh) * k;
+        J.shoulderL[0] = lerp(J.shoulderL[0], -2.5, k); J.shoulderR[0] = lerp(J.shoulderR[0], -2.5, k);
+        J.shoulderL[2] = lerp(J.shoulderL[2], -0.7, k); J.shoulderR[2] = lerp(J.shoulderR[2], 0.7, k);
+        J.elbowL[0] = lerp(J.elbowL[0], -2.3, k); J.elbowR[0] = lerp(J.elbowR[0], -2.3, k);
+        hipsY -= 0.6 * k;
+        break;
+      }
+      case 'handsup': {
+        // manos arriba, abiertas, a la altura de la cabeza; el cuerpo un poco echado atrás
+        const k = clamp(at / 0.3, 0, 1), sh = Math.sin(t * 9) * 0.05;
+        J.shoulderL[0] = lerp(J.shoulderL[0], -0.65, k); J.shoulderR[0] = lerp(J.shoulderR[0], -0.65, k);
+        J.shoulderL[2] = lerp(J.shoulderL[2], 1.2 + sh, k); J.shoulderR[2] = lerp(J.shoulderR[2], -1.2 - sh, k);
+        J.elbowL[0] = lerp(J.elbowL[0], -1.95, k); J.elbowR[0] = lerp(J.elbowR[0], -1.95, k);
+        J.spine[0] -= 0.1 * k;
+        break;
+      }
       case 'stagger': {
         // trastabillar (NPC): pierde el equilibrio para el lado del golpe; los brazos se sueltan y se sacuden
         // buscando dónde agarrarse, el torso se va con el golpe y vuelve. Las piernas dan los pasos solas (velocidad)

@@ -35,6 +35,7 @@ import { priceOf } from './shared/economy.js';
 import { BunkerItems } from './game/bunker-items.js';
 import { GUNS } from './shared/guns.js';
 import { updatePuddles } from './fx/puddles.js';
+import { aimedAt, alarmPeds } from './game/ped-react.js';
 import { pbrReady } from './world/builder.js';
 import { yieldToBrowser, prepareScene } from './core/startup.js';
 
@@ -1433,6 +1434,7 @@ function onLocalEvent(type, d) {
       }
       state.shake = Math.min(1, (state.shake || 0) + clamp(d.dv / 40, 0.03, 0.15));
       contactFeedback(clamp(d.dv / 12, 0.3, 1));
+      if (d.a !== 'g') alarmPeds(pt, 'fight', G.myId);
       net?.send({ t: 'ev', k: 'hc', to: d.id, p: d.part, s: +d.dv.toFixed(2), x: +d.x.toFixed(2), y: +d.y.toFixed(2), z: +d.z.toFixed(2), w: d.w || 0, a: d.a || 'p' });
       break;
     }
@@ -1479,6 +1481,7 @@ function onLocalEvent(type, d) {
       net?.send({ t: 'ev', k: 'ko', by: d.by || 0 });
       break;
     case 'death':
+      alarmPeds(state.local.pos, 'gore', d.by || 0);
       bigMessage('TE LIQUIDARON', 'Reaparecés en unos segundos', 4500);
       net?.send({ t: 'ev', k: 'death', by: d.by || 0 });
       break;
@@ -2022,6 +2025,15 @@ function updateInput(dt) {
   if (gun) {
     L.armControl('r', false); L.armControl('l', false); L.setGuard(false);
     if (inp.btnHit(0) || (gun.auto && inp.btn(0))) G.items?.shoot(L, L.aiming);
+    // a quien le apuntás levanta las manos (o, si es guardia, se te viene encima)
+    if (L.aiming && (G.frame % 6) === 0) {
+      const cam = G.aimCam || G.camera, cd = cam.getWorldDirection(tmpV);
+      for (const n of G.allNpcs?.() || []) {
+        const dx = n.pos.x - cam.position.x, dy = n.pos.y + 1.2 - cam.position.y, dz = n.pos.z - cam.position.z, d = Math.hypot(dx, dy, dz);
+        if (d > 25 || d < 0.5) continue;
+        if ((dx * cd.x + dy * cd.y + dz * cd.z) / d > Math.cos(Math.atan(0.55 / d))) aimedAt(n, L.pos);
+      }
+    }
     state.press = state.press || { l: 0, r: 0 };
     state.press.r = state.press.l = -1e9;
   }

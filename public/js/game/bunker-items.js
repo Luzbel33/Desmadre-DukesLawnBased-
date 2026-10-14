@@ -4,6 +4,7 @@
 //   con a = 'g'); a los NPCs y a los objetos los empuja acá. Trazadora, fogonazo y ruido para todos (evento 'shot').
 // - Granada: sale de la mano con física propia, rebota y a los 2.8 s explota. Cada cliente simula la misma granada
 //   (evento 'nade' con salida y velocidad) y cada uno calcula lo suyo: su jugador, los NPCs, el humo y el fuego.
+import { alarmPeds } from './ped-react.js';
 import * as THREE from 'three';
 import { G, clamp } from '../core/G.js';
 import { RAPIER, GR, groups } from '../core/physics.js';
@@ -124,6 +125,7 @@ export class BunkerItems {
     }
     for (const [ref, v] of victims) if (typeof ref === 'object') ref.punch(gun.npc * v.fall * Math.min(2.6, 1 + v.n * 0.25), v.point, v.d, 1.6, true, 'bullet');
     for (const e of ends) this.tracer(muzzle, e);
+    alarmPeds(muzzle, 'shot', G.myId);
     L.equipment?.shoot?.(gun.recoil / 0.05);
     this._flash(muzzle);
     this._shell(L, gun);
@@ -189,6 +191,7 @@ export class BunkerItems {
     }
     this._flash(o);
     G.sfx?.trigger('shot', o, 1, { full: 8, max: 120, rate: gun.pitch });
+    alarmPeds(o, 'shot', 0);
   }
   tracer(a, b) {
     const len = a.distanceTo(b);
@@ -230,6 +233,7 @@ export class BunkerItems {
     G.phys.world.removeRigidBody(n.body);
     n.mesh.removeFromParent();
     this._blastFx(p);
+    alarmPeds(p, 'blast', n.by || 0);
     // la onda: a mí (si estoy cerca), a los NPC, a las cosas sueltas
     const L = this.getLocal();
     if (L && !L.dead) {

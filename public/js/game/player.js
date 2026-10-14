@@ -691,7 +691,7 @@ export class LocalPlayer {
     if (this.dead || this.state === 'driving') return;
     if (this.seat) this.standUp();
     if (byId) this.lastHitBy = byId;
-    if (this.state !== 'ko') this.onEvent?.('ko', { by: this.lastHitBy, t: seconds });
+    if (this.state !== 'ko') { this.onEvent?.('ko', { by: this.lastHitBy, t: seconds }); this.koAt = G.time; }
     this.state = 'ko';
     this.koT = Math.max(this.koT, seconds);
     this.strength = 0;
@@ -2566,7 +2566,13 @@ export class LocalPlayer {
         break;
       case 'ko':
         this.koT -= dt;
-        this.strength = this.held > 0 ? 0.35 : 0.02;
+        {
+          // al caer el cuerpo reacciona (como el Euphoria de GTA): el primer segundo pone los brazos para frenar el
+          // golpe, se encoge y protege la cabeza; después se afloja. Agarrado por otro, un poco de tono siempre
+          const fallT = G.time - (this.koAt ?? -9);
+          const brace = this.dead ? 0 : 0.22 * Math.max(0, 1 - fallT / 0.85);
+          this.strength = Math.max(this.held > 0 ? 0.35 : 0.02, brace);
+        }
         // sin las dos piernas no hay forma de pararse
         const noLegs = (this.gore & ((1 << PART.THIGH_L) | (1 << PART.SHIN_L))) && (this.gore & ((1 << PART.THIGH_R) | (1 << PART.SHIN_R)));
         if (!noLegs && this.koT <= (this.held > 0 ? -1.2 : 0)) this._startGetup();
@@ -2650,7 +2656,7 @@ export class LocalPlayer {
     const hyWant = this.freeRun && this.speed > 0.8 ? clamp(angleDiff(this.yaw, this.viewYaw), -0.9, 0.9) * 0.35 : clamp(angleDiff(this.yaw, this.viewYaw), -1.35, 1.35);
     this.headYaw += (hyWant - (this.headYaw || 0)) * Math.min(1, dt * 8);
     // animación objetivo
-    const rigAction = ['drink-arm', 'headbutt', 'eat'].includes(this.action) ? null : this.action;
+    const rigAction = this.state === 'ko' && !this.dead && G.time - (this.koAt ?? -9) < 1.3 ? 'brace' : ['drink-arm', 'headbutt', 'eat'].includes(this.action) ? null : this.action;
     this.rig.animate({
       speed: this.state === 'ko' || this.state === 'dead' ? 0 : this.speed,
       fwdSpeed: this.fwdSpeed,

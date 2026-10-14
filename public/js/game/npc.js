@@ -2,6 +2,7 @@
 // Usan el mismo cuerpo que los jugadores (HumanCharacter con el animador procedural): caminan, bailan con los gestos,
 // hablan con un globo arriba de la cabeza y miran a quien se les acerca. Lo que hace cada uno lo decide su "rol" (una
 // función por cuadro); acá solo el cuerpo, el globo y el mirar.
+import { stepReaction, alarmPeds } from './ped-react.js';
 import * as THREE from 'three';
 import { G, clamp } from '../core/G.js';
 import { HumanCharacter, humansReady, loadHuman, loadMask, masksReady, MODELS } from '../char/human.js';
@@ -157,6 +158,7 @@ export class Npc {
   die(vel = V2.set(0, 0.5, 0)) {
     if (this.dead) return;
     this.vocal('death');
+    alarmPeds(this.pos, 'gore', 0); // los de alrededor gritan y huyen
     this.dead = true; this.deadT = 0;
     if (this.bubble) this.bubble.style.display = 'none';
     this.bubbleT = 0;
@@ -231,6 +233,7 @@ export class Npc {
     // Choreographed masked dancers keep their existing role and model untouched.
     if (byPlayer && !this.onHurt && !MODELS[this.look?.model]?.mask) startNpcDefense(this, G.me);
     if (s > 0.2) this.vocal(s > 1 || kind !== 'blunt' ? 'scream' : 'hurt');
+    if (byPlayer && kind !== 'bullet') alarmPeds(this.pos, 'fight', G.myId); // los de alrededor miran la pelea (o se van)
     const vel = V1.copy(dir).multiplyScalar(2 + s * 2.5).setY(1 + s * 0.6);
     // gore: filo o bala cortan; un mazazo brutal a la cabeza la revienta (con un arma pesada: una patada o un
     // cabezazo nunca)
@@ -432,7 +435,7 @@ export class Npc {
       this.pos.x += g.vx * k * dt; this.pos.z += g.vz * k * dt;
       g.t -= dt;
       if (g.t <= 0 || this.down > 0 || this.dead) this.stag = null;
-    } else if (simulate && !(this.burnT > 0) && !(this.down > 0) && !stepNpcDefense(this, dt)) this.role?.(this, dt);
+    } else if (simulate && !(this.burnT > 0) && !(this.down > 0) && !stepNpcDefense(this, dt) && !stepReaction(this, dt)) this.role?.(this, dt);
     if (simulate) this._resolveMove();
     if (simulate && !this.sit && !this.down && !this.dead && !(this.burnT > 0) && dt > 0) this.speed = Math.min(5, Math.hypot(this.pos.x - moveX, this.pos.z - moveZ) / dt);
     // mirar a alguien: la cabeza primero, el cuerpo si hace falta
@@ -443,7 +446,7 @@ export class Npc {
       if (Math.abs(d) > 0.9) want = this.baseYaw + d - Math.sign(d) * 0.9;
       hy = clamp(angleDiff(want, a), -1.1, 1.1);
     }
-    if (!this.sit) this.yaw += angleDiff(this.yaw, want) * Math.min(1, dt * 3);
+    if (!this.sit) this.yaw += angleDiff(this.yaw, want) * Math.min(1, dt * (this.react ? 9 : 3));
     this.headYaw += (hy - this.headYaw) * Math.min(1, dt * 4);
     if (this.emote) this.emoteT += dt;
     if (this.action) { this.actionT += dt; if (this.actionT > (this.actionEnd || 1.6)) this.action = null; }
@@ -476,7 +479,7 @@ export class Npc {
         else this._getUp();
       }
     } else {
-      if (updatePose) ch.animate({ speed: this.speed, grounded: true, sit: this.sit, table: this.table, crouch: this.crouch, aimPitch: this.aimPitch, headYaw: this.headYaw, emote: this.emote, emoteT: this.emoteT, action: this.action, actionT: this.actionT, actionDur: this.actionEnd, stagger: this._stagLocal, kickKind: this.kickKind, held: this.item || (this.prop && !this.propHang) ? 'item' : null }, dt);
+      if (updatePose) ch.animate({ speed: this.speed, grounded: true, sit: this.sit, table: this.table, crouch: this.crouch && this.action !== 'cower', aimPitch: this.aimPitch, headYaw: this.headYaw, emote: this.emote, emoteT: this.emoteT, action: this.action, actionT: this.actionT, actionDur: this.actionEnd, stagger: this._stagLocal, kickKind: this.kickKind, held: this.item || (this.prop && !this.propHang) ? 'item' : null }, dt);
       if (this.propHang) ch.grip.r = 1; // el farol cuelga del puño cerrado, con el brazo suelto
       // resortes de los golpes (subamortiguados: la cabeza se va y vuelve)
       const S = this.snap, w = 22, z = 0.35;
