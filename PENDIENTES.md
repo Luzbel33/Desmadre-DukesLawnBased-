@@ -53,7 +53,9 @@ Fuente única de trabajo pendiente.
       de caño (espalda), caminata/idle con resortes, calavera-palanca con máscara de toro, sangre del ahorcado, props
       decimados. Nuevo `world/ambient-props.js`: afiches, grafitis, charcos, manchas de aceite, hojas, basura, cajones,
       barriles, cubiertas, rocas, arbustos y flores repartidos por callejón, estacionamiento, bar, cine, galpón, entrada,
-      pasto y cancha (todo validado con rayos de física); lámparas en el galpón.
+      pasto y cancha (todo validado con rayos de física); lámparas en el galpón; fachadas del bar y el cine (zócalo,
+      pilastras, cornisa, vitrinas de afiches, ventanas), apliques y carteles de SALIDA en el cine, postes con parlante
+      en el autocine; calcomanías fusionadas por textura (pocas llamadas de dibujo).
 - [ ] Falta: banderas con colisiones mal (no ubicadas), puerta secreta del cementerio (qué hay del otro lado), interiores
       aún oscuros (bar, cine, castillo), arsenal del Búnker (variedad y arreglos), armas (animaciones, apuntar, variedad),
       NPC de las peleas del Búnker que solo peleen si el jugador las activa, LOD de personajes (30-45k tris cada NPC).

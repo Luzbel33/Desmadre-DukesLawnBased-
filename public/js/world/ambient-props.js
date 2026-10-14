@@ -199,6 +199,7 @@ const ZONES = [
   { id: 'pasto', rect: [-68, -48, 68, 56], items: [['rock', 16, 'open'], ['bush', 12, 'open'], ['flowers', 22, 'open'], ['logs', 3, 'open']] },
   { id: 'entrada', rect: [-34, -78, 34, -52], items: [['rock', 8, 'open'], ['bush', 6, 'open'], ['flowers', 12, 'open'], ['leaves', 12, 'open'], ['puddle', 8, 'open'], ['bench', 3, 'open'], ['litter', 6, 'open']] },
   { id: 'castillo_afuera', rect: [-56, -140, 56, -80], items: [['rock', 10, 'open'], ['bush', 6, 'open'], ['leaves', 10, 'open']] },
+  { id: 'autocine', rect: [-19, 62, 19, 77], items: [['litter', 8, 'open'], ['puddle', 3, 'open'], ['leaves', 4, 'open'], ['cone', 3, 'open']] },
   { id: 'cancha', rect: [-34, 12, 34, 58], items: [['litter', 10, 'open'], ['bench', 4, 'open'], ['cone', 6, 'open'], ['leaves', 6, 'open']] },
 ];
 
@@ -303,6 +304,20 @@ function facades(world) {
   b.finish(world.scene);
 }
 
+// el autocine: postes con parlante para cada lugar, igual que los de verdad (colgados de la ventanilla)
+function autocine(world, rnd) {
+  const b = new Builder(world.phys);
+  for (const z of [64.5, 69, 73.5]) for (let x = -15; x <= 15; x += 5) {
+    const gh = groundAt(x, z); if (!gh || Math.abs(gh.y) > 0.3) continue;
+    b.cylinder('iron', x, gh.y + 0.65, z, 0.025, 0.03, 1.3, 6, { collide: true });
+    b.box('darkgray', x, gh.y + 1.2, z + 0.12, 0.26, 0.32, 0.14, { collide: false, noShadow: true });
+    b.box('black', x, gh.y + 1.2, z + 0.2, 0.2, 0.24, 0.02, { collide: false, noShadow: true });
+    b.box('iron', x, gh.y + 0.12, z, 0.3, 0.05, 0.3, { collide: false, noShadow: true }); // la base
+    b.cylinder('metal', x, gh.y + 1.32, z + 0.12, 0.012, 0.012, 0.3, 4, { collide: false, noShadow: true, rx: PI / 2 });
+  }
+  b.finish(world.scene);
+}
+
 export function dressAmbient(world) {
   let frames = 0, done = false;
   const rnd = rng(60606);
@@ -314,6 +329,7 @@ export function dressAmbient(world) {
     done = true;
     for (const z of ZONES) { try { dressZone(world, z, rnd); } catch (e) { console.warn('ambiente', z.id, e); } }
     try { cineDetails(world); } catch (e) { console.warn('ambiente cine', e); }
+    try { autocine(world, rnd); } catch (e) { console.warn('ambiente autocine', e); }
     try { facades(world); } catch (e) { console.warn('ambiente fachadas', e); }
     try { flushDecals(world.scene); } catch (e) { console.warn('ambiente calcomanías', e); }
   };

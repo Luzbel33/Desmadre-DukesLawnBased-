@@ -275,7 +275,7 @@ export function buildAutocine(b, scene) {
   // poste con parlante
   b.cylinder('darkgray', 0, 0.8, 64, 0.08, 0.08, 1.6, 8, { collide: true });
   b.box('red', 0, 1.7, 64, 0.5, 0.35, 0.3, { collide: false });
-  const s = signMesh('AUTOCINE DESMADRE', 10, 1.4, { color: '#ffd23b', stroke: '#300', strokeW: 10, size: 130, bg: '#6a0f18' });
+  const s = signMesh('AUTOCINE DESMADRE', 10, 1.4, { color: '#ffd23b', stroke: '#300', strokeW: 8, size: 104, bg: '#6a0f18' });
   s.position.set(0, 14.4, cz - 0.1);
   s.rotation.y = Math.PI;
   scene.add(s);
