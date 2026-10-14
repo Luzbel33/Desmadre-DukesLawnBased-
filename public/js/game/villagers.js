@@ -14,6 +14,8 @@ import { priceOf } from '../shared/economy.js';
 const V1 = new THREE.Vector3();
 const V2 = new THREE.Vector3();
 const HAS_DOM = typeof document !== 'undefined';
+const PED_HELLO = ['¡Ey! ¿Todo bien?', '¡Che, qué hacés!', 'Mirá quién anda por acá...', '¡Hola, hola!'];
+const PED_CHAT = ['¿Viste lo del castillo? Dicen que hay fantasmas.', 'En el Búnker anoche se armó flor de lío.', 'Hace un frío bárbaro.', 'No, si yo ya le dije...', 'Ja, ¿en serio?', 'Bueno, me voy que llego tarde.', 'El del bar fía, eh.', 'Ese que pasa está re loco.'];
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const NEAR = 40, FAR = 75, PHYS = 30;
 
@@ -164,6 +166,17 @@ export class Villagers {
     add('corre', 'La que corre', 'v_corredora', [-50, 0, -42], Math.PI / 2, (n) => this._walker(n, [[-50, -42], [50, -42], [52, 6], [-52, 6]], 3.1));
     // un vecino que pasea por la plaza del castillo
     add('paseo', 'Un vecino', 'v_vecino', [8, 0, -55], 0, (n) => this._walker(n, [[8, -55], [10, -70], [-8, -71], [-12, -56], [-2, -54]], 1.2, true), { h: 1.03 });
+    // peatones: van de un lado a otro por la vereda de la ruta y por la explanada, cada uno a su paso; se paran a mirar
+    // el celular, a prender un pucho o a charlar si se cruzan con alguien, y esquivan (y se chocan) como cualquiera
+    const RUTA = [[93.3, -112], [93.3, -80], [93.3, -46], [93.3, -15], [93.3, 18], [93.3, 50], [93.3, 85], [93.3, 112]];
+    const PLAZA = [[-30, -55.5], [-12, -54.8], [8, -54.8], [28, -55.5], [30, -64], [22, -70.5], [6, -70.8], [-8, -70.8], [-24, -70.5], [-31, -64]];
+    for (const [key, name, model, route, at, h] of [
+      ['ped1', 'Una vecina', 'claudia', RUTA, 1, 1], ['ped2', 'Un laburante', 'v_granjero', RUTA, 4, 1.02], ['ped3', 'Una piba', 'emo', RUTA, 6, 0.97],
+      ['ped4', 'Un metalero', 'metalero', PLAZA, 2, 1.01], ['ped5', 'Una señora', 'v_aldeana', PLAZA, 6, 0.98], ['ped6', 'Un turista', 'gordo', PLAZA, 8, 1],
+    ]) {
+      const [x, z] = route[at];
+      add(key, name, model, [x, 0, z], 0, (n) => this._ped(n, route, at), { h });
+    }
     return this;
   }
 
@@ -326,6 +339,56 @@ export class Villagers {
       npc.pos.x += dx / l * dt * speed; npc.pos.z += dz / l * dt * speed;
       if (npc.emote && npc.emoteT > 1.5) npc.emote = null;
       npc.lookAt = null;
+    };
+  }
+  // peatón: elige un punto de su recorrido (adelante o atrás), camina a su paso, y cada tanto hace algo
+  _ped(n, route, at0) {
+    const pts = route.map(([x, z]) => new THREE.Vector3(x, 0, z));
+    const pace = 1.05 + Math.random() * 0.5;
+    return (npc, dt) => {
+      const d = npc.data;
+      if (d.i === undefined) { d.i = at0; d.dir = Math.random() < 0.5 ? 1 : -1; d.next = 6 + Math.random() * 14; }
+      // parado haciendo algo
+      if (d.wait > 0) {
+        d.wait -= dt; npc.speed = 0;
+        if (d.doing === 'phone') { npc.action = 'phone'; npc.actionT = (npc.actionT || 0) + dt; npc.actionEnd = 99; }
+        if (d.doing === 'chat' && d.with) { npc.lookAt = d.with.pos; if (Math.random() < dt * 0.3) npc.say(pick(PED_CHAT), 2.4); }
+        if (d.wait <= 0) { if (npc.action === 'phone') npc.action = null; d.doing = null; d.with = null; npc.lookAt = null; }
+        return;
+      }
+      // cada tanto: el celular, un pucho, o charlar con otro peatón que pasa cerca
+      d.next -= dt;
+      if (d.next <= 0) {
+        d.next = 10 + Math.random() * 18;
+        const other = this.list.find((o) => o !== npc && o.data?.key?.startsWith('ped') && !o.data.wait && !o.react && o.pos.distanceTo(npc.pos) < 3.5);
+        if (other && Math.random() < 0.7) {
+          d.wait = other.data.wait = 5 + Math.random() * 5; d.doing = other.data.doing = 'chat'; d.with = other; other.data.with = npc;
+          npc.say(pick(PED_HELLO), 2); return;
+        }
+        if (Math.random() < 0.6) { d.wait = 3 + Math.random() * 4; d.doing = 'phone'; npc.actionT = 0; return; }
+        if (npc.item === 2 || Math.random() < 0.3) { npc.item = 2; d.wait = 2.2; npc.action = 'smoke'; npc.actionT = 0; npc.actionEnd = 1.4; npc.habit('smoke'); return; }
+      }
+      const t = pts[d.i];
+      const dx = t.x - npc.pos.x, dz = t.z - npc.pos.z, l = Math.hypot(dx, dz);
+      if (l < 0.5) {
+        // en las puntas da la vuelta; si no, a veces sigue y a veces vuelve
+        let ni = d.i + d.dir;
+        if (ni < 0 || ni >= pts.length || Math.random() < 0.15) { d.dir = -d.dir; ni = d.i + d.dir; }
+        d.i = Math.max(0, Math.min(pts.length - 1, ni));
+        return;
+      }
+      // camina con un leve vaivén (no en línea de tiralíneas) y esquiva al jugador si viene de frente
+      const sway = Math.sin((G.time || 0) * 0.7 + pace * 9) * 0.25;
+      let ax = dx / l + Math.cos(Math.atan2(dx, dz)) * sway * 0.2, az = dz / l - Math.sin(Math.atan2(dx, dz)) * sway * 0.2;
+      const L = this.getLocal();
+      if (L && !L.dead) {
+        const px = L.pos.x - npc.pos.x, pz = L.pos.z - npc.pos.z, pd = Math.hypot(px, pz);
+        if (pd < 2.2 && (px * ax + pz * az) / (pd || 1) > 0.6) { const side = (px * az - pz * ax) > 0 ? -1 : 1; ax += -az * side * 0.8; az += ax * side * 0.8; }
+      }
+      const al = Math.hypot(ax, az) || 1;
+      npc.speed = pace; npc.baseYaw = Math.atan2(ax / al, az / al);
+      npc.pos.x += (ax / al) * dt * pace; npc.pos.z += (az / al) * dt * pace;
+      npc.lookAt = this._near(npc, 3.5);
     };
   }
   _group(list, topic) {

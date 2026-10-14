@@ -926,6 +926,15 @@ export class Character {
         hipsY -= 0.05 * ch * (1 - plant);
         break;
       }
+      case 'phone': {
+        // mirando el celular: la mano derecha a la altura del pecho, el antebrazo arriba, la cabeza gacha; el pulgar
+        // se mueve (un poco el antebrazo)
+        const k = clamp(at / 0.35, 0, 1), th = Math.sin(t * 7) * 0.03;
+        J.shoulderR[0] = lerp(J.shoulderR[0], -0.55, k); J.shoulderR[2] = lerp(J.shoulderR[2], 0.32, k); J.elbowR[0] = lerp(J.elbowR[0], -1.95 + th, k);
+        J.shoulderL[0] = lerp(J.shoulderL[0], -0.3, k); J.elbowL[0] = lerp(J.elbowL[0], -1.2, k); J.shoulderL[2] = lerp(J.shoulderL[2], -0.15, k);
+        J.neck[0] += 0.45 * k; J.spine[0] += 0.05 * k;
+        break;
+      }
       case 'brace': {
         // cayéndose: los brazos adelante y abajo para frenar el golpe, el cuerpo encogido y la cabeza metida
         J.shoulderL[0] = -1.25; J.shoulderR[0] = -1.25; J.shoulderL[2] = 0.25; J.shoulderR[2] = -0.25;
