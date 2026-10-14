@@ -242,7 +242,8 @@ export function buildTown(b, scene) {
   // estacionamiento
   b.box('asphalt', 109, 0.012, 31, 28, 0.05, 26, { collide: false, noShadow: true });
   // postes de luz sobre la vereda
-  for (let z = -110; z <= 110; z += 22) {
+  for (let z0 = -110; z0 <= 110; z0 += 22) {
+    const z = z0 === 0 ? -9.5 : z0; // el del medio se corre: tapaba el cartel de la marquesina del cine
     if (placeModel(scene, 'd_streetlamp', 91, 0.09, z, -Math.PI / 2)) {
       b.phys.cylinder(91, 2.1, z, 2, 0.12);
       const light=new THREE.PointLight(0xffce89,3,8,2); light.position.set(91,3.63,z); scene.add(light);

@@ -438,8 +438,13 @@ function cementerio(d) {
   // la entrada de la cripta (puerta de hierro en la muralla del torreón): luz cálida y antorchas adentro para que se vea
   // qué hay del otro lado cuando se abre, y una alfombra de tierra pisada hasta el umbral
   sg.push(ribbon([[30, -108.4], [27.5, -108.4], [25.4, -108.4]], 2.2, 0.016, 0.15));
-  d.c.light(21.5, 1.9, -108.4, 0xff9a50, 6, 11, { flicker: true, priority: 1.2 });
+  d.c.light(21.5, 1.9, -108.4, 0xff9a50, 9, 12, { flicker: true, priority: 1.4 }).room = 0; // sin cuarto: se ve desde el cementerio, a través de la reja
   d.c.flame(23.0, 1.7, -106.9, 0.07, 0.2, { intensity: 0.9 }); d.c.flame(23.0, 1.7, -109.9, 0.07, 0.2, { intensity: 0.9 });
+  // un brasero justo detrás de la reja: es lo que se ve brillar entre los barrotes
+  b.cylinder('iron', 21.6, 0.5, -108.4, 0.04, 0.07, 1.0, 6, { collide: false, noShadow: true });
+  b.cylinder('iron', 21.6, 1.06, -108.4, 0.3, 0.14, 0.18, 10, { collide: false, noShadow: true });
+  b.cylinder('ember', 21.6, 1.14, -108.4, 0.24, 0.24, 0.03, 10, { collide: false, noShadow: true });
+  d.c.flame(21.6, 1.15, -108.4, 0.22, 0.55, { intensity: 1.2 });
   b.box('iron', 23.0, 1.45, -106.9, 0.1, 0.4, 0.1, { collide: false }); b.box('iron', 23.0, 1.45, -109.9, 0.1, 0.4, 0.1, { collide: false });
   soilFlush(d, sg);
   b.finish(d.scene);

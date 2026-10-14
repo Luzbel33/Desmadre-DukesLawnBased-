@@ -36,9 +36,9 @@ const POSTERS = [
   { id: 'nofumar', bg: '#e8e8e0', draw(g, w, h) { g.strokeStyle = '#c02020'; g.lineWidth = w * 0.05; g.beginPath(); g.arc(w / 2, h * 0.36, w * 0.28, 0, TAU); g.moveTo(w * 0.3, h * 0.2); g.lineTo(w * 0.7, h * 0.52); g.stroke(); g.fillStyle = '#1a1a1a'; g.fillRect(w * 0.32, h * 0.34, w * 0.34, h * 0.04); g.fillStyle = '#e08020'; g.fillRect(w * 0.6, h * 0.34, w * 0.06, h * 0.04); g.fillStyle = '#c02020'; g.font = `bold ${w * 0.14}px Arial`; g.textAlign = 'center'; g.fillText('NO FUMAR', w / 2, h * 0.8); g.fillStyle = '#1a1a1a'; g.font = `${w * 0.06}px Arial`; g.fillText('(EXCEPTO EN EL COFFEESHOP)', w / 2, h * 0.9); } },
   { id: 'band', bg: '#0e1a14', draw(g, w, h, r) { g.fillStyle = '#7aff4a'; g.font = `bold ${w * 0.13}px Impact, sans-serif`; g.textAlign = 'center'; g.fillText('LOS ÚLTIMOS', w / 2, h * 0.2); g.fillText('CORTADORES', w / 2, h * 0.34); for (let i = 0; i < 6; i++) { g.strokeStyle = `rgba(122,255,74,${0.2 + r() * 0.5})`; g.lineWidth = 3; g.beginPath(); g.moveTo(0, h * (0.45 + i * 0.06)); for (let x = 0; x <= w; x += 12) g.lineTo(x, h * (0.45 + i * 0.06) + Math.sin(x * 0.07 + i) * 10); g.stroke(); } g.fillStyle = '#fff'; g.font = `${w * 0.07}px Arial`; g.fillText('EN VIVO · VIERNES · EL BÚNKER', w / 2, h * 0.88); } },
 ];
-function poster(i) {
-  const P = POSTERS[i % POSTERS.length];
-  return canvasTex('poster' + P.id, 256, 384, (g, w, h) => { const r = mkr(i * 71 + 5); paper(g, w, h, r, P.bg); P.draw(g, w, h, r); for (let k = 0; k < 6; k++) { g.fillStyle = `rgba(0,0,0,${0.05 + r() * 0.1})`; g.fillRect(r() * w, 0, 1 + r() * 3, h); } g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = 3; g.strokeRect(1, 1, w - 2, h - 2); g.fillStyle = 'rgba(210,200,170,0.35)'; g.fillRect(0, 0, w, 10); g.fillRect(0, h - 10, w, 10); });
+function poster(i, set) {
+  const P = set ? POSTERS[set[i % set.length]] : POSTERS[i % POSTERS.length];
+  return canvasTex('poster' + P.id + (set ? 's' : ''), 256, 384, (g, w, h) => { const r = mkr(i * 71 + 5); paper(g, w, h, r, P.bg); P.draw(g, w, h, r); for (let k = 0; k < 6; k++) { g.fillStyle = `rgba(0,0,0,${0.05 + r() * 0.1})`; g.fillRect(r() * w, 0, 1 + r() * 3, h); } g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = 3; g.strokeRect(1, 1, w - 2, h - 2); g.fillStyle = 'rgba(210,200,170,0.35)'; g.fillRect(0, 0, w, 10); g.fillRect(0, h - 10, w, 10); });
 }
 function graffiti(i) { // etiquetas de aerosol con goteo
   const words = ['DESMA', 'OK', '666', 'LUZ', 'PUNK', 'NADA', '¡BASTA!', 'CORTA', 'RATA'];
@@ -171,9 +171,9 @@ const ZONES = [
   { id: 'callejon', rect: [96, -19.6, 122.6, -12.4], items: [['bags', 5, 'wall'], ['crates', 3, 'wall'], ['barrels', 2, 'wall'], ['litter', 8, 'open'], ['puddle', 5, 'open'], ['leaves', 5, 'open'], ['poster', 9, 'wallv'], ['tag', 7, 'wallv']] },
   { id: 'estacionamiento', rect: [96, 19, 122.6, 43.5], items: [['oil', 14, 'open'], ['cone', 7, 'open'], ['puddle', 6, 'open'], ['leaves', 6, 'open'], ['litter', 8, 'open'], ['bags', 2, 'wall'], ['poster', 3, 'wallv']] },
   { id: 'bar_afuera', rect: [93, -44, 124.6, -42], items: [['bench', 2, 'wall'], ['litter', 3, 'open'], ['puddle', 3, 'open'], ['poster', 6, 'wallv'], ['tag', 3, 'wallv']] },
-  { id: 'bar_dentro', rect: [96, -41, 122, -21], items: [['poster', 9, 'wallv'], ['crates', 2, 'wall'], ['barrels', 2, 'wall'], ['litter', 6, 'open'], ['bags', 1, 'wall']] },
-  { id: 'cine_dentro', rect: [96, -11, 122, 15], items: [['poster', 10, 'wallv'], ['litter', 14, 'open'], ['bags', 2, 'wall']] },
-  { id: 'cine_afuera', rect: [93, -13, 124.5, 17], items: [['bench', 2, 'wall'], ['poster', 6, 'wallv'], ['tag', 4, 'wallv'], ['litter', 5, 'open'], ['puddle', 4, 'open'], ['leaves', 4, 'open']] },
+  { id: 'bar_dentro', posters: [0, 3, 6, 1, 5, 2], rect: [96, -41, 122, -21], items: [['poster', 9, 'wallv'], ['crates', 2, 'wall'], ['barrels', 2, 'wall'], ['litter', 6, 'open'], ['bags', 1, 'wall']] },
+  { id: 'cine_dentro', posters: [4, 4, 5, 6, 1], rect: [96, -11, 122, 15], items: [['poster', 10, 'wallv'], ['litter', 14, 'open'], ['bags', 2, 'wall']] },
+  { id: 'cine_afuera', posters: [4, 6, 0, 2], rect: [93, -13, 124.5, 17], items: [['bench', 2, 'wall'], ['poster', 6, 'wallv'], ['tag', 4, 'wallv'], ['litter', 5, 'open'], ['puddle', 4, 'open'], ['leaves', 4, 'open']] },
   { id: 'galpon', rect: [-101, -21, -87, -7], items: [['tires', 5, 'wall'], ['barrels', 4, 'wall'], ['crates', 3, 'wall'], ['oil', 8, 'open'], ['litter', 5, 'open'], ['poster', 4, 'wallv']] },
   { id: 'galpon_afuera', rect: [-106, -26, -82, -3], items: [['cone', 4, 'open'], ['oil', 6, 'open'], ['leaves', 6, 'open'], ['puddle', 4, 'open'], ['litter', 6, 'open'], ['tires', 3, 'wall'], ['barrels', 2, 'wall']] },
   { id: 'pasto', rect: [-68, -48, 68, 56], items: [['rock', 16, 'open'], ['bush', 12, 'open'], ['flowers', 22, 'open'], ['logs', 3, 'open']] },
@@ -199,7 +199,7 @@ function dressZone(world, zone, rnd) {
         let flat = true;
         for (const [ox, oy] of [[hw, 0.6], [-hw, 0.6], [hw, -0.5], [-hw, -0.5]]) { const q = G.phys.raycast(hh.x + w.nx * 0.3 + w.nz * ox, 1.5 + oy, hh.z + w.nz * 0.3 - w.nx * ox, -w.nx, 0, -w.nz, 1, undefined, null, NOT_ME); if (!q || Math.abs(q.dist - 0.3) > 0.07) { flat = false; break; } }
         if (!flat) continue;
-        if (kind === 'poster') { const s = dw; decal(world.scene, poster(Math.floor(rnd() * 20)), hh.x, 1.55 + (rnd() - 0.5) * 0.5, hh.z, s, s * 1.5, w.nx, 0, w.nz, 0, 0.95); }
+        if (kind === 'poster') { const s = dw; decal(world.scene, poster(Math.floor(rnd() * 20), zone.posters), hh.x, 1.55 + (rnd() - 0.5) * 0.5, hh.z, s, s * 1.5, w.nx, 0, w.nz, 0, 0.95); }
         else decal(world.scene, graffiti(Math.floor(rnd() * 20)), hh.x, 1.0 + rnd() * 0.9, hh.z, dw, dw * 0.5, w.nx, 0, w.nz, 0, 0.95);
         placed++; continue;
       }
@@ -237,6 +237,52 @@ function dressZone(world, zone, rnd) {
   b.finish(world.scene);
 }
 
+// el cine: apliques en las paredes, carteles de SALIDA que brillan en la oscuridad y pliegues en las cortinas de la pantalla
+function cineDetails(world) {
+  const b = new Builder(world.phys), Z0 = -12, Z1 = 16;
+  for (let x = 105.5; x < 121; x += 3) for (const [z, nz] of [[Z0 + 0.2, 1], [Z1 - 0.2, -1]]) {
+    b.box('bronze', x, 2.35, z + nz * 0.08, 0.14, 0.5, 0.1, { collide: false, noShadow: true });
+    b.box('lamp', x, 2.35, z + nz * 0.15, 0.1, 0.34, 0.06, { collide: false, noShadow: true });
+    b.box('lamp', x, 2.92, z + nz * 0.13, 0.2, 0.05, 0.1, { collide: false, noShadow: true });
+  }
+  for (const side of [-1, 1]) for (let i = 0; i < 6; i++) b.box('leatherRed', 122.1, 4.1, 2 + side * (13 / 2 + 1.2) + (i - 2.5) * 0.28, 0.14, 7.9, 0.2, { collide: false, noShadow: true });
+  b.box('leatherRed', 122.2, 8.0, 2, 0.5, 0.5, 17, { collide: false, noShadow: true }); // la cenefa de arriba
+  b.finish(world.scene);
+  const tex = canvasTex('exit', 256, 96, (g, w, h) => { g.fillStyle = '#04200c'; g.fillRect(0, 0, w, h); g.fillStyle = '#3dff7a'; g.font = `bold ${h * 0.55}px Arial`; g.textAlign = 'center'; g.fillText('SALIDA', w * 0.4, h * 0.68); g.beginPath(); g.moveTo(w * 0.8, h * 0.25); g.lineTo(w * 0.95, h * 0.5); g.lineTo(w * 0.8, h * 0.75); g.lineTo(w * 0.82, h * 0.55); g.lineTo(w * 0.7, h * 0.55); g.lineTo(w * 0.7, h * 0.45); g.lineTo(w * 0.82, h * 0.45); g.fill(); });
+  if (tex) for (const [x, y, z, ry] of [[95.2, 3.45, 14, Math.PI / 2], [122.6, 6.3, -9, -Math.PI / 2], [122.6, 6.3, 13, -Math.PI / 2]]) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.375), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+    m.position.set(x, y, z); m.rotation.y = ry; world.scene.add(m);
+  }
+}
+
+// las fachadas del bar y del cine que dan a la ruta: zócalo, pilastras, cornisa, vitrinas con afiches y ventanas encendidas
+function facades(world) {
+  const b = new Builder(world.phys), X = 94.8;
+  // cine
+  b.box('darkgray', X, 0.45, 2, 0.12, 0.9, 28.2, { collide: false, noShadow: true });
+  b.box('cream', X, 7.75, 2, 0.34, 0.3, 28.8, { collide: false });
+  b.box('cream', X, 7.3, 2, 0.2, 0.12, 28.4, { collide: false, noShadow: true });
+  for (const z of [-11.85, 15.85, -4.2, 8.2]) { b.box('cream', X, 4, z, 0.26, 8, 0.5, { collide: false }); b.box('cream', X, 0.2, z, 0.34, 0.4, 0.64, { collide: false, noShadow: true }); b.box('cream', X, 7.6, z, 0.34, 0.3, 0.64, { collide: false, noShadow: true }); }
+  for (const [z, pi] of [[-8, 4], [-6.3, 1], [10.2, 5], [12, 6]]) { // vitrinas de afiches con luz propia
+    b.box('black', X - 0.02, 1.9, z, 0.1, 2.1, 1.4, { collide: false, noShadow: true });
+    b.box('lamp', X - 0.07, 3.0, z, 0.04, 0.06, 1.2, { collide: false, noShadow: true });
+    decal(world.scene, poster(pi), X - 0.08, 1.85, z, 1.2, 1.8, -1, 0, 0, 0, 1, { toneMapped: false });
+  }
+  // bar
+  b.box('darkgray', X, 0.5, -31, 0.12, 1.0, 22, { collide: false, noShadow: true });
+  b.box('woodDark', X, 5.3, -31, 0.34, 0.3, 22.8, { collide: false });
+  for (const z of [-41.85, -20.15]) b.box('woodDark', X, 2.7, z, 0.26, 5.4, 0.5, { collide: false });
+  for (const z of [-37.5, -24.5]) {
+    b.box('woodDark', X, 1.95, z, 0.14, 1.7, 3.0, { collide: false, noShadow: true });
+    b.box('winGlow', X - 0.05, 1.95, z, 0.04, 1.4, 2.7, { collide: false, noShadow: true });
+    for (const k of [-0.45, 0.45]) b.box('woodDark', X - 0.08, 1.95, z + k * 1.5, 0.05, 1.4, 0.06, { collide: false, noShadow: true });
+    b.box('woodDark', X - 0.08, 1.95, z, 0.05, 0.06, 2.7, { collide: false, noShadow: true });
+    b.box('stone', X - 0.1, 1.05, z, 0.22, 0.1, 3.2, { collide: false, noShadow: true });
+  }
+  for (const z of [-37.5, -24.5]) decal(world.scene, graffiti(z < -30 ? 3 : 8), X - 0.09, 0.6, z, 1.6, 0.8, -1, 0, 0, 0, 0.9);
+  b.finish(world.scene);
+}
+
 export function dressAmbient(world) {
   let frames = 0, done = false;
   const rnd = rng(60606);
@@ -247,5 +293,7 @@ export function dressAmbient(world) {
     if (++frames < 150 || !G.phys?.world) return;
     done = true;
     for (const z of ZONES) { try { dressZone(world, z, rnd); } catch (e) { console.warn('ambiente', z.id, e); } }
+    try { cineDetails(world); } catch (e) { console.warn('ambiente cine', e); }
+    try { facades(world); } catch (e) { console.warn('ambiente fachadas', e); }
   };
 }
