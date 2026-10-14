@@ -402,7 +402,9 @@ test('balance de golpes: la patada pega más que la piña, la piña sola no noqu
     G.settings.desmadre = true;
     G.players = new Map([[5, { pos: new THREE.Vector3(0, 0.02, 1.2) }]]);
     p.hitClaim({ id: 5, p: PART.TORSO, x: 0, y: 1.2, z: 0.1, ...claim });
-    const out = { lost: 100 - p.hp, state: p.state, push: Math.hypot(p.push.x, p.push.y) };
+    const push = Math.hypot(p.push.x, p.push.y) + p.bal.speed; // empujón: el centro de masa (game/balance.js)
+    for (let k = 0; k < 3; k++) frame(p, ph); // el equilibrio decide en el paso de física
+    const out = { lost: 100 - p.hp, state: p.state, push };
     G.players = new Map();
     ph.world.free();
     return out;

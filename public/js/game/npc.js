@@ -3,6 +3,7 @@
 // hablan con un globo arriba de la cabeza y miran a quien se les acerca. Lo que hace cada uno lo decide su "rol" (una
 // función por cuadro); acá solo el cuerpo, el globo y el mirar.
 import { stepReaction, alarmPeds } from './ped-react.js';
+import { Balance, bodyImpulse, BODY_MASS } from './balance.js';
 import * as THREE from 'three';
 import { G, clamp } from '../core/G.js';
 import { HumanCharacter, humansReady, loadHuman, loadMask, masksReady, MODELS } from '../char/human.js';
@@ -99,7 +100,7 @@ export class Npc {
     this.down = 0; // segundos que le quedan tirado
     this.hp = 100;
     this.balance = 100; // equilibrio: los golpes lo gastan y se recupera solo; en 0 se cae
-    this.stag = null; // trastabillando: { vx, vz, t } (pasos para atrás/al costado con el golpe)
+    this.bal = new Balance(); // equilibrio físico (game/balance.js): golpes y choques empujan el centro de masa
     this.snap = { head: new THREE.Vector2(), headV: new THREE.Vector2(), torso: new THREE.Vector2(), torsoV: new THREE.Vector2() };
     this.onHurt = null; // (npc, s, point, byPlayer) => void
     // muerte y vuelta: tirado un rato, desaparece y reaparece entero en su lugar
@@ -248,24 +249,20 @@ export class Npc {
     // estando hecho pelota. Si no, trastabilla con el golpe y se rehace
     // un tiro duele mucho pero no voltea (trastabilla y se encoge); a quemarropa con la escopeta, sí
     const bullet = kind === 'bullet';
-    this.balance -= s * (part === PART.HEAD ? 46 : 34) * (bullet ? 0.55 : 1);
-    if (s > (body ? 1.65 : bullet ? 2.15 : 1.5) || this.balance <= 0 || (this.hp < 22 && s > 0.6)) {
-      this.balance = 70;
-      this.knockout(V1.copy(dir).multiplyScalar(1.4 + s * 1.6).setY(0.6 + s * 0.4), 2 + s * 1.2);
+    // un golpe tremendo en la cabeza lo apaga; muy golpeado, cualquier cosa lo tira. Si no, el golpe empuja su centro de
+    // masa y el equilibrio decide (inclinarse, trastabillar o caerse; los golpes seguidos se suman)
+    if ((part === PART.HEAD && s > 1.55 && !bullet) || (this.hp < 22 && s > 0.6)) {
+      this.knockout(V1.copy(dir).multiplyScalar(1.4 + s * 1.4).setY(0.6 + s * 0.3), 2 + s * 1.2);
       return;
     }
-    if (s > 0.3) this.stagger(dir, s);
+    this.stagger(dir, s * (bullet ? 0.45 : body && mass === 6 ? 1.2 : 1));
   }
 
   // trastabillar con un golpe o un empujón: unos pasos para el lado del golpe, brazos sueltos, y se rehace
   stagger(dir, s = 0.6) {
     if (this.sit || this.down > 0 || this.dead || this.noCollide || !this.char) return;
-    // una piña: medio paso; una patada: un par de pasos (velocidad que se apaga en t segundos)
-    const sp = Math.min(3.6, 0.6 + s * 1.6), t = 0.22 + Math.min(0.42, s * 0.22);
-    this.stag = { vx: dir.x * sp, vz: dir.z * sp, t, t0: t };
-    const c = Math.cos(this.yaw), sn = Math.sin(this.yaw);
-    this._stagLocal = { x: dir.x * c - dir.z * sn, z: dir.x * sn + dir.z * c };
-    this.action = 'stagger'; this.actionT = 0; this.actionEnd = t + 0.2;
+    const dv = s * 1.55;
+    (this.bal ||= new Balance()).hit(dir.x * dv, dir.z * dv, { braceX: this.vel?.x || 0, braceZ: this.vel?.z || 0 });
   }
   // números de daño que suben (y la barra de vida arriba de la cabeza unos segundos)
   _floatDmg(n, point, crit) {
@@ -330,6 +327,7 @@ export class Npc {
   }
 
   _getUp() {
+    this.bal.reset();
     const pt = this.rag.pelvis().translation();
     this.pos.set(pt.x, this.home.pos.y, pt.z);
     this.down = 0; // sin esto quedaba en -0.00x: "sigue tirado" para todo (sin cápsula, sin ragdoll al morir)
@@ -429,12 +427,18 @@ export class Npc {
     // andando con el cuerpo en el piso y la posición "lógica" perseguía y pegaba sola (el guardia invisible)
     const moveX = this.pos.x, moveZ = this.pos.z;
     this.balance = Math.min(100, (this.balance ?? 100) + dt * 18);
-    if (this.stag) {
-      // trastabillando: el golpe manda (el rol espera); la velocidad se apaga y los pies dan los pasos
-      const g = this.stag, k = Math.max(0, g.t / g.t0);
-      this.pos.x += g.vx * k * dt; this.pos.z += g.vz * k * dt;
-      g.t -= dt;
-      if (g.t <= 0 || this.down > 0 || this.dead) this.stag = null;
+    const br = !this.down && !this.dead && !this.sit && !this.noCollide && dt > 0 ? this.bal.update(dt, { drunk: this.drunk || 0 }) : null;
+    if (br?.mode === 'fall') {
+      const fsp = Math.hypot(br.fx, br.fz);
+      this.vocal('scream');
+      this.knockout(V1.set(br.fx, 0.35 + fsp * 0.05, br.fz), 1.6 + fsp * 0.4);
+    } else if (br?.mode === 'stagger') {
+      // trastabillando: el empujón manda (el rol espera) y los pies dan los pasos
+      this.pos.x += br.mx * dt; this.pos.z += br.mz * dt;
+      const c = Math.cos(this.yaw), sn = Math.sin(this.yaw), bl = this.bal.speed || 1;
+      this._stagLocal = { x: (br.mx * c - br.mz * sn) / bl, z: (br.mx * sn + br.mz * c) / bl };
+      if (this.action !== 'stagger') { this.action = 'stagger'; this.actionT = 0; }
+      this.actionEnd = this.actionT + 0.3;
     } else if (simulate && !(this.burnT > 0) && !(this.down > 0) && !stepNpcDefense(this, dt) && !stepReaction(this, dt)) this.role?.(this, dt);
     if (simulate) this._resolveMove();
     if (simulate && !this.sit && !this.down && !this.dead && !(this.burnT > 0) && dt > 0) this.speed = Math.min(5, Math.hypot(this.pos.x - moveX, this.pos.z - moveZ) / dt);
@@ -486,6 +490,12 @@ export class Npc {
       for (const [a, v] of [[S.head, S.headV], [S.torso, S.torsoV]]) {
         v.x += (-w * w * a.x - 2 * z * w * v.x) * dt; v.y += (-w * w * a.y - 2 * z * w * v.y) * dt;
         a.x += v.x * dt; a.y += v.y * dt;
+      }
+      // equilibrio: el torso se va con el empujón y vuelve
+      if (updatePose && Math.abs(this.bal.leanX) + Math.abs(this.bal.leanZ) > 1e-3) {
+        const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw), lf = this.bal.leanX * fx + this.bal.leanZ * fz, ls = this.bal.leanX * fz - this.bal.leanZ * fx;
+        ch.joints[0].quaternion.multiply(Q1.setFromEuler(E1.set(lf * 0.35, 0, -ls * 0.35)));
+        ch.joints[1].quaternion.multiply(Q1.setFromEuler(E1.set(lf * 0.7, 0, -ls * 0.7)));
       }
       if (updatePose && Math.abs(S.head.x) + Math.abs(S.head.y) + Math.abs(S.torso.x) > 1e-4) {
         ch.joints[2].quaternion.multiply(Q1.setFromEuler(E1.set(S.head.x, 0, S.head.y)));
@@ -638,4 +648,26 @@ export class Npc {
     this.char?.dispose?.();
     this.bubble?.remove();
   }
+}
+
+// Choques entre NPCs parados (con el mismo impulso físico que entre jugadores): dos que se cruzan caminando se corren;
+// el que huye corriendo se lleva puesto al que estaba parado (y puede tirarlo). Una vez por cuadro, desde main.js
+const _cd = new Map();
+const _A = { x: 0, z: 0, vx: 0, vz: 0, m: BODY_MASS }, _B = { x: 0, z: 0, vx: 0, vz: 0, m: BODY_MASS };
+export function npcCrowd(list, now) {
+  const L = list.filter((n) => n.standing && n.vel && !n.noCollide && !n.sit && n.char);
+  for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) {
+    const a = L[i], b = L[j];
+    const dx = b.pos.x - a.pos.x, dz = b.pos.z - a.pos.z, d = Math.hypot(dx, dz);
+    if (d > 0.7 || d < 1e-3 || Math.abs(a.pos.y - b.pos.y) > 1) continue;
+    const key = a.name + '|' + b.name;
+    if ((_cd.get(key) || 0) > now) continue;
+    _A.vx = a.vel.x; _A.vz = a.vel.z; _B.vx = b.vel.x; _B.vz = b.vel.z;
+    const nx = dx / d, nz = dz / d, imp = bodyImpulse(_A, _B, nx, nz);
+    if (!imp || imp.vn < 1.2) continue;
+    _cd.set(key, now + 0.5);
+    a.bal.hit(nx * imp.a, nz * imp.a, { braceX: a.vel.x, braceZ: a.vel.z });
+    b.bal.hit(nx * imp.b, nz * imp.b, { braceX: b.vel.x, braceZ: b.vel.z });
+  }
+  if (_cd.size > 200) _cd.clear();
 }

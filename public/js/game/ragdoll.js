@@ -27,8 +27,9 @@ export const JOINT_LIMITS = {
   2: [[-1.0, 0.95], [-1.3, 1.3], [-0.65, 0.65]], // cuello
   3: [[-3.05, 1.2], [-1.4, 1.4], [-0.6, 2.95]], // hombro izquierdo
   5: [[-3.05, 1.2], [-1.4, 1.4], [-2.95, 0.6]], // hombro derecho
-  7: [[-2.35, 0.8], [-0.75, 0.75], [-0.4, 1.2]], // cadera izquierda
-  9: [[-2.35, 0.8], [-0.75, 0.75], [-1.2, 0.4]], // cadera derecha
+  // caderas: la pierna se abre hasta ~40° y gira poco (antes 70°: los tirados quedaban en espagat, "piernas rotas")
+  7: [[-2.1, 0.45], [-0.45, 0.45], [-0.25, 0.7]], // cadera izquierda
+  9: [[-2.1, 0.45], [-0.45, 0.45], [-0.7, 0.25]], // cadera derecha
 };
 // Equilibrio: torque absoluto (sin reacción) hacia la orientación objetivo en pelvis, torso y cabeza.
 // Es la "trampa" de los ragdolls jugables: sin esto el cuerpo no puede sostenerse solo.

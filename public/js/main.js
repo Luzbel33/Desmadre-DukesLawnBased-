@@ -36,6 +36,7 @@ import { BunkerItems } from './game/bunker-items.js';
 import { GUNS } from './shared/guns.js';
 import { updatePuddles } from './fx/puddles.js';
 import { aimedAt, alarmPeds } from './game/ped-react.js';
+import { npcCrowd } from './game/npc.js';
 import { pbrReady } from './world/builder.js';
 import { yieldToBrowser, prepareScene } from './core/startup.js';
 
@@ -2684,7 +2685,7 @@ async function boot() {
         }
         G.poker?.update(G.camera, dt);
         updateNameTags(); updatePrompt(); updateHud(dt); updatePost();
-        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.club?.update(dt); G.villagers?.update(dt, G.camera); G.adminNpcs?.update(dt, G.camera); G.circuit?.update(dt, G.camera); G.race?.update(dt); G.cctv?.update(dt, G.camera); G.chess?.update(dt); G.pool?.update(dt); G.money?.tick(dt); G.items?.update(dt); G.owner?.update(dt);
+        G.world.update(dt, state.local.pos); G.grass.update(dt, G.camera, benders()); G.haunt?.update(dt); G.club?.update(dt); G.villagers?.update(dt, G.camera); npcCrowd(G.allNpcs?.() || [], G.time); G.adminNpcs?.update(dt, G.camera); G.circuit?.update(dt, G.camera); G.race?.update(dt); G.cctv?.update(dt, G.camera); G.chess?.update(dt); G.pool?.update(dt); G.money?.tick(dt); G.items?.update(dt); G.owner?.update(dt);
         { const hide = (G.world.storm?.indoor || 0) > 0.95; for (const m of G.grass.meshes) m.visible = !hide; }
         updatePuddles(G.time); G.fx.update(dt, G.camera); G.gags?.update(dt); G.blood.update(dt); G.football?.update(dt); G.gore?.update(dt); state.graffiti?.flush();
         G.bag?.update(dt);

@@ -6,17 +6,19 @@ import { Npc } from '../public/js/game/npc.js';
 import { Villagers } from '../public/js/game/villagers.js';
 import { G } from '../public/js/core/G.js';
 
-test('nearby sprint contact notifies the struck player before stopping the runner', () => {
-  G.time = 2; G.settings = { desmadre: false }; const messages = [];
-  G.net = { send: m => messages.push(m) };
+test('sprinting into a standing player shoves the runner by momentum, once per contact', async () => {
+  const { Balance } = await import('../public/js/game/balance.js');
+  G.time = 2; G.settings = { desmadre: false };
   const rp = { id: 2, standing: true, pos: new THREE.Vector3(0, 0, .6), vel: new THREE.Vector3(), capsuleRadius: .28 };
-  G.players = new Map([[2, rp]]);
-  const p = Object.assign(Object.create(LocalPlayer.prototype), { pos: new THREE.Vector3(), velocity: new THREE.Vector2(0, 7), push: new THREE.Vector2(), capsuleRadius: .28, yaw: 0, state: 'active', _crowdNpcs() {}, _trip() {} });
+  G.players = new Map([[2, rp]]); G.allNpcs = () => [];
+  const p = Object.assign(Object.create(LocalPlayer.prototype), { pos: new THREE.Vector3(), velocity: new THREE.Vector2(0, 7), push: new THREE.Vector2(), capsuleRadius: .28, yaw: 0, state: 'active', bal: new Balance(), hands: { l: {}, r: {} }, onEvent() {}, react: { hit() {} } });
   p._crowd(1 / 60);
-  assert.equal(messages.filter(m => m.k === 'bodybump' && m.to === 2).length, 1);
+  const v1 = p.bal.speed;
+  assert.ok(v1 > 1.5, `el que corre tiene que sentir el choque (${v1})`);
+  assert.ok(p.bal.vz < 0, 'el choque frena al que corre (hacia atrás)');
   p._crowd(1 / 60);
-  assert.equal(messages.length, 1, 'contact spam must be rate-limited');
-  G.net = null;
+  assert.equal(p.bal.speed, v1, 'el mismo contacto no se cuenta dos veces');
+  G.allNpcs = null;
 });
 
 test('grip reach is measured from the body in first and third person', async () => {

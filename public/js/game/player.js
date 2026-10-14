@@ -24,6 +24,7 @@ import { Ragdoll, PART } from './ragdoll.js';
 import { HitReact, ROLL } from './react.js';
 import { EquipmentView } from './equipment.js';
 import { GUNS, isGun } from '../shared/guns.js';
+import { Balance, bodyImpulse, BODY_MASS } from './balance.js';
 import { goreFor, branchOf, GORE_HEAD_POP, GORE_GUTS } from './gore.js';
 import { defOf, holdOf, heldQuat, heldPos, gripPoints, bladePoints, handleAxis, curlOf } from './props.js';
 import {
@@ -66,8 +67,8 @@ const THR = { fist: 2.8, prop: 3.4, thrown: 4, vehicle: 3 };
 // pega más, tumba y empuja; la piña es rápida pero sola no noquea; el cabezazo aturde.
 export const BODY_HITS = {
   p: { thr: 2.8, span: 4.5, cap: 1.3, base: 10, bal: 1, push: 1 },
-  k: { thr: 2.2, span: 3.4, cap: 1.8, base: 14, bal: 1.7, push: 1.45 },
-  h: { thr: 1.4, span: 2.4, cap: 1.5, base: 13, bal: 1.5, push: 1.3 },
+  k: { thr: 2.2, span: 3.4, cap: 1.8, base: 14, bal: 1.7, push: 1.2 },
+  h: { thr: 1.4, span: 2.4, cap: 1.5, base: 13, bal: 1.5, push: 1.0 },
   g: { thr: 0, span: 7, cap: 2.4, base: 30, bal: 0.8, push: 0.5 }, // tiro (pistola del Búnker)
 };
 
@@ -146,6 +147,8 @@ function handWorld(rag, meta, side, out) {
 }
 
 const KCC_GROUPS = groups(GR.ME, GR.WORLD | GR.VEHICLE | GR.PAWN);
+// con qué se tropieza: cosas bajas del mundo, objetos sueltos y cuerpos tirados (ragdolls de NPC y jugadores)
+const TRIP_GROUPS = groups(0xffff, GR.WORLD | GR.PROP | GR.REMOTE);
 // encimado con otro jugador: el controlador de Rapier no deja salir de una cápsula en la que ya está metido
 // (se traba para todos lados), así que mientras estamos encimados ese paso ignora a los jugadores
 const KCC_NO_PAWN = groups(GR.ME, GR.WORLD | GR.VEHICLE);
@@ -288,7 +291,8 @@ export class LocalPlayer {
     this.emoteT = 0;
     this.hp = 100;
     this.blood = 100;
-    this.balance = 100; // equilibrio: los golpes lo bajan; en 0 cae KO. Se recupera solo
+    this.balance = 100; // aguante cuando te tienen agarrado (ver _gripPull)
+    this.bal = new Balance(); // equilibrio físico (game/balance.js): golpes, choques, paredes y tropezones
     this.drunk = 0;
     this.high = 0;
     this.dead = false;
@@ -743,6 +747,7 @@ export class LocalPlayer {
   }
 
   _startGetup() {
+    this.bal.reset();
     const pt = this.rag.pelvis().translation();
     const p = new THREE.Vector3(pt.x, 0.02, pt.z);
     // mirar hacia donde quedó el torso
@@ -916,94 +921,93 @@ export class LocalPlayer {
 
   // Otros cuerpos de pie: nadie atraviesa a nadie (las cápsulas chocan) y si alguien te lleva por delante
   // te corre un poco, suave (antes la repulsión era exagerada y salían volando los dos)
+  // Otros cuerpos parados: nadie atraviesa a nadie (las cápsulas chocan) y cuando dos se chocan el impulso sale de sus
+  // velocidades y masas (game/balance.js): caminando se corren un poco, corriendo uno puede voltear al otro, de frente
+  // se pueden caer los dos. Con otro jugador calculo solo lo mío (su cliente calcula lo suyo con lo mismo)
   _crowd(dt) {
     this._bumpBudget = Math.min(1.2, (this._bumpBudget ?? 1.2) + dt * 1.5);
     const sep = this._sepV || (this._sepV = new THREE.Vector2());
     sep.set(0, 0);
     const ns = this._sepN || (this._sepN = []);
     ns.length = 0;
-    const mySp = Math.hypot(this.velocity.x, this.velocity.y);
+    const me = this._bodyA || (this._bodyA = { x: 0, z: 0, vx: 0, vz: 0, m: BODY_MASS });
+    me.vx = this.velocity.x + this.push.x; me.vz = this.velocity.y + this.push.y; me.m = BODY_MASS + this._heldMass('l') + this._heldMass('r');
+    const other = this._bodyB || (this._bodyB = { x: 0, z: 0, vx: 0, vz: 0, m: BODY_MASS });
+    const cd = this._bumpCd || (this._bumpCd = new Map());
+    const touch = (key, at, vel, R, onHit) => {
+      let dx = at.x - this.pos.x, dz = at.z - this.pos.z, d = Math.hypot(dx, dz);
+      if (d > R + 0.1 || Math.abs(this.pos.y - at.y) > 1.2) return;
+      if (d < 1e-3) { dx = Math.sin(this.yaw); dz = Math.cos(this.yaw); d = 1; }
+      const nx = dx / d, nz = dz / d; // de mí hacia el otro
+      other.vx = vel.x; other.vz = vel.z;
+      if ((cd.get(key) || 0) < G.time && this.state !== 'ko' && this.state !== 'dead') {
+        const imp = bodyImpulse(me, other, nx, nz);
+        if (imp && imp.vn > 1.2) {
+          cd.set(key, G.time + 0.5);
+          this.bal.hit(nx * imp.a, nz * imp.a, { braceX: me.vx, braceZ: me.vz });
+          onHit?.(nx * imp.b, nz * imp.b, imp.vn);
+          if (imp.vn > 2.5) { this.onEvent?.('move', { k: 'bump' }); this._flinch(V2.set(-nx, 0, -nz), Math.min(0.8, imp.vn * 0.1)); }
+        }
+      }
+      // encimados (la red llegó tarde, alguien apareció encima): separar YA, no de a poco
+      if (d < R) { const v = Math.min(3.5, (R - d) * 12); sep.x -= nx * v; sep.y -= nz * v; ns.push(-nx, -nz); }
+    };
     for (const rp of G.players.values()) {
       if (!rp.standing) continue;
-      // corriendo te lo llevás puesto: tropezón (y el otro se queja)
-      const bpp = rp.bodyPos || rp.pos;
-      const contactD = Math.hypot(this.pos.x - bpp.x, this.pos.z - bpp.z);
-      const closing = contactD > .001 ? ((bpp.x - this.pos.x) * this.velocity.x + (bpp.z - this.pos.z) * this.velocity.y) / contactD : 0;
-      if (mySp > 5.2 && closing > 4.2 && this.state === 'active' && contactD < Math.max(.72, this.capsuleRadius + (rp.capsuleRadius || CAPSULE_RADIUS) + .12) && Math.abs(this.pos.y - rp.pos.y) < 1.1 && (this._bodyContactT || 0) < G.time) {
-        this._bodyContactT = G.time + 1;
-        G.net?.send({ t: 'ev', k: 'bodybump', to: rp.id, v: [this.velocity.x, 0, this.velocity.y] });
-        if ((this._tripT || 0) < G.time) this._trip(bpp, null);
-      }
       // donde está SU CUERPO dibujado (ahí está su cápsula), no la última posición que llegó por la red
-      const bp = rp.bodyPos || rp.pos;
-      let dx = this.pos.x - bp.x, dz = this.pos.z - bp.z;
-      let d = Math.hypot(dx, dz);
-      const R = this.capsuleRadius + (rp.capsuleRadius||CAPSULE_RADIUS) + 0.04;
-      if (d > R + 0.08 || Math.abs(this.pos.y - rp.pos.y) > 1.2) continue;
-      if (d < 1e-3) { dx = -Math.sin(this.yaw); dz = -Math.cos(this.yaw); d = 1; } // justo encima: para atrás
-      const nx = dx / d, nz = dz / d;
-      // se acerca hacia mí: me empuja con lo que trae (en equilibrio, más o menos a su velocidad; con tope)
-      const vIn = Math.min(4, -(rp.vel.x * nx + rp.vel.z * nz));
-      const along = this.push.x * nx + this.push.y * nz;
-      if (vIn > 0.3 && along < 3) { this.push.x += nx * vIn * 4 * dt; this.push.y += nz * vIn * 4 * dt; }
-      // encimados (la red llegó tarde, alguien apareció encima): separar YA, no de a poco
-      if (d < R) {
-        const v = Math.min(3.5, (R - d) * 12);
-        sep.x += nx * v; sep.y += nz * v;
-        ns.push(nx, nz);
-      }
+      touch('p' + rp.id, rp.bodyPos || rp.pos, rp.vel, this.capsuleRadius + (rp.capsuleRadius || CAPSULE_RADIUS) + 0.04, null);
     }
-    this._crowdNpcs(dt, sep, ns);
-  }
-
-  // NPCs parados: no se atraviesan, empujan si te llevan puesto, y si vas corriendo tropezás (y los tumbás)
-  receiveBodyBump(m) {
-    if (!m || this.dead || !['active', 'stun', 'getup'].includes(this.state) || (this._receivedBumpT || 0) > G.time) return false;
-    const other = G.players.get(m.id), at = other?.bodyPos || other?.pos;
-    if (!at || !Array.isArray(m.v) || m.v.length !== 3 || !m.v.every(Number.isFinite)) return false;
-    const dx = this.pos.x - at.x, dz = this.pos.z - at.z, distance = Math.hypot(dx, dz);
-    const speed = Math.min(9, Math.hypot(m.v[0], m.v[2]));
-    if (distance > 1.8 || Math.abs(this.pos.y - at.y) > 1.2 || speed < 4.2 || dx * m.v[0] + dz * m.v[2] < -.1) return false;
-    this._receivedBumpT = G.time + 1;
-    const direction = new THREE.Vector3(m.v[0], 0, m.v[2]).normalize();
-    // caminando no pasa nada; corriendo te lleva puesto (trastabillás); solo a una velocidad bestial (poción de
-    // velocidad + carrera) te voltea
-    if (speed > 8.6) this.knockout(.9, m.id, direction.multiplyScalar(Math.min(4.5, speed * .45)).setY(.55));
-    else this.stun(.3 + speed * .03, direction.multiplyScalar(1.2 + speed * .25));
-    return true;
-  }
-
-  _crowdNpcs(dt, sep, ns) {
-    const mySp = Math.hypot(this.velocity.x, this.velocity.y);
     for (const n of G.allNpcs?.() || []) {
-      if (!n.standing || !n.vel) continue;
-      let dx = this.pos.x - n.pos.x, dz = this.pos.z - n.pos.z;
-      let d = Math.hypot(dx, dz);
-      const R = this.capsuleRadius + 0.3;
-      if (d > R + 0.1 || Math.abs(this.pos.y - n.pos.y) > 1.2) continue;
-      if (d < 1e-3) { dx = -Math.sin(this.yaw); dz = -Math.cos(this.yaw); d = 1; }
-      const nx = dx / d, nz = dz / d;
-      if (mySp > 5.2 && this.state === 'active' && (this._tripT || 0) < G.time) { this._trip(n.pos, n); continue; }
-      const vIn = Math.min(4, -(n.vel.x * nx + n.vel.z * nz));
-      if (vIn > 0.3) { this.push.x += nx * vIn * 4 * dt; this.push.y += nz * vIn * 4 * dt; }
-      if (d < R) { const v = Math.min(3.5, (R - d) * 12); sep.x += nx * v; sep.y += nz * v; ns.push(nx, nz); }
+      if (!n.standing || !n.vel || n.noCollide) continue;
+      touch(n, n.pos, n.vel, this.capsuleRadius + 0.3, (dvx, dvz, vn) => {
+        n.bal?.hit(dvx, dvz, { braceX: n.vel.x, braceZ: n.vel.z });
+        if (vn > 2.5 && (n._bumpSay || 0) < G.time) { n._bumpSay = G.time + 3; n.say?.(['¡Mirá por dónde vas!', '¡Pelotudo!', '¡Uh!', '¡Ey, cuidado!'][Math.floor(Math.random() * 4)], 2); n.vocal?.('hurt'); n.lookAt = this.pos.clone(); }
+      });
     }
+    if (cd.size > 64) cd.clear();
   }
-  // me lo llevé puesto corriendo: hombrazo (como en GTA): el otro trastabilla para donde iba yo y yo pierdo un poco
-  // de velocidad y me sacudo, sin caerme. Solo a una velocidad bestial el NPC se va al piso
-  _trip(at, npc) {
-    this._tripT = G.time + 1.2;
-    const sp = Math.hypot(this.velocity.x, this.velocity.y);
-    const fx = this.velocity.x / (sp || 1), fz = this.velocity.y / (sp || 1);
-    if (npc) {
-      if (sp > 8.6) npc.knockout?.(V1.set(fx * sp * 0.6, 1.0, fz * sp * 0.6), 2);
-      else if (npc.stagger) npc.stagger(V1.set(fx, 0, fz), 0.5 + sp * 0.06);
-      npc.say?.(['¡Mirá por dónde vas!', '¡Pelotudo!', '¡Uh!', '¡Ey, cuidado!'][Math.floor(Math.random() * 4)], 2); npc.vocal?.('hurt');
+
+  // compat: el aviso de choque que mandaban los clientes viejos (cada uno calcula ahora lo suyo con las dos velocidades)
+  receiveBodyBump() { return false; }
+
+  // Llevarse puesta una pared corriendo (el pecho frena de golpe: rebota y trastabilla para atrás, o se cae) y tropezar
+  // con algo bajo (un cajón, un banco, alguien tirado: los pies se traban y el cuerpo sigue: de cara al piso)
+  _wallsAndTrips(dt, wantX, wantZ, gotX, gotZ) {
+    if ((this._wallT || 0) > G.time) return;
+    const lostX = wantX - gotX, lostZ = wantZ - gotZ, lost = Math.hypot(lostX, lostZ);
+    // solo si lo que frenó fue el mundo (una pared, un auto): contra gente lo resuelve el choque de cuerpos
+    let wall = false;
+    for (let i = 0, n = this.controller.numComputedCollisions(); i < n; i++) {
+      const c = this.controller.computedCollision(i), k = G.phys.info(c?.collider)?.kind;
+      if ((k === 'world' || k === 'vehicle') && Math.abs(c.normal1?.y ?? 0) < 0.5) { wall = true; break; }
     }
+    if (wall && lost > 4.2 && this.grounded) {
+      this._wallT = G.time + 0.6;
+      const k = (lost - 3.2) * 0.75 / lost;
+      this.bal.hit(-lostX * k, -lostZ * k);
+      this.react.hit(PART.HEAD, -lostX / lost, -lostZ / lost, Math.min(1, lost * 0.12), 0, 0, this.yaw);
+      this.onEvent?.('move', { k: 'bonk' });
+      if (lost > 6 && !this.immortal) this.damage((lost - 6) * 3);
+      return;
+    }
+    const sp = Math.hypot(gotX, gotZ);
+    if (sp < 3.4 || !this.grounded) return;
+    const fx = gotX / sp, fz = gotZ / sp, look = 0.32 + sp * 0.05;
+    const notMe = (c) => { const i = G.phys.info(c); return i && i.kind !== 'me' && i.kind !== 'player' && i.kind !== 'gib'; };
+    const low = G.phys.raycast(this.pos.x, this.pos.y + 0.22, this.pos.z, fx, 0, fz, look, TRIP_GROUPS, null, notMe);
+    if (!low) return;
+    const high = G.phys.raycast(this.pos.x, this.pos.y + 0.75, this.pos.z, fx, 0, fz, look + 0.15, TRIP_GROUPS, null, notMe);
+    if (high) return; // es una pared: eso lo maneja lo de arriba
+    // un escalón (lo sube el controlador) no es tropiezo: solo algo de 35-65 cm (un cajón, un banco) o un cuerpo tirado
+    const body = low.info?.kind === 'remote' || low.info?.kind === 'bag';
+    if (!body) {
+      const top = G.phys.raycast(low.x + fx * 0.12, this.pos.y + 0.9, low.z + fz * 0.12, 0, -1, 0, 1.0, TRIP_GROUPS, null, notMe);
+      const h = top ? top.y - this.pos.y : 0;
+      if (h < 0.35 || h > 0.65) return;
+    }
+    this._wallT = G.time + 1.0;
+    this.bal.hit(fx * sp * 0.62, fz * sp * 0.62, { feet: true });
     this.onEvent?.('move', { k: 'bump' });
-    this.velocity.multiplyScalar(0.55);
-    this._flinch(V2.set(-fx, 0, -fz), 0.5);
-    if (sp > 7.5) this.stun(0.3, V2.set(-fx * 0.8, 0, -fz * 0.8));
   }
 
   // Aviso al otro jugador de que mi mano/pie/arma le pegó (él valida y decide el daño)
@@ -1154,24 +1158,18 @@ export class LocalPlayer {
       if (harmless || s < 0.6) { if (dmg > 0 && s > 0.3) this._vocal('hurt'); return; }
       this.standUp();
     }
-    const bal = prof?.bal ?? 1.2, push = prof?.push ?? 1.2;
-    // equilibrio: cada golpe que entra lo gasta (la cabeza más) y se recupera solo. Al piso se va por acumulación
-    // (una ráfaga), por un golpe tremendo o por un auto: una piña o una patada sueltas te hacen trastabillar, no
-    // volar como un muñeco (estilo GTA: el cuerpo acusa, da pasos para no caerse y sigue)
-    if (!harmless && !self) this.balance -= (dmg * (part === PART.HEAD ? 1.5 : 0.8) + s * 9) * bal;
-    const fall = !self && ((!blocked && !harmless && part === PART.HEAD && s > 1.6) || s > (hit.src === 'remote' || hit.src === 'npc' ? 2.3 : 2.1) || (hit.src === 'vehicle' && s > 0.5) || this.balance <= 0);
-    if (fall) {
-      this.balance = 60;
-      if (!harmless) this._vocal('scream');
-      // cae con el golpe, sin salir volando (antes una piña que noqueaba lo mandaba a 4 m)
-      const body = hit.src === 'remote' || hit.src === 'npc';
-      this.knockout(body ? 1.3 + s * 0.7 : 1.8 + s * 1.2, by, V2.copy(dir).multiplyScalar((1.1 + s * 1.4) * push).setY(0.5 + s * 0.4));
+    // el golpe empuja el centro de masa (game/balance.js): según cuánto, se inclina, trastabilla o se cae; los golpes
+    // seguidos se suman. Aparte, un golpe tremendo en la cabeza noquea (no es equilibrio: se apaga)
+    const push = prof?.push ?? (hit.src === 'vehicle' ? 3.2 : kind === 'bullet' ? 0.45 : 1.1);
+    if (!self && !blocked && !harmless && part === PART.HEAD && s > 1.6) {
+      this._vocal('scream');
+      this.knockout(1.3 + s * 0.7, by, V2.copy(dir).multiplyScalar(1.2 + s * 0.9).setY(0.4));
       return;
     }
-    // trastabillar: el cuerpo se va con el golpe y da unos pasos para no caerse (más cuanto más fuerte)
-    if (s > 0.45 && !blocked && !self) this.stun(0.3 + s * 0.28, V2.copy(dir).multiplyScalar((1.6 + s * 2.2) * push));
-    else if (blocked) { this.push.x += dir.x * 0.8; this.push.y += dir.z * 0.8; }
-    else if (s > 0.12 && !self) { this.push.x += dir.x * s * 1.6; this.push.y += dir.z * s * 1.6; }
+    if (!self) {
+      const dv = (blocked ? 0.35 : 1) * s * 1.55 * push;
+      this.bal.hit(dir.x * dv, dir.z * dv, { braceX: this.velocity.x, braceZ: this.velocity.y });
+    }
     // un golpe de verdad te hace soltar a quien tenías agarrado
     if (s > 0.7 && !blocked && !harmless) for (const sd of ['l', 'r']) if (this.hands[sd].joint === PLAYER_GRIP) this.release(sd, false);
     // cada golpe que entra tiene su quejido (fuerte: grito); un empujón fuera de la pelea, un quejido igual
@@ -2369,7 +2367,16 @@ export class LocalPlayer {
       const pk = Math.exp(-4.5 * dt);
       this.push.multiplyScalar(pk);
       this._crowd(dt);
-      let mx = this.velocity.x + this.push.x + this._gripV.x, mz = this.velocity.y + this.push.y + this._gripV.y;
+      // equilibrio: trastabillando el cuerpo viaja con el empujón (los pasos los dan las piernas); si no lo frena, al piso
+      const br = this.bal.update(dt, { drunk: this.drunk, limp: !!legGone, crouch: this.crouching, guard: this.guard });
+      if (br.mode === 'fall' && st !== 'getup') {
+        this._vocal('scream');
+        const fsp = Math.hypot(br.fx, br.fz);
+        this.knockout(1.1 + fsp * 0.25, this.lastHitBy, V2.set(br.fx, 0.35 + fsp * 0.05, br.fz));
+        return;
+      }
+      if (br.mode === 'stagger') { this.state = 'stun'; this.stunT = Math.max(this.stunT, 0.12); }
+      let mx = this.velocity.x + this.push.x + this._gripV.x + br.mx, mz = this.velocity.y + this.push.y + this._gripV.y + br.mz;
       // encimado con alguien: no puedo seguir metiéndome (se anula lo que va hacia él) y me separo
       const ns = this._sepN;
       for (let i = 0; i < ns.length; i += 2) {
@@ -2408,6 +2415,7 @@ export class LocalPlayer {
       }
       if (desired.y > 0 && mv.y < desired.y - 0.002) this.vy = 0;
       this.speed = Math.hypot(nx - tr.x, nz - tr.z) / dt;
+      if (st === 'active' && !mo.dive && !mo.slideT) this._wallsAndTrips(dt, mx, mz, (nx - tr.x) / dt, (nz - tr.z) / dt);
       // dive contra una pared: te la comés (el tropezón de siempre, ahora solo si te lo ganaste)
       if (mo.dive === 1 && mo.diveT > 0.08 && this.speed < mo.v * 0.35) {
         this._endDive();
@@ -2494,6 +2502,15 @@ export class LocalPlayer {
       if (Math.abs(px) + Math.abs(pz) > 1e-3) {
         J[1].quaternion.multiply(Q1.setFromEuler(E1.set(px, 0, pz)));
         J[2].quaternion.multiply(Q1.setFromEuler(E1.set(-px * 0.5, 0, -pz * 0.5)));
+      }
+      // equilibrio: el cuerpo se va con el empujón (la cadera un poco, el torso más) y vuelve (game/balance.js)
+      const bl = this.bal;
+      if (bl && Math.abs(bl.leanX) + Math.abs(bl.leanZ) > 1e-3) {
+        const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
+        const lf = bl.leanX * fx + bl.leanZ * fz, ls = bl.leanX * fz - bl.leanZ * fx;
+        J[0].quaternion.multiply(Q1.setFromEuler(E1.set(lf * 0.35, 0, ROLL * ls * 0.35)));
+        J[1].quaternion.multiply(Q1.setFromEuler(E1.set(lf * 0.75, 0, ROLL * ls * 0.75)));
+        J[2].quaternion.multiply(Q1.setFromEuler(E1.set(-lf * 0.35, 0, -ROLL * ls * 0.3)));
       }
       // cayendo de un salto: caderas y rodillas ceden, el torso se inclina un poco adelante
       if (this.land > 1e-3 && this.grounded) {
