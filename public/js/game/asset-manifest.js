@@ -4,7 +4,7 @@ const P = 'assets/props/';
 
 export const ASSET_MANIFEST = {
   // ---------------------------------------------------------------- objetos físicos (tipos de PROP_DEFS)
-  chair: { url: P + 'plastic_monobloc_chair_01.glb', height: 0.86 },
+  chair: { url: P + 'painted_wooden_chair_01.glb', height: 0.9 }, // silla de bar de madera pintada (antes la de plástico de jardín)
   stool: { url: P + 'bar_chair_round_01.glb', height: 0.75 },
   bottle: { url: P + 'wine_bottles_01.glb', height: 0.3, glass: 0x2c5a2e },
   bat: { url: P + 'baseball_bat.glb', length: 0.86, center: false },

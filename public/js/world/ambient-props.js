@@ -351,6 +351,77 @@ function cineDetails(world) {
   }
 }
 
+// el bar El Cortacésped por dentro: era un galpón de ladrillo con piso vacío. Zócalo de madera con moldura, carteles
+// de neón, guirnaldas de lamparitas de lado a lado, un televisor con el partido sobre la barra y un tablero de dardos.
+function neonTex(text, color, sub = '') {
+  return canvasTex('neon_' + text, 512, 192, (g, w, h) => {
+    g.clearRect(0, 0, w, h);
+    g.font = `bold ${sub ? 70 : 88}px "Arial Black", Arial`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (const [blur, a] of [[28, 0.55], [12, 0.8], [0, 1]]) { g.shadowColor = color; g.shadowBlur = blur; g.fillStyle = blur ? color : '#fff6ee'; g.globalAlpha = a; g.fillText(text, w / 2, sub ? h * 0.4 : h / 2); }
+    if (sub) { g.font = 'bold 40px Arial'; g.shadowBlur = 14; g.fillStyle = color; g.fillText(sub, w / 2, h * 0.8); }
+  });
+}
+function tvTex() {
+  return canvasTex('tv_match', 256, 144, (g, w, h) => {
+    g.fillStyle = '#2f7a34'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? '#2a7030' : '#338238'; g.fillRect(i * w / 8, 0, w / 8, h); }
+    g.strokeStyle = 'rgba(255,255,255,0.8)'; g.lineWidth = 2; g.strokeRect(10, 14, w - 20, h - 28); g.beginPath(); g.moveTo(w / 2, 14); g.lineTo(w / 2, h - 14); g.stroke(); g.beginPath(); g.arc(w / 2, h / 2, 18, 0, TAU); g.stroke();
+    const r = mkr(9); for (let i = 0; i < 14; i++) { g.fillStyle = i < 7 ? '#d8d8f0' : '#c82828'; g.fillRect(30 + r() * (w - 60), 26 + r() * (h - 52), 3, 5); }
+    g.fillStyle = 'rgba(0,0,0,0.6)'; g.fillRect(8, 6, 92, 16); g.fillStyle = '#fff'; g.font = 'bold 12px Arial'; g.fillText('DES 2 - 1 CHA  67\'', 12, 18);
+  });
+}
+function dartTex() {
+  return canvasTex('dartboard', 256, 256, (g) => {
+    g.translate(128, 128);
+    g.fillStyle = '#111'; g.beginPath(); g.arc(0, 0, 124, 0, TAU); g.fill();
+    for (let i = 0; i < 20; i++) { const a0 = (i / 20) * TAU - TAU / 40, a1 = a0 + TAU / 20; for (const [r0, r1, c] of [[16, 70, i % 2 ? '#e8dcb8' : '#181412'], [70, 78, i % 2 ? '#2a7a2a' : '#b82020'], [78, 98, i % 2 ? '#e8dcb8' : '#181412'], [98, 106, i % 2 ? '#2a7a2a' : '#b82020']]) { g.fillStyle = c; g.beginPath(); g.arc(0, 0, r1, a0, a1); g.arc(0, 0, r0, a1, a0, true); g.fill(); } }
+    g.fillStyle = '#2a7a2a'; g.beginPath(); g.arc(0, 0, 16, 0, TAU); g.fill(); g.fillStyle = '#b82020'; g.beginPath(); g.arc(0, 0, 7, 0, TAU); g.fill();
+  });
+}
+function barDetails(world) {
+  const b = new Builder(world.phys), X0 = 95.15, X1 = 122.85, Z0 = -41.85, Z1 = -20.15, H = 1.05;
+  const lightAt = (x, y, z, color, intensity, distance, priority) => world.pool?.add({ position: new THREE.Vector3(x, y, z), color: new THREE.Color(color), intensity, distance, decay: 1.7, visible: true, priority, base: intensity });
+  // zócalo de madera con moldura arriba (muro norte entero, este entero y oeste sin la puerta)
+  const panel = (x, z, len, along) => {
+    if (along === 'x') { b.box('woodDark', x, H / 2, z, len, H, 0.05, { collide: false, noShadow: true }); b.box('oldWood', x, H + 0.03, z, len, 0.06, 0.09, { collide: false, noShadow: true }); }
+    else { b.box('woodDark', x, H / 2, z, 0.05, H, len, { collide: false, noShadow: true }); b.box('oldWood', x, H + 0.03, z, 0.09, 0.06, len, { collide: false, noShadow: true }); }
+  };
+  panel((X0 + X1) / 2, Z1 - 0.03, X1 - X0, 'x');
+  panel(X1 - 0.03, -26.5, 12.6, 'z');
+  for (const [za, zb] of [[Z0 + 0.4, -32.2], [-27.8, Z1]]) panel(X0 + 0.03, (za + zb) / 2, zb - za, 'z');
+  // guirnaldas de lamparitas que cruzan el salón (caen en curva entre las vigas)
+  const bulbs = [], wires = [];
+  for (const z of [-38, -33, -28, -23.5]) {
+    const n = 26, sag = 0.55;
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, x = X0 + 0.3 + t * (X1 - X0 - 0.6), y = 4.55 - sag * 4 * t * (1 - t);
+      if (i < n) { const t2 = (i + 1) / n, x2 = X0 + 0.3 + t2 * (X1 - X0 - 0.6), y2 = 4.55 - sag * 4 * t2 * (1 - t2); const g = new THREE.CylinderGeometry(0.004, 0.004, Math.hypot(x2 - x, y2 - y), 3); g.rotateZ(PI / 2 - Math.atan2(y2 - y, x2 - x)); g.translate((x + x2) / 2, (y + y2) / 2, z); wires.push(g); }
+      if (i % 2 === 0 && i > 0 && i < n) { const g = new THREE.SphereGeometry(0.035, 8, 6); g.translate(x, y - 0.06, z); bulbs.push(g); }
+    }
+  }
+  for (const g of wires) b.geo('black', g);
+  for (const g of bulbs) b.geo('bulb', g);
+  for (const [x, z] of [[102, -33], [116, -28]]) lightAt(x, 4.2, z, 0xffc070, 2.5, 12, 0.8);
+  // televisor colgado sobre la barra, con el partido
+  const tx = 109, tz = -41.6;
+  b.box('black', tx, 3.15, tz + 0.12, 1.5, 0.88, 0.08, { collide: false });
+  b.box('iron', tx, 3.75, tz + 0.06, 0.06, 0.4, 0.06, { collide: false, noShadow: true });
+  decal(world.scene, tvTex(), tx, 3.15, tz + 0.17, 1.38, 0.78, 0, 0, 1, 0, 1, { toneMapped: false });
+  // tablero de dardos en el muro norte, con su marco y tres dardos clavados
+  decal(world.scene, dartTex(), 98.5, 1.75, Z1 - 0.06, 0.48, 0.48, 0, 0, -1, 0, 1);
+  b.cylinder('woodDark', 98.5, 1.75, Z1 - 0.04, 0.3, 0.3, 0.03, 20, { rx: PI / 2, collide: false, noShadow: true });
+  for (const [dx, dy] of [[0.03, 0.05], [-0.07, -0.02], [0.1, -0.09]]) b.cylinder('chrome', 98.5 + dx, 1.75 + dy, Z1 - 0.13, 0.004, 0.006, 0.14, 4, { rx: PI / 2, collide: false, noShadow: true });
+  b.finish(world.scene);
+  // carteles de neón (luz propia, sin sombra) y un poco de su color en la pared
+  for (const [text, col, sub, x, y, z, nx, nz, w] of [
+    ['BIRRA FRÍA', '#ff3a6a', '', 103.5, 2.9, Z1 - 0.05, 0, -1, 2.2], ['ABIERTO', '#3affd8', 'HASTA QUE SE VAYA EL ÚLTIMO', 117, 2.85, Z1 - 0.05, 0, -1, 2.0],
+    ['BOX', '#ffd23a', 'LOS JUEVES · APUESTAS EN LA BARRA', X1 - 0.05, 2.9, -30.5, -1, 0, 2.4],
+  ]) {
+    decal(world.scene, neonTex(text, col, sub), x, y, z, w, w * 0.375, nx, 0, nz, 0, 1, { toneMapped: false, blending: THREE.AdditiveBlending });
+    lightAt(x + nx * 0.4, y, z + nz * 0.4, col, 1.6, 4, 0.5);
+  }
+}
+
 // las fachadas del bar y del cine que dan a la ruta: zócalo, pilastras, cornisa, vitrinas con afiches y ventanas encendidas
 function facades(world) {
   const b = new Builder(world.phys), X = 94.8;
@@ -405,6 +476,7 @@ export function dressAmbient(world) {
     done = true;
     for (const z of ZONES) { try { dressZone(world, z, rnd); } catch (e) { console.warn('ambiente', z.id, e); } }
     try { cineDetails(world); } catch (e) { console.warn('ambiente cine', e); }
+    try { barDetails(world); } catch (e) { console.warn('ambiente bar', e); }
     try { autocine(world, rnd); } catch (e) { console.warn('ambiente autocine', e); }
     try { facades(world); } catch (e) { console.warn('ambiente fachadas', e); }
     try { flushDecals(world.scene); } catch (e) { console.warn('ambiente calcomanías', e); }
