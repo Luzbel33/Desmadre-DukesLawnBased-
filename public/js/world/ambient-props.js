@@ -49,11 +49,29 @@ function graffiti(i) { // etiquetas de aerosol con goteo
     for (let k = 0; k < 7; k++) { const x = w * 0.2 + r() * w * 0.6, len = 10 + r() * 40; g.fillStyle = col; g.fillRect(x, h * 0.7, 3, len); g.beginPath(); g.arc(x + 1.5, h * 0.7 + len, 3, 0, TAU); g.fill(); }
   });
 }
+// mancha de aceite: centro casi negro y moteado que se desvanece en el borde, con un brillo tornasolado apenas visible
 function oilTex() {
-  return canvasTex('oil', 128, 128, (g, w, h) => { const r = mkr(5); for (let i = 0; i < 9; i++) { const gr = g.createRadialGradient(64 + (r() - 0.5) * 30, 64 + (r() - 0.5) * 30, 2, 64, 64, 18 + r() * 40); gr.addColorStop(0, `rgba(5,6,8,${0.3 + r() * 0.3})`); gr.addColorStop(1, 'rgba(5,6,8,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); } });
+  return canvasTex('oil', 256, 256, (g, w, h) => {
+    const r = mkr(5);
+    for (let i = 0; i < 14; i++) { const cx = 128 + (r() - 0.5) * 90, cy = 128 + (r() - 0.5) * 90, rr = 20 + r() * 70; const gr = g.createRadialGradient(cx, cy, 2, cx, cy, rr); gr.addColorStop(0, `rgba(8,8,10,${0.22 + r() * 0.25})`); gr.addColorStop(0.7, `rgba(10,10,12,${0.08 + r() * 0.1})`); gr.addColorStop(1, 'rgba(10,10,12,0)'); g.fillStyle = gr; g.beginPath(); g.ellipse(cx, cy, rr, rr * (0.6 + r() * 0.4), r() * 3, 0, TAU); g.fill(); }
+    for (let i = 0; i < 5; i++) { const a = r() * TAU, rr = 40 + r() * 50; g.strokeStyle = `hsla(${200 + r() * 140},60%,55%,0.05)`; g.lineWidth = 3 + r() * 6; g.beginPath(); g.ellipse(128, 128, rr, rr * 0.75, a, 0, TAU); g.stroke(); }
+    for (let i = 0; i < 400; i++) { g.fillStyle = `rgba(0,0,0,${r() * 0.12})`; g.fillRect(r() * w, r() * h, 2, 2); }
+  });
 }
+// hojas secas: hojitas con punta y nervadura, marrones y oliva apagados, algunas enteras y otras rotas
 function leavesTex() {
-  return canvasTex('leaves', 128, 128, (g, w, h) => { const r = mkr(11); for (let i = 0; i < 46; i++) { g.save(); g.translate(r() * w, r() * h); g.rotate(r() * TAU); g.fillStyle = ['#8a4a14', '#a86a1a', '#6a3a10', '#7a5a18', '#5a3010'][Math.floor(r() * 5)]; g.beginPath(); g.ellipse(0, 0, 3 + r() * 5, 2 + r() * 3, 0, 0, TAU); g.fill(); g.restore(); } });
+  return canvasTex('leaves', 256, 256, (g, w, h) => {
+    const r = mkr(11), cols = ['#5e3a1a', '#6b4720', '#4d3216', '#5a5226', '#73502a', '#3e2a14', '#6a5a30'];
+    for (let i = 0; i < 70; i++) {
+      const s = 5 + r() * 9;
+      g.save(); g.translate(20 + r() * (w - 40), 20 + r() * (h - 40)); g.rotate(r() * TAU);
+      g.fillStyle = cols[Math.floor(r() * cols.length)]; g.globalAlpha = 0.65 + r() * 0.35;
+      g.beginPath(); g.moveTo(-s, 0); g.quadraticCurveTo(-s * 0.2, -s * 0.55, s, 0); g.quadraticCurveTo(-s * 0.2, s * 0.55, -s, 0); g.fill();
+      g.strokeStyle = 'rgba(30,18,8,0.5)'; g.lineWidth = 0.8; g.beginPath(); g.moveTo(-s * 1.3, 0); g.lineTo(s * 0.9, 0); g.stroke();
+      if (r() < 0.3) { g.globalCompositeOperation = 'destination-out'; g.beginPath(); g.arc(r() * s - s / 2, (r() - 0.5) * s * 0.4, s * 0.3, 0, TAU); g.fill(); g.globalCompositeOperation = 'source-over'; }
+      g.restore();
+    }
+  });
 }
 function puddleTex() {
   return canvasTex('puddle', 128, 128, (g, w, h) => { const gr = g.createRadialGradient(64, 64, 4, 64, 64, 62); gr.addColorStop(0, 'rgba(52,66,86,0.8)'); gr.addColorStop(0.7, 'rgba(30,40,56,0.62)'); gr.addColorStop(1, 'rgba(18,24,34,0)'); g.fillStyle = gr; g.beginPath(); g.ellipse(64, 64, 60, 46, 0, 0, TAU); g.fill(); g.fillStyle = 'rgba(190,210,235,0.16)'; g.beginPath(); g.ellipse(52, 56, 22, 9, -0.3, 0, TAU); g.fill(); });
@@ -80,7 +98,11 @@ function flushDecals(scene) {
     for (const g of e.geos) g.dispose();
     if (!merged) continue;
     merged.computeBoundingSphere();
-    const m = new THREE.Mesh(merged, new THREE.MeshBasicMaterial({ map: e.tex, transparent: true, opacity: e.opacity, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, ...e.op }));
+    // con luz (de noche las hojas y los afiches no brillan solos); solo las vitrinas iluminadas (toneMapped: false) no
+    const lit = e.op.toneMapped !== false;
+    const props = { map: e.tex, transparent: true, opacity: e.opacity, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, ...e.op };
+    const m = new THREE.Mesh(merged, lit ? new THREE.MeshStandardMaterial({ roughness: e.tex === TEX.get('puddle') ? 0.08 : 0.92, metalness: 0, ...props }) : new THREE.MeshBasicMaterial(props));
+    m.receiveShadow = lit;
     m.renderOrder = 2; m.matrixAutoUpdate = false; m.userData.static = true;
     scene.add(m);
   }
@@ -164,6 +186,7 @@ function tireStack(b, x, y, z, rnd) {
 }
 function cone(b, x, y, z, rnd) {
   const g = new THREE.ConeGeometry(0.14, 0.62, 10); g.translate(x, y + 0.31, z); b.geo('orange', g);
+  G.phys.cylinder(x, y + 0.3, z, 0.3, 0.13, { mat: 'wood' });
   b.cylinder('white', x, y + 0.33, z, 0.08, 0.1, 0.1, 10, { collide: false, noShadow: true });
   b.box('black', x, y + 0.02, z, 0.36, 0.04, 0.36, { collide: false, noShadow: true });
   return 0.5;
@@ -223,7 +246,7 @@ function logPile(b, x, y, z, yaw, rnd) {
   return 1.6;
 }
 function paperLitter(b, x, y, z, rnd) {
-  for (let i = 0; i < 4 + Math.floor(rnd() * 5); i++) { b.box(['white', 'cream', 'yellow', 'darkgray'][Math.floor(rnd() * 4)], x + (rnd() - 0.5) * 1.6, y + 0.006, z + (rnd() - 0.5) * 1.6, 0.14 + rnd() * 0.1, 0.004, 0.1 + rnd() * 0.12, { yaw: rnd() * TAU, collide: false, noShadow: true }); }
+  for (let i = 0; i < 2 + Math.floor(rnd() * 3); i++) { b.box(['linen', 'dustSheet', 'cream', 'darkgray'][Math.floor(rnd() * 4)], x + (rnd() - 0.5) * 1.6, y + 0.006, z + (rnd() - 0.5) * 1.6, 0.14 + rnd() * 0.1, 0.004, 0.1 + rnd() * 0.12, { yaw: rnd() * TAU, collide: false, noShadow: true }); }
   for (let i = 0; i < 2; i++) b.cylinder('red', x + (rnd() - 0.5) * 1.4, y + 0.04, z + (rnd() - 0.5) * 1.4, 0.035, 0.03, 0.08, 8, { collide: false, noShadow: true, rz: PI / 2, yaw: rnd() * TAU }); // latitas
   return 0.2;
 }
@@ -232,19 +255,19 @@ function paperLitter(b, x, y, z, rnd) {
 // rect = [x0, z0, x1, z1]; items: [kind, cuántos]; mode: 'open' (campo abierto), 'wall' (pegado a la pared)
 const ZONES = [
   { id: 'callejon', rect: [96, -19.6, 122.6, -12.4], items: [['bags', 5, 'wall'], ['crates', 3, 'wall'], ['barrels', 2, 'wall'], ['litter', 8, 'open'], ['puddle', 5, 'open'], ['leaves', 5, 'open'], ['poster', 9, 'wallv'], ['tag', 7, 'wallv']] },
-  { id: 'estacionamiento', rect: [96, 19, 122.6, 43.5], items: [['oil', 14, 'open'], ['cone', 7, 'open'], ['puddle', 6, 'open'], ['leaves', 6, 'open'], ['litter', 8, 'open'], ['bags', 2, 'wall'], ['poster', 3, 'wallv']] },
+  { id: 'estacionamiento', rect: [96, 19, 122.6, 43.5], items: [['oil', 14, 'open'], ['cone', 4, 'wall'], ['puddle', 6, 'open'], ['leaves', 6, 'open'], ['litter', 8, 'open'], ['bags', 2, 'wall'], ['poster', 3, 'wallv']] },
   { id: 'bar_afuera', rect: [93, -44, 124.6, -42], items: [['bench', 2, 'wall'], ['litter', 3, 'open'], ['puddle', 3, 'open'], ['poster', 6, 'wallv'], ['tag', 3, 'wallv']] },
   { id: 'bar_dentro', posters: [0, 3, 6, 1, 5, 2], rect: [96, -41, 122, -21], items: [['poster', 9, 'wallv'], ['crates', 2, 'wall'], ['barrels', 2, 'wall'], ['litter', 6, 'open'], ['bags', 1, 'wall']] },
   { id: 'cine_dentro', posters: [4, 4, 5, 6, 1], rect: [96, -11, 122, 15], items: [['poster', 10, 'wallv'], ['litter', 14, 'open'], ['bags', 2, 'wall']] },
   { id: 'cine_afuera', posters: [4, 6, 0, 2], rect: [93, -13, 124.5, 17], items: [['bench', 2, 'wall'], ['poster', 6, 'wallv'], ['tag', 4, 'wallv'], ['litter', 5, 'open'], ['puddle', 4, 'open'], ['leaves', 4, 'open']] },
   { id: 'galpon', rect: [-101, -21, -87, -7], items: [['tires', 5, 'wall'], ['barrels', 4, 'wall'], ['crates', 3, 'wall'], ['oil', 8, 'open'], ['litter', 5, 'open'], ['poster', 4, 'wallv']] },
-  { id: 'galpon_afuera', rect: [-106, -26, -82, -3], items: [['cone', 4, 'open'], ['oil', 6, 'open'], ['leaves', 6, 'open'], ['puddle', 4, 'open'], ['litter', 6, 'open'], ['tires', 3, 'wall'], ['barrels', 2, 'wall']] },
+  { id: 'galpon_afuera', rect: [-106, -26, -82, -3], items: [['cone', 3, 'wall'], ['oil', 6, 'open'], ['leaves', 6, 'open'], ['puddle', 4, 'open'], ['litter', 6, 'open'], ['tires', 3, 'wall'], ['barrels', 2, 'wall']] },
   { id: 'pasto', rect: [-68, -48, 68, 56], items: [['rock', 16, 'open'], ['bush', 12, 'open'], ['flowers', 22, 'open'], ['logs', 3, 'open']] },
   { id: 'entrada', rect: [-34, -78, 34, -52], items: [['rock', 8, 'open'], ['bush', 6, 'open'], ['flowers', 12, 'open'], ['leaves', 12, 'open'], ['puddle', 8, 'open'], ['bench', 3, 'open'], ['litter', 6, 'open']] },
   { id: 'castillo_afuera', rect: [-56, -140, 56, -80], items: [['rock', 10, 'open'], ['bush', 6, 'open'], ['leaves', 10, 'open']] },
   { id: 'ruta_vereda', rect: [92.3, -118, 94.4, 118], items: [['bin', 14, 'open'], ['hydrant', 7, 'open'], ['benchRoad', 11, 'open'], ['mailbox', 5, 'open'], ['litter', 24, 'open'], ['leaves', 10, 'open'], ['puddle', 8, 'open']] },
   { id: 'ruta_calzada', rect: [82.4, -118, 89.6, 118], items: [['puddle', 18, 'open'], ['oil', 12, 'open'], ['leaves', 10, 'open'], ['litter', 8, 'open']] },
-  { id: 'autocine', rect: [-19, 62, 19, 77], items: [['litter', 8, 'open'], ['puddle', 3, 'open'], ['leaves', 4, 'open'], ['cone', 3, 'open']] },
+  { id: 'autocine', rect: [-19, 62, 19, 77], items: [['litter', 8, 'open'], ['puddle', 3, 'open'], ['leaves', 4, 'open']] },
   { id: 'cancha', rect: [-34, 12, 34, 58], items: [['litter', 10, 'open'], ['bench', 4, 'open'], ['cone', 6, 'open'], ['leaves', 6, 'open']] },
 ];
 
@@ -279,6 +302,7 @@ function dressZone(world, zone, rnd) {
         else if (kind === 'crates') crateStack(b, gx, g2.y, gz, yaw, rnd);
         else if (kind === 'barrels') barrelGroup(b, gx, g2.y, gz, rnd);
         else if (kind === 'tires') tireStack(b, gx, g2.y, gz, rnd);
+        else if (kind === 'cone') { cone(b, gx, g2.y, gz, rnd); if (rnd() < 0.6) cone(b, gx + w.nz * 0.4, g2.y, gz - w.nx * 0.4, rnd); } // contra la pared, de a uno o dos (no en el medio del playón)
         else if (kind === 'bench') bench(b, gx, g2.y, gz, Math.atan2(w.nx, w.nz));
         placed++; continue;
       }

@@ -57,8 +57,15 @@ Fuente única de trabajo pendiente.
       pilastras, cornisa, vitrinas de afiches, ventanas), apliques y carteles de SALIDA en el cine, postes con parlante
       en el autocine; calcomanías fusionadas por textura (pocas llamadas de dibujo).
 - [ ] Falta: banderas con colisiones mal (no ubicadas), puerta secreta del cementerio (qué hay del otro lado), interiores
-      aún oscuros (bar, cine, castillo), arsenal del Búnker (variedad y arreglos), armas (animaciones, apuntar, variedad),
-      NPC de las peleas del Búnker que solo peleen si el jugador las activa, LOD de personajes (30-45k tris cada NPC).
+      aún oscuros (bar, cine, castillo), NPC de las peleas del Búnker que solo peleen si el jugador las activa, LOD de
+      personajes (30-45k tris cada NPC). El bar por dentro sigue con mucho piso vacío y sillas de plástico; el cine, oscuro.
+- [ ] Tanda 14/10 (probar jugando y ajustar): combate con equilibrio (trastabillar en vez de ragdoll, patada frontal y
+      pisotón mirando abajo, cabezazo), movimiento estilo GTA (el cuerpo gira hacia donde vas; de costado solo peleando,
+      apuntando o en 1ª persona), armas de fuego (click der. apunta, click izq. dispara, R recarga; pistola, revólver,
+      escopeta, subfusil en el Arsenal), vómito apuntable, colisiones automáticas de lo que estaba parado en el piso
+      (world/auto-colliders.js), NPC que chocan entre ellos, torres y piso de arriba del castillo vestidos
+      (world/tower-tops.js). El banco de la explanada se movió en shared/mapdata.js: **hay que reiniciar el servidor**
+      (los asientos los conoce el servidor).
 
 ### Mapa
 - [ ] Expandir el mapa: más lugares, edificios, ascensores, abismos con pinchos, una prisión, más atmósfera,
@@ -105,7 +112,9 @@ Fuente única de trabajo pendiente.
 
 - [ ] Probar con dos jugadores: patadas y agarre entre jugadores (contra NPC ya andan) y que el nombre del Diablo
       invisible no se vea (el código ya lo oculta).
-- [ ] Apuntado real: mano y arma siguiendo la mira, poses coherentes, animaciones y retroceso.
+- [ ] Armas de fuego: probar con dos jugadores (daño por perdigón, trazadoras remotas, fogonazo). Faltan: pose de
+      apuntar de los demás vista desde afuera (hoy llega la pose del cuerpo por la red, el arma usa el aimPitch), mira de
+      hierro en primera persona (el arma queda baja), rifle/francotirador con mira.
 - [ ] Cuchillos y armas blancas que puedan quedar clavados en jugadores, piso o madera y luego sacarse/agarrarse.
 - [ ] Revisar interacción entre armas clavadas, ragdoll, gore y props de red para que no se dupliquen ni desaparezcan.
 
