@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { G, rng } from '../core/G.js';
 import { Builder } from './builder.js';
-import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeVertices, mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const HAS_DOM = typeof document !== 'undefined';
 const PI = Math.PI, TAU = PI * 2;
@@ -58,13 +58,33 @@ function leavesTex() {
 function puddleTex() {
   return canvasTex('puddle', 128, 128, (g, w, h) => { const gr = g.createRadialGradient(64, 64, 4, 64, 64, 62); gr.addColorStop(0, 'rgba(52,66,86,0.8)'); gr.addColorStop(0.7, 'rgba(30,40,56,0.62)'); gr.addColorStop(1, 'rgba(18,24,34,0)'); g.fillStyle = gr; g.beginPath(); g.ellipse(64, 64, 60, 46, 0, 0, TAU); g.fill(); g.fillStyle = 'rgba(190,210,235,0.16)'; g.beginPath(); g.ellipse(52, 56, 22, 9, -0.3, 0, TAU); g.fill(); });
 }
+// Las calcomanías se juntan por textura y se fusionan en una sola malla cada una (cientos de afiches, manchas y hojas: pocas
+// llamadas de dibujo). La opacidad y las opciones del material son las de la primera de cada grupo.
+const BATCH = new Map();
+const DUMMY = new THREE.Object3D();
 function decal(scene, tex, x, y, z, w, h, nx, ny, nz, rot = 0, opacity = 1, op = {}) {
-  if (!tex) return null;
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, ...op }));
-  m.position.set(x + nx * 0.012, y + ny * 0.012, z + nz * 0.012);
-  if (ny > 0.5) { m.rotation.x = -PI / 2; m.rotation.z = rot; } else m.rotation.y = Math.atan2(nx, nz);
-  m.renderOrder = 2; scene.add(m);
-  return m;
+  if (!tex) return;
+  const g = new THREE.PlaneGeometry(w, h);
+  DUMMY.position.set(x + nx * 0.012, y + ny * 0.012, z + nz * 0.012);
+  DUMMY.rotation.set(0, 0, 0);
+  if (ny > 0.5) { DUMMY.rotation.x = -PI / 2; DUMMY.rotation.z = rot; } else DUMMY.rotation.y = Math.atan2(nx, nz);
+  DUMMY.updateMatrix(); g.applyMatrix4(DUMMY.matrix);
+  const key = tex.uuid + '|' + opacity + '|' + JSON.stringify(op);
+  let e = BATCH.get(key);
+  if (!e) BATCH.set(key, e = { tex, opacity, op, geos: [] });
+  e.geos.push(g);
+}
+function flushDecals(scene) {
+  for (const e of BATCH.values()) {
+    const merged = mergeGeometries(e.geos, false);
+    for (const g of e.geos) g.dispose();
+    if (!merged) continue;
+    merged.computeBoundingSphere();
+    const m = new THREE.Mesh(merged, new THREE.MeshBasicMaterial({ map: e.tex, transparent: true, opacity: e.opacity, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, ...e.op }));
+    m.renderOrder = 2; m.matrixAutoUpdate = false; m.userData.static = true;
+    scene.add(m);
+  }
+  BATCH.clear();
 }
 
 // ---------------------------------------------------------------- sondeos con la física
@@ -295,5 +315,6 @@ export function dressAmbient(world) {
     for (const z of ZONES) { try { dressZone(world, z, rnd); } catch (e) { console.warn('ambiente', z.id, e); } }
     try { cineDetails(world); } catch (e) { console.warn('ambiente cine', e); }
     try { facades(world); } catch (e) { console.warn('ambiente fachadas', e); }
+    try { flushDecals(world.scene); } catch (e) { console.warn('ambiente calcomanías', e); }
   };
 }
