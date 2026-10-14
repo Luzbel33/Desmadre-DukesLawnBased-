@@ -439,7 +439,7 @@ F('billboard', 122.6, 0, 31, -Math.PI / 2, { w: 14, h: 5 });
 F('grill', -17.2, 0, -98.4, 0, { id: 'parrilla' });
 F('cooler', -20.2, 0, -99.0, 0, { id: 'cooler_fogon' });
 F('bong', -16.4, 0, -86.4, 0, { id: 'bong_fogon' });
-F('bench', -12, 0, -60, 0, { len: 3, seats: 2 });
+F('bench', -6.5, 0, -60, 0, { len: 3, seats: 2 }); // corrido: en -12 quedaba metido en el puesto de manzanas de la feria
 F('bench', 12, 0, -60, 0, { len: 3, seats: 2 });
 
 // --- Decoración (modelos CC0 de Poly Haven; si no cargan, no se dibujan)

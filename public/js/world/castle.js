@@ -595,6 +595,8 @@ export class Castle {
     for (const x of [-5, 5]) { add(x - 0.8, x + 0.8, 5, 8.6, hall); add(x - 0.8, x + 0.8, 11, 14.6, hall); }
     for (const x of [-20.5, -12.5]) add(x - 0.75, x + 0.75, 5, 8.6, dining);
     for (const x of [12.5, 20.5]) add(x - 0.75, x + 0.75, 5, 8.6, library);
+    // piso de arriba: la ventana de la cartografía y la de la armería (los cuartos de adelante)
+    for (const x of [-17.3, 17.3]) add(x - 0.65, x + 0.65, 11.2, 14.4, { bmin: new THREE.Vector3(x < 0 ? -23.8 : 8.3, 10.3, -114.75), bmax: new THREE.Vector3(x < 0 ? -8.3 : 23.8, 16, IZ1) });
     // la puerta principal (si la cierran de golpe, se corta)
     add(-1.8, 1.8, F0, 8.7, hall, false, { on: () => (this.doors.keep?.open ?? 1) > 0.5 });
   }

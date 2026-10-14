@@ -7,6 +7,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Builder, getMat } from './builder.js';
 import { assetBounds } from '../game/assets.js';
 import { whenAsset } from '../game/assets.js';
+import { dressTowerTop } from './tower-tops.js';
 
 const HAS_DOM = typeof document !== 'undefined';
 const PI = Math.PI, TAU = PI * 2;
@@ -656,7 +657,7 @@ function torres(d) {
     const def = T.find((q) => Math.abs(q.x - t.x) < 1 && Math.abs(q.z - t.z) < 1);
     if (!def || !t.corner) continue;
     towerRoom(d, t, def.kind, rnd);
-    towerDeck(d, t, def.kind, rnd);
+    dressTowerTop(d, t, def.kind); // la parte de arriba (nivel 11): world/tower-tops.js
   }
 }
 // ubica algo contra el muro de la torre, en el ángulo a (0 = +z, hacia el centro apunta hacia adentro) y a distancia r del centro
@@ -755,41 +756,6 @@ function towerRoom(d, t, kind, rnd) {
   }
   b.finish(d.scene);
 }
-function towerDeck(d, t, kind, rnd) {
-  const c = d.c, b = new Builder(d.phys), Y = 11, R = 3.95;
-  const at2 = (a, r) => [t.x + Math.sin(a) * r, t.z + Math.cos(a) * r];
-  // el hueco de la escalera ocupa ~3.2 rad antes de la salida: dejamos libres esos ángulos
-  const finish = t.stair?.finish ?? 0;
-  const blocked = (a) => { const before = (((finish - a) % TAU) + TAU) % TAU; return before < 3.5 || before > TAU - 0.5; };
-  const free = []; for (let i = 0; i < 24; i++) { const a = i * TAU / 24; if (!blocked(a) && !(t.corner && t.stair && false)) free.push(a); }
-  const pick = () => free.splice(Math.floor(rnd() * free.length), 1)[0];
-  if (!free.length) { b.finish(d.scene); return; }
-  // un brasero de hierro con fuego y leña, una cuerda con trapos secándose, un barril de agua de lluvia y un telescopio
-  const bA = pick(); if (bA !== undefined) {
-    const [x, z] = at2(bA, 3.4);
-    b.cylinder('iron', x, 0.85 + Y, z, 0.4, 0.15, 0.16, 12, { collide: false }); b.cylinder('iron', x, 0.45 + Y, z, 0.05, 0.05, 0.8, 6, { collide: true });
-    for (const s of [-1, 0, 1]) b.box('iron', x + s * 0.18, 0.2 + Y, z, 0.03, 0.4, 0.03, { rz: s * 0.4, collide: false });
-    c.fire3d(x, Y + 0.95, z, 0.24, 0.24, 0.55, { intensity: 0.9 });
-    c.light(x, Y + 1.4, z, 0xff9a40, 4.2, 9, { flicker: true, priority: 1.0 });
-  }
-  const dA = pick(); if (dA !== undefined) { const [x, z] = at2(dA, R); b.cylinder('woodDark', x, Y + 0.5, z, 0.34, 0.38, 1.0, 10, { collide: true }); b.cylinder('water', x, Y + 0.98, z, 0.3, 0.3, 0.02, 10, { collide: false, noShadow: true }); b.cylinder('iron', x, Y + 0.7, z, 0.385, 0.385, 0.04, 10, { collide: false }); }
-  if (kind === 'armeria' || kind === 'guardia') {
-    // un cañón en la almena apuntando afuera y una pila de balas
-    const a = pick();
-    if (a !== undefined) { const [x, z] = at2(a, R - 0.2); ground(d, 'c_cannon', x, Y, z, a + PI, 1, { solid: true }); const [bx, bz] = at2(a + 0.35, R - 0.5); for (let i = 0; i < 6; i++) { const s = new THREE.SphereGeometry(0.1, 8, 6); s.translate(bx + (i % 3) * 0.19 - 0.19, Y + 0.1 + Math.floor(i / 3) * 0.16, bz + Math.floor(i / 3) * 0.1); b.geo('iron', s); } }
-  } else if (kind === 'alquimia') {
-    // un telescopio de bronce sobre trípode, hacia el cielo, y un reloj de sol roto
-    const a = pick();
-    if (a !== undefined) { const [x, z] = at2(a, R - 0.3); for (const s of [-1, 0, 1]) b.cylinder('woodDark', x + s * 0.18, Y + 0.55, z + (s ? 0.1 : -0.15), 0.015, 0.02, 1.1, 4, { rz: s * 0.18, collide: false }); const tube = new THREE.CylinderGeometry(0.07, 0.05, 1.1, 10); tube.rotateZ(PI / 2 - 0.9); tube.rotateY(a); tube.translate(x, Y + 1.25, z); b.geo('bronze', tube); d.phys.cylinder(x, Y + 0.6, z, 0.6, 0.3, { mat: 'wood' }); }
-  } else {
-    // calabozo: jaula colgante con un esqueleto y cuervos
-    const a = pick();
-    if (a !== undefined) { const [x, z] = at2(a, R - 0.4); b.box('woodDark', x, Y + 1.3, z, 0.2, 2.6, 0.2, { collide: true }); b.box('woodDark', x + Math.sin(a + PI / 2) * 0.5, Y + 2.55, z + Math.cos(a + PI / 2) * 0.5, 0.15, 0.15, 1.0, { yaw: a + PI / 2, collide: false }); for (let k = 0; k < 6; k++) { const ang = k * TAU / 6, [bx, bz] = [x + Math.sin(a + PI / 2) * 1.0 + Math.sin(ang) * 0.3, z + Math.cos(a + PI / 2) * 1.0 + Math.cos(ang) * 0.3]; b.cylinder('iron', bx, Y + 1.9, bz, 0.012, 0.012, 0.8, 4, { collide: false, noShadow: true }); } ground(d, 'c_skel_sit', x + Math.sin(a + PI / 2) * 1.0, Y + 1.5, z + Math.cos(a + PI / 2) * 1.0, a, 0.55, { solid: false }); }
-  }
-  b.finish(d.scene);
-  void kind;
-}
-
 // ================================================================ FACHADA DEL TORREÓN
 // decales de lluvia, musgo y escudo; portal con frontón sobre la puerta, postigos entreabiertos, enredaderas y
 // gárgolas bajo la cornisa. La cara de adelante está en z = -103 (mira al sur, hacia la plaza).

@@ -194,6 +194,7 @@ const COLORMATS = {
   blackWood: { color: 0x221a14, rough: 0.8 },
   banner: { color: 0x4a0c12, rough: 0.95 },
   linen: { color: 0xb8b0a0, rough: 0.95 },
+  dustSheet: { color: 0x6a6357, rough: 1 }, // sábana vieja y polvorienta sobre muebles guardados
   moss: { color: 0x34421e, rough: 1 },
   ash: { color: 0x24201e, rough: 1 },
   ember: { color: 0x2a0c06, emissive: 0xff4a10, emissiveIntensity: 2.4 },

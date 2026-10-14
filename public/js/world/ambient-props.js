@@ -97,6 +97,28 @@ function freeAround(x, y, z, r) {
   for (let a = 0; a < 6.3; a += 1.05) { const h = G.phys.raycast(x, y + 0.45, z, Math.sin(a), 0, Math.cos(a), r, undefined, null, NOT_ME); if (h) return false; }
   return true;
 }
+// Lo que ocupa cada cosa (medias medidas x, z y alto). Antes solo se tiraban seis rayos desde el centro: un banco de
+// 1.7 m quedaba con la punta metida en el mostrador del puesto de manzanas, en una silla o en una pared
+const FOOT = {
+  bench: [0.9, 0.36, 0.95], benchRoad: [0.9, 0.36, 0.95], bin: [0.3, 0.3, 0.95], hydrant: [0.2, 0.2, 0.85], mailbox: [0.28, 0.2, 1.4],
+  rock: [0.55, 0.55, 0.6], bush: [0.75, 0.75, 1.0], flowers: [0.6, 0.6, 0.4], logs: [0.95, 0.35, 0.5], crates: [0.45, 0.45, 1.1],
+  barrels: [0.5, 0.5, 1.0], bags: [0.5, 0.5, 0.7], tires: [0.4, 0.4, 0.9], cone: [0.2, 0.2, 0.65], litter: [0.8, 0.8, 0.15],
+};
+let RESERVED = null; // puntos de uso (X), asientos y puestos: ahí no se tira nada
+function reserved(world) {
+  if (RESERVED) return RESERVED;
+  RESERVED = [];
+  for (const list of [world.interact, world.castle?.interact, world.club?.interact]) for (const it of list || []) if (it?.p) RESERVED.push([it.p[0], it.p[2], (it.r || 1.5) * 0.7 + 0.4]);
+  for (const st of world.seats || []) RESERVED.push([st.x, st.z, 0.9]);
+  return RESERVED;
+}
+function fits(world, kind, x, y, z, yaw, pad = 0.1) {
+  const f = FOOT[kind];
+  if (!f) return true;
+  for (const [rx, rz, rr] of reserved(world)) if ((x - rx) ** 2 + (z - rz) ** 2 < (rr + Math.max(f[0], f[1])) ** 2) return false;
+  // la caja del objeto (con 10 cm de aire alrededor), apenas levantada del piso: no puede tocar nada
+  return !G.phys.overlapBox?.(x, y + 0.07 + f[2] / 2, z, f[0] + pad, f[2] / 2, f[1] + pad, yaw, undefined, NOT_ME);
+}
 // una pared cerca (a menos de maxD) en alguna de las cuatro direcciones: { nx, nz, d, x, z } con la normal hacia afuera
 function wallNear(x, y, z, maxD) {
   let best = null;
@@ -252,6 +274,7 @@ function dressZone(world, zone, rnd) {
         const gx = w.x + w.nx * 0.55, gz = w.z + w.nz * 0.55;
         const g2 = groundAt(gx, gz); if (!g2 || Math.abs(g2.y - y) > 0.2 || !freeAround(gx, g2.y, gz, 0.55)) continue;
         const yaw = Math.atan2(w.nx, w.nz) + (rnd() - 0.5) * 0.5;
+        if (!fits(world, kind, gx + w.nx * 0.08, g2.y, gz + w.nz * 0.08, kind === 'bench' ? Math.atan2(w.nx, w.nz) : yaw, 0.02)) continue;
         if (kind === 'bags') trashBags(b, gx, g2.y, gz, rnd);
         else if (kind === 'crates') crateStack(b, gx, g2.y, gz, yaw, rnd);
         else if (kind === 'barrels') barrelGroup(b, gx, g2.y, gz, rnd);
@@ -262,6 +285,7 @@ function dressZone(world, zone, rnd) {
       // campo abierto
       if (!freeAround(x, y, z, kind === 'bush' ? 1.0 : 0.6)) continue;
       const yaw = rnd() * TAU;
+      if (!fits(world, kind, x, y, z, kind === 'benchRoad' || kind === 'mailbox' ? -PI / 2 : yaw)) continue;
       if (kind === 'oil') decal(world.scene, oilTex(), x, y, z, 0.8 + rnd() * 1.6, 0.8 + rnd() * 1.4, 0, 1, 0, rnd() * TAU, 0.85);
       else if (kind === 'puddle') decal(world.scene, puddleTex(), x, y, z, 1.0 + rnd() * 2.2, 0.8 + rnd() * 1.4, 0, 1, 0, rnd() * TAU, 0.9, { depthTest: true });
       else if (kind === 'leaves') decal(world.scene, leavesTex(), x, y, z, 1.4 + rnd() * 1.6, 1.4 + rnd() * 1.6, 0, 1, 0, rnd() * TAU, 0.95);
@@ -352,7 +376,8 @@ export function dressAmbient(world) {
   world.update = (...a) => {
     prev?.(...a);
     if (done) return;
-    if (++frames < 150 || !G.phys?.world) return;
+    // ya adentro (con los objetos sueltos de la sala cargados: sillas, mesas...), así nada cae encima de ellos
+    if (!G.inGame || !G.phys?.world || ++frames < 90) return;
     done = true;
     for (const z of ZONES) { try { dressZone(world, z, rnd); } catch (e) { console.warn('ambiente', z.id, e); } }
     try { cineDetails(world); } catch (e) { console.warn('ambiente cine', e); }

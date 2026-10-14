@@ -111,6 +111,15 @@ export class Physics {
     };
   }
 
+  // ¿Hay algo dentro de esta caja (centro, medias medidas, giro en Y)? Devuelve el primer collider o null
+  overlapBox(x, y, z, hx, hy, hz, yaw = 0, filterGroups = groups(0xffff, GR.WORLD | GR.PROP | GR.VEHICLE), predicate = null) {
+    const shape = new RAPIER.Cuboid(hx, hy, hz);
+    const rot = { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) };
+    let found = null;
+    this.world.intersectionsWithShape({ x, y, z }, rot, shape, (c) => { found = c; return false; }, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, filterGroups, null, null, predicate);
+    return found;
+  }
+
   // Punto más cercano de la superficie de un collider (aunque el punto esté adentro): { x, y, z, inside, info }
   nearest(x, y, z, filterGroups, predicate = null) {
     const pr = this.world.projectPoint({ x, y, z }, false, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, filterGroups, null, null, predicate);

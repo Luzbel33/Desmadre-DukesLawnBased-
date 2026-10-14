@@ -400,6 +400,7 @@ export class Decor {
     for (const [name, mats] of Object.entries(L)) {
       this.instances('c_candles', mats, { shadow: false, filter: (o) => o.name === name || o.name === name + '_wick' });
     }
+    this._candleSets = null; // se vacía: si se llama de nuevo no dibuja dos veces las mismas velas
   }
 
   // ---------------------------------------------------------------- cementerio: lápidas, cruces, epitafios, tumbas frescas
@@ -501,14 +502,22 @@ export class Decor {
       [8.6, 2.9, -104.5, Math.PI / 4, 1.2], [23.5, 2.9, -104.5, -Math.PI / 4, 1.3], [8.6, 2.9, -125.5, Math.PI * 0.75, 1.4], [23.5, 2.9, -125.5, -Math.PI * 0.75, 1.2],
       [12.6, 2.9, -112.4, 0.3, 0.8], [16.6, 2.9, -116.6, 2.1, 0.9],
     ];
+    this._webMat = mat;
+    this.cobwebs(spots);
+  }
+  // telarañas en [x, y, z, yaw, tamaño] (yaw: hacia dónde se abre la esquina); roomId: se dibujan solo en ese cuarto
+  cobwebs(spots, roomId = null) {
+    if (!HAS_DOM || !spots.length) return;
+    if (!this._webMat) this._webMat = new THREE.MeshBasicMaterial({ map: tex(cobwebCanvas()), transparent: true, alphaTest: 0.08, side: THREE.DoubleSide, depthWrite: false, color: 0x8a8a86 });
     const g = new THREE.PlaneGeometry(1, 1);
     g.translate(0.5, -0.5, 0);
-    const im = new THREE.InstancedMesh(g, mat, spots.length);
+    const im = new THREE.InstancedMesh(g, this._webMat, spots.length);
     spots.forEach(([x, y, z, yaw, s], i) => {
       Q.setFromEuler(new THREE.Euler(0.35, yaw, 0, 'YXZ'));
       im.setMatrixAt(i, M.compose(V.set(x, y, z), Q, S.set(s, s, s)));
     });
     im.renderOrder = 3;
+    if (roomId != null) im.userData.castleRoom = roomId;
     this.scene.add(im);
   }
 
@@ -931,6 +940,14 @@ export class Decor {
 
   // ---------------------------------------------------------------- niebla baja (capas con ruido que se mueven)
   _fog() {
+    const layers = [
+      [0, 0.35, -104, 124, 70], [0, 0.8, -104, 124, 70],
+      [0, 0.45, -66, 60, 22], [34, 0.6, -117, 18, 26], [-34, 0.5, -117, 18, 26], [16, 0.35, -114, 16, 22],
+    ];
+    for (const [x, y, z, w, d] of layers) this.fogLayer(x, y, z, w, d);
+  }
+  _fogMaterial() {
+    if (this._fogMat) return this._fogMat;
     const U = { uT: { value: 0 } };
     const mat = new THREE.ShaderMaterial({
       uniforms: U, transparent: true, depthWrite: false, fog: false,
@@ -953,18 +970,20 @@ export class Decor {
           #include <colorspace_fragment>
         }`,
     });
-    const layers = [
-      [0, 0.35, -104, 124, 70], [0, 0.8, -104, 124, 70],
-      [0, 0.45, -66, 60, 22], [34, 0.6, -117, 18, 26], [-34, 0.5, -117, 18, 26], [16, 0.35, -114, 16, 22],
-    ];
-    for (const [x, y, z, w, d] of layers) {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat);
-      m.rotation.x = -Math.PI / 2;
-      m.position.set(x, y, z);
-      m.renderOrder = 1;
-      this.scene.add(m);
-    }
+    this._fogMat = mat;
     this.anim.push((t) => { U.uT.value = t; });
+    return mat;
+  }
+  // una capa de niebla baja (rasante) de w x d en (x, y, z); con radio, un disco (pisos de las torres)
+  fogLayer(x, y, z, w, d, { round = false, roomId = null } = {}) {
+    if (!HAS_DOM) return null;
+    const m = new THREE.Mesh(round ? new THREE.CircleGeometry(w / 2, 24) : new THREE.PlaneGeometry(w, d), this._fogMaterial());
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(x, y, z);
+    m.renderOrder = 1;
+    if (roomId != null) m.userData.castleRoom = roomId;
+    this.scene.add(m);
+    return m;
   }
 
   // ---------------------------------------------------------------- murciélagos (vuelan en círculos alrededor de las torres)

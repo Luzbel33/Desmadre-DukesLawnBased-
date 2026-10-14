@@ -113,7 +113,7 @@ function bookAssets() {
 // filas de libros en los estantes. Cada estante se describe en su propio marco (x a lo ancho, z hacia adelante) y se
 // lleva al mundo con su posición y giro; `levels` son las alturas de las tablas y `gap` el alto libre sobre cada una.
 const SHELF = { levels: [0.13, 0.47, 0.81, 1.16, 1.55, 2.01], gap: [0.29, 0.29, 0.3, 0.34, 0.41, 0.44], half: 0.7, back: -0.31 };
-function shelfBooks(d, list, r, parent = null, roomId = null) {
+export function shelfBooks(d, list, r, parent = null, roomId = null) {
   if (!HAS_DOM) return;
   const { g, mat } = bookAssets();
   const items = [];
@@ -231,7 +231,7 @@ function curtains(d, cx, cz, along, dir, y0, y1, gapHalf, r) {
 }
 
 // ---------------------------------------------------------------- bolsas de harina o granos (lathe abollado)
-function sackGeo(r, s = 1) {
+export function sackGeo(r, s = 1) {
   const prof = [[0.0, 0.0], [0.2, 0.01], [0.29, 0.1], [0.32, 0.22], [0.28, 0.36], [0.2, 0.46], [0.11, 0.52], [0.13, 0.57], [0.06, 0.62], [0.0, 0.6]];
   const g = new THREE.LatheGeometry(prof.map(([x, y]) => new THREE.Vector2(x * 0.85 * s, y * 0.85 * s)), 12);
   const p = g.attributes.position;
@@ -240,7 +240,7 @@ function sackGeo(r, s = 1) {
   return g;
 }
 // algo cubierto con una sábana: caja abollada que cae hacia los bordes
-function sheetGeo(w, h, dp, r) {
+export function sheetGeo(w, h, dp, r) {
   const g = new THREE.BoxGeometry(w, h, dp, 10, 5, 8);
   const p = g.attributes.position;
   for (let i = 0; i < p.count; i++) {
@@ -276,6 +276,7 @@ export function dressCastle(d) {
   dressCrypt(ctx);
   dressYard(ctx);
   dressUpperCastle(ctx);
+  upperAtmosphere(ctx);
   dressTowerRooms(ctx);
   c.b.finish(d.scene);
 }
@@ -385,6 +386,53 @@ function dressUpperCastle({ d, c, r, col }) {
   wallChart(d, 'archive', 4.8, y + 2.9, -125.66, 0, 2.0, 1.65, 125);
   upperPlaque(d, 'EL CONDE NUNCA DUERME', 4.8, y + 1.03, -124.82, 0, 125);
   B.flush();
+}
+
+// ---------------------------------------------------------------- piso de arriba: que no sean salones vacíos
+// Telarañas en los rincones del techo, niebla rasante, apliques con vela en los muros, ramilletes de velas en el piso
+// y bultos contra las paredes (cajones, baúles, cuadros apoyados, cosas tapadas con sábanas). Cada bulto se pone solo
+// si su caja está libre (no se mete en un mueble, una puerta ni la escalera).
+const UPPER = [
+  { id: 121, x0: -23.8, x1: -8.3, z0: -125.8, z1: -115.25 },
+  { id: 122, x0: -23.8, x1: -8.3, z0: -114.75, z1: -104.2 },
+  { id: 123, x0: 8.3, x1: 23.8, z0: -125.8, z1: -115.25 },
+  { id: 124, x0: 8.3, x1: 23.8, z0: -114.75, z1: -104.2 },
+  { id: 125, x0: -7.7, x1: 7.7, z0: -125.8, z1: -117.1 },
+];
+function upperAtmosphere({ d, c, r, col }) {
+  const y = UPPER_FLOOR, B = new Batch(d), webs = [];
+  const free = (x, z, hx, hz, h, yaw = 0) => !d.phys.overlapBox?.(x, y + 0.06 + h / 2, z, hx + 0.12, h / 2, hz + 0.12, yaw);
+  const sheets = [];
+  for (const R of UPPER) {
+    const cx = (R.x0 + R.x1) / 2, cz = (R.z0 + R.z1) / 2;
+    // telarañas en las cuatro esquinas de arriba y en el medio de los muros largos
+    for (const [x, z, yaw] of [[R.x0 + 0.05, R.z1 - 0.05, PI / 4], [R.x1 - 0.05, R.z1 - 0.05, -PI / 4], [R.x0 + 0.05, R.z0 + 0.05, PI * 0.75], [R.x1 - 0.05, R.z0 + 0.05, -PI * 0.75]]) webs.push([x, 15.85, z, yaw, 1.3 + r() * 0.9]);
+    d.fogLayer?.(cx, y + 0.35, cz, R.x1 - R.x0 - 0.4, R.z1 - R.z0 - 0.4);
+    // apliques de hierro con una vela en los dos muros cortos (a la altura de la mano levantada)
+    for (const [x, nx] of [[R.x0 + 0.06, 1], [R.x1 - 0.06, -1]]) {
+      const z = cz + (r() - 0.5) * 2;
+      if (!free(x + nx * 0.2, z, 0.12, 0.12, 2.2)) continue;
+      c.deco('iron', x, y + 2.05, z, 0.06, 0.32, 0.12, { mask: false });
+      c.deco('iron', x + nx * 0.1, y + 2.02, z, 0.2, 0.03, 0.03, { mask: false });
+      d.candle(x + nx * 0.2, y + 2.04, z, 0.14, 0.025, 0);
+    }
+    // bultos contra los muros largos: probamos lugares y quedan los que entran
+    const kinds = ['crates', 'chest', 'sheet', 'frames', 'candles', 'sheet', 'chest', 'candles'];
+    let placed = 0;
+    for (let k = 0; k < 40 && placed < 5; k++) {
+      const north = r() < 0.5, x = R.x0 + 1 + r() * (R.x1 - R.x0 - 2), z = north ? R.z1 - 0.45 : R.z0 + 0.45, yaw = north ? PI : 0;
+      const kind = kinds[placed % kinds.length];
+      if (kind === 'crates' && free(x, z, 0.45, 0.25, 1.1, yaw)) { for (let i = 0; i < 2 + (r() < 0.5 ? 1 : 0); i++) B.add('c_crate', x + (r() - 0.5) * 0.05, y + i * 0.35, z, yaw + (r() - 0.5) * 0.2, 1, { shadow: true }); col(x, y, z, 0.82, 1.05, 0.4, yaw); placed++; }
+      else if (kind === 'chest' && free(x, z, 0.5, 0.28, 0.65, yaw)) { B.add('c_chest', x, y, z, yaw, 1, { shadow: true }); col(x, y, z, 0.96, 0.62, 0.52, yaw); B.add('c_candlestick', x + 0.3, y + 0.62, z, 0, 1); c.flame(x + 0.3, y + 0.62 + 0.25, z, 0.03, 0.08, {}); placed++; }
+      else if (kind === 'sheet' && free(x, z, 0.75, 0.45, 1.3, yaw)) { const g = sheetGeo(1.4, 1.1 + r() * 0.5, 0.8, r); g.rotateY(yaw); g.translate(x, y, z); sheets.push(g); col(x, y, z, 1.4, 1.2, 0.8, yaw); placed++; }
+      else if (kind === 'frames' && free(x, z, 0.55, 0.2, 0.9, yaw)) { B.add('c_frame', x, y + 0.02, z + (north ? 0.12 : -0.12), yaw, 1, { rx: north ? 0.18 : -0.18 }); B.add('c_frame2', x + 0.25, y + 0.02, z + (north ? 0.05 : -0.05), yaw, 1, { rx: north ? 0.14 : -0.14 }); placed++; }
+      else if (kind === 'candles' && free(x, z, 0.3, 0.3, 0.4)) { d.candleCluster(x, y, z, 5, 0.22, 0.9); placed++; }
+    }
+  }
+  d.cobwebs?.(webs);
+  if (sheets.length) for (const g of sheets) c.b.geo('dustSheet', g);
+  B.flush();
+  d._flushCandles?.();
 }
 
 function castleMap(d, x, y, z, w, h) {
@@ -504,9 +552,7 @@ function dressTowerRooms({ d, c, col }) {
       c.box('keepStone', px, y + 0.25, pz, 0.68, 0.5, 0.65, { mask: false });
       B.add('c_candlestick', px + 0.43, y, pz, 0, 1); c.flame(px + 0.43, y + 0.25, pz, 0.04, 0.11, {});
     }
-    B.add('c_oillamp', x, 11.05, z, 0, 1.5);
-    c.flame(x, 11.8, z, 0.055, 0.17, {});
-    c.light(x, 12, z, 0xffc78a, 5, 8, { flicker: true, priority: 1.5 });
+    // arriba (nivel 11) la viste world/castle-yard.js (towerDeck)
   }
   B.flush();
 }
