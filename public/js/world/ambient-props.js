@@ -153,6 +153,27 @@ function bench(b, x, y, z, yaw) { // el respaldo queda del lado -z local; yaw = 
   for (const k of [-0.7, 0.7]) b.box('iron', x + c * k, y + 0.22, z - sn * k, 0.07, 0.44, 0.46, { yaw, collide: false, noShadow: true });
   return 1.4;
 }
+function trashBin(b, x, y, z) {
+  b.cylinder('darkgray', x, y + 0.42, z, 0.27, 0.23, 0.84, 10, { collide: true });
+  b.cylinder('iron', x, y + 0.87, z, 0.29, 0.29, 0.05, 10, { collide: false, noShadow: true });
+  for (const yy of [0.2, 0.55]) b.cylinder('iron', x, y + yy, z, 0.275, 0.275, 0.025, 10, { collide: false, noShadow: true });
+  b.cylinder('black', x + 0.05, y + 0.92, z, 0.1, 0.1, 0.06, 6, { collide: false, noShadow: true });
+  return 0.7;
+}
+function hydrant(b, x, y, z) {
+  b.cylinder('red', x, y + 0.36, z, 0.1, 0.12, 0.72, 10, { collide: true });
+  const cap = new THREE.SphereGeometry(0.115, 10, 6, 0, TAU, 0, PI / 2); cap.translate(x, y + 0.72, z); b.geo('red', cap);
+  b.cylinder('chrome', x, y + 0.8, z, 0.03, 0.03, 0.06, 6, { collide: false, noShadow: true });
+  b.cylinder('chrome', x, y + 0.5, z, 0.05, 0.05, 0.34, 8, { collide: false, noShadow: true, rz: PI / 2 });
+  b.cylinder('red', x, y + 0.05, z, 0.15, 0.15, 0.1, 10, { collide: false, noShadow: true });
+  return 0.6;
+}
+function mailbox(b, x, y, z, yaw) {
+  b.cylinder('darkgray', x, y + 0.55, z, 0.04, 0.04, 1.1, 6, { collide: true });
+  b.box('fabricBlue', x, y + 1.2, z, 0.5, 0.3, 0.34, { yaw, collide: false });
+  b.box('white', x + Math.sin(yaw) * 0.18, y + 1.2, z + Math.cos(yaw) * 0.18, 0.28, 0.04, 0.02, { yaw, collide: false, noShadow: true });
+  return 0.6;
+}
 function rock(b, x, y, z, rnd, big = false) {
   const s = (big ? 0.5 : 0.25) + rnd() * (big ? 0.5 : 0.3);
   let g = mergeVertices(new THREE.IcosahedronGeometry(s, 2)); const p = g.attributes.position;
@@ -199,6 +220,8 @@ const ZONES = [
   { id: 'pasto', rect: [-68, -48, 68, 56], items: [['rock', 16, 'open'], ['bush', 12, 'open'], ['flowers', 22, 'open'], ['logs', 3, 'open']] },
   { id: 'entrada', rect: [-34, -78, 34, -52], items: [['rock', 8, 'open'], ['bush', 6, 'open'], ['flowers', 12, 'open'], ['leaves', 12, 'open'], ['puddle', 8, 'open'], ['bench', 3, 'open'], ['litter', 6, 'open']] },
   { id: 'castillo_afuera', rect: [-56, -140, 56, -80], items: [['rock', 10, 'open'], ['bush', 6, 'open'], ['leaves', 10, 'open']] },
+  { id: 'ruta_vereda', rect: [92.3, -118, 94.4, 118], items: [['bin', 14, 'open'], ['hydrant', 7, 'open'], ['benchRoad', 11, 'open'], ['mailbox', 5, 'open'], ['litter', 24, 'open'], ['leaves', 10, 'open'], ['puddle', 8, 'open']] },
+  { id: 'ruta_calzada', rect: [82.4, -118, 89.6, 118], items: [['puddle', 18, 'open'], ['oil', 12, 'open'], ['leaves', 10, 'open'], ['litter', 8, 'open']] },
   { id: 'autocine', rect: [-19, 62, 19, 77], items: [['litter', 8, 'open'], ['puddle', 3, 'open'], ['leaves', 4, 'open'], ['cone', 3, 'open']] },
   { id: 'cancha', rect: [-34, 12, 34, 58], items: [['litter', 10, 'open'], ['bench', 4, 'open'], ['cone', 6, 'open'], ['leaves', 6, 'open']] },
 ];
@@ -249,6 +272,10 @@ function dressZone(world, zone, rnd) {
       else if (kind === 'flowers') flowers(b, x, y, z, rnd);
       else if (kind === 'logs') logPile(b, x, y, z, yaw, rnd);
       else if (kind === 'bench') bench(b, x, y, z, yaw);
+      else if (kind === 'benchRoad') bench(b, x, y, z, -PI / 2);
+      else if (kind === 'bin') trashBin(b, x, y, z);
+      else if (kind === 'hydrant') hydrant(b, x, y, z);
+      else if (kind === 'mailbox') mailbox(b, x, y, z, -PI / 2);
       else if (kind === 'bags') trashBags(b, x, y, z, rnd);
       else if (kind === 'crates') crateStack(b, x, y, z, yaw, rnd);
       else if (kind === 'barrels') barrelGroup(b, x, y, z, rnd);
