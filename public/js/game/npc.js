@@ -26,7 +26,6 @@ const M4 = new THREE.Matrix4();
 // Grupos de la consulta: el miembro VEHICLE hace que la cápsula del jugador (que solo mira WORLD|VEHICLE) cuente.
 const MOVE_GROUPS = groups(GR.VEHICLE | GR.PAWN, GR.WORLD | GR.ME | GR.PAWN | GR.VEHICLE);
 let KCC = null;
-const notNpc = (c) => G.phys.info(c)?.kind !== 'npc';
 const Q1 = new THREE.Quaternion();
 const E1 = new THREE.Euler();
 const HAS_DOM = typeof document !== 'undefined';
@@ -547,7 +546,9 @@ export class Npc {
     const dx = this.pos.x - c.x, dz = this.pos.z - c.z, d2 = dx * dx + dz * dz;
     if (d2 < 1e-10 || d2 > 9) return; // quieto, o lo pusieron en otro lado de una (reaparecer, levantarse)
     if (!KCC) { KCC = G.phys.world.createCharacterController(0.02); KCC.setSlideEnabled?.(true); }
-    KCC.computeColliderMovement(this.pawn, { x: dx, y: 0, z: dz }, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, MOVE_GROUPS, notNpc);
+    // choca con los otros NPC también (antes se atravesaban entre ellos): solo se ignora su propia cápsula
+    this._notMe ||= (c) => c !== this.pawn;
+    KCC.computeColliderMovement(this.pawn, { x: dx, y: 0, z: dz }, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, MOVE_GROUPS, this._notMe);
     const m = KCC.computedMovement();
     this.pos.x = c.x + m.x; this.pos.z = c.z + m.z;
     this.blocked = Math.hypot(m.x - dx, m.z - dz) > 0.002;

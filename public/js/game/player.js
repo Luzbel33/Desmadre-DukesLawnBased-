@@ -144,7 +144,10 @@ function handWorld(rag, meta, side, out) {
   return out.copy(g).applyQuaternion(Q1.set(r.x, r.y, r.z, r.w)).add(V3.set(t.x, t.y, t.z));
 }
 
-const KCC_GROUPS = groups(GR.ME, GR.WORLD | GR.VEHICLE | GR.PAWN);
+// los objetos pesados (tambores, tachos) frenan la cápsula: antes se los atravesaba y solo los empujaban las piernas.
+// La consulta va como VEHICLE además de ME porque los objetos no filtran ME (y no hace falta que choquen con mi cuerpo)
+const KCC_GROUPS = groups(GR.ME | GR.VEHICLE, GR.WORLD | GR.VEHICLE | GR.PAWN | GR.PROP);
+const KCC_SOLID = (c) => { const i = G.phys.info(c); if (i?.kind !== 'prop') return true; const p = i.ref; return !!p && !p.heldBy && (p.mass || 0) >= 6; };
 // encimado con otro jugador: el controlador de Rapier no deja salir de una cápsula en la que ya está metido
 // (se traba para todos lados), así que mientras estamos encimados ese paso ignora a los jugadores
 const KCC_NO_PAWN = groups(GR.ME, GR.WORLD | GR.VEHICLE);
@@ -433,7 +436,7 @@ export class LocalPlayer {
         const hit = col.contactShape(new RAPIER.Capsule(size.capsuleHalf, size.capsuleRadius), standing, { x: 0, y: 0, z: 0, w: 1 }, 0);
         if (hit && hit.distance < -.003 && hit.normal1.y < .65) blocked = true;
         return !blocked;
-      }, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, KCC_GROUPS, this.collider, this.body);
+      }, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, KCC_GROUPS, this.collider, this.body, KCC_SOLID);
       if (blocked) return;
     }
     const oldY = this.bodyY;
@@ -2335,7 +2338,7 @@ export class LocalPlayer {
       }
       const desired = { x: (mx + this._sepV.x) * dt, y: this.vy * dt, z: (mz + this._sepV.y) * dt };
       // solo mundo y vehículos: sin filtro, el controlador chocaba con el propio ragdoll (piernas) y trababa el paso
-      this.controller.computeColliderMovement(this.collider, desired, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, ns.length ? KCC_NO_PAWN : KCC_GROUPS);
+      this.controller.computeColliderMovement(this.collider, desired, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, ns.length ? KCC_NO_PAWN : KCC_GROUPS, KCC_SOLID);
       const mv = this.controller.computedMovement();
       const tr = this.body.translation();
       // afuera del mapa solo se puede estar adentro del búnker (lo cierran sus paredes)
