@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { preloadHumans, HumanCharacter, MODELS } from '../public/js/char/human.js';
+import { preloadHumans, loadHuman, loadMask, HumanCharacter, MODELS } from '../public/js/char/human.js';
 import { Physics } from '../public/js/core/physics.js';
 import { PoseRig } from '../public/js/char/rig.js';
 import { Ragdoll } from '../public/js/game/ragdoll.js';
@@ -16,6 +16,7 @@ import { FireBreath, setBreathPhysics } from '../public/js/fx/breath.js';
 import { FireSet } from '../public/js/fx/fire.js';
 import { Flames } from '../public/js/fx/flame.js';
 import { OwnerPowers } from '../public/js/game/owner.js';
+import { loadMocap, MOCAP } from '../public/js/char/mocap.js';
 import { DEMON_FIRE as FIRE, fireShot } from '../public/js/shared/demon-fire.js';
 
 globalThis.self = globalThis;
@@ -36,7 +37,11 @@ GLTFLoader.prototype.loadAsync = async function(file) {
   json.copy(out, 20); bin.copy(out, 20 + json.length + padding);
   return this.parseAsync(out.buffer.slice(out.byteOffset, out.byteOffset + out.length), '');
 };
-try { await preloadHumans(); } finally { GLTFLoader.prototype.loadAsync = loadAsync; }
+try {
+  await preloadHumans();
+  for (const [key, model] of Object.entries(MODELS)) if (model.npc) assert.equal(await loadHuman(key), true, `${key}: shipped model loads`);
+  for (const mask of new Set(Object.values(MODELS).map(m=>m.mask).filter(Boolean))) assert.equal(await loadMask(mask),true,`${mask}: shipped mask loads`);
+} finally { GLTFLoader.prototype.loadAsync = loadAsync; }
 
 function bounds(ch) {
   ch.root.updateMatrixWorld(true);
@@ -49,6 +54,70 @@ function bounds(ch) {
   }
   return box;
 }
+
+test('mocap ankles follow the real rig, reset on actions and remain finite at 20 FPS', async () => {
+  const fetchBefore=globalThis.fetch;
+  globalThis.fetch=async()=>new Response(fs.readFileSync(new URL('../public/assets/anim/ual.json',import.meta.url)),{status:200});
+  const ch=new HumanCharacter({model:'eric'});
+  const rig=new PoseRig(ch.meta.jointRest,ch.meta.clavPivot,ch.meta.gripLocal);
+  try {
+    assert.equal(await loadMocap(),true);
+    for(let i=0;i<60;i++) {ch.animate({speed:3,grounded:true},1/20);ch.update(1/20);}
+    const foot=ch.bones.foot_l;
+    assert.ok(foot.quaternion.angleTo(ch.meta.feet.l.rest)>.05,'mocap ankle rotations are applied');
+    ch.animate({speed:0,grounded:true,action:'kick',actionT:.4},1/20);ch.update(1/20);
+    assert.equal(ch.anim.mcOn,false,'leg actions own their full pose');
+    assert.ok(foot.quaternion.angleTo(ch.meta.feet.l.rest)<1e-6,'the last walking ankle pose must not leak into kicks');
+    for(const speed of [0,1.4,4,7]) for(let i=0;i<45;i++) {
+      rig.animate({speed,grounded:true},1/20);
+      ch.applyWorldTransforms(rig.transforms(),rig.anim.mc.foot);ch.update(1/20);
+    }
+    bounds(ch);
+    assert.ok(foot.quaternion.angleTo(ch.meta.feet.l.rest)>.05,'the local-player world-pose path preserves ankles');
+    ch.applyWorldTransforms(rig.transforms());ch.update(1/20);
+    assert.ok(foot.quaternion.angleTo(ch.meta.feet.l.rest)<1e-6,'ragdolls start with neutral ankles');
+    ch.applyWorldTransforms(rig.transforms(),true);ch.update(1/20);
+    const soleUp=new THREE.Vector3(0,1,0).applyQuaternion(ch.meta.feet.l.bindW.clone().invert()).applyQuaternion(foot.getWorldQuaternion(new THREE.Quaternion()));
+    assert.ok(soleUp.y>.99,'remote grounded poses keep the soles horizontal');
+  } finally {ch.dispose();globalThis.fetch=fetchBefore;MOCAP.ready=false;MOCAP.clips=null;}
+});
+
+test('character culling sphere contains the current joints after movement and a wide fallen pose', () => {
+  const ch=new HumanCharacter({model:'eric'}), v=new THREE.Vector3(), inv=new THREE.Matrix4();
+  try {
+    ch.root.position.set(20,3,-10);ch.root.rotation.y=.8;
+    ch.joints[7].rotation.z=1.6;ch.joints[9].rotation.z=-1.6;
+    ch.joints[3].rotation.z=2;ch.joints[5].rotation.z=-2;
+    ch._cullSphere();
+    inv.copy(ch.skinned.matrixWorld).invert();
+    for(const joint of ch.joints) {
+      joint.getWorldPosition(v).applyMatrix4(inv);
+      assert.ok(ch.skinned.boundingSphere.containsPoint(v),'culling cannot hide an extended limb');
+    }
+    ch.root.position.x+=50;ch._cullSphere();
+    inv.copy(ch.skinned.matrixWorld).invert();
+    for(const joint of ch.joints)assert.ok(ch.skinned.boundingSphere.containsPoint(joint.getWorldPosition(v).applyMatrix4(inv)));
+  } finally {ch.dispose();}
+});
+
+test('every shipped player and NPC keeps finite connected skin across locomotion and full-body actions', async () => {
+  const fetchBefore=globalThis.fetch;
+  globalThis.fetch=async()=>new Response(fs.readFileSync(new URL('../public/assets/anim/ual.json',import.meta.url)),{status:200});
+  try {
+    assert.equal(await loadMocap(),true);
+    for(const model of Object.keys(MODELS)) {
+      const ch=new HumanCharacter({model});
+      try {
+        assert.equal(ch.meta.jointRest.length,11,model);
+        for(const state of [{speed:0},{speed:7},{speed:0,crouch:true},{speed:0,action:'kick',actionT:.4},{speed:0,emote:'dance2',emoteT:.7}]) {
+          for(let i=0;i<30;i++){ch.animate({...state,grounded:true},1/20);ch.update(1/20);}
+          const size=bounds(ch).getSize(new THREE.Vector3());
+          assert.ok(size.length()<5,`${model}: bounded skin for ${JSON.stringify(state)} (${size.toArray()})`);
+        }
+      } finally {ch.dispose();}
+    }
+  } finally {globalThis.fetch=fetchBefore;MOCAP.ready=false;MOCAP.clips=null;}
+});
 
 for (const key of ['galleta', 'diablo']) {
   test(`${key}: GLB skin, locomotion, grasp and independent instances`, () => {

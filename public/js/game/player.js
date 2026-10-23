@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { G, clamp, dampAngle, angleDiff } from '../core/G.js';
 import { RAPIER, GR, groups } from '../core/physics.js';
 import { HumanCharacter } from '../char/human.js';
+import { LEG_ACTIONS } from '../char/character.js';
 import { PoseRig } from '../char/rig.js';
 import { PoseContact } from './pose-contact.js';
 import { gripCandidate } from './grip-target.js';
@@ -2760,7 +2761,8 @@ export class LocalPlayer {
       }
     }
     this.char.flatFeet = this.crouching && this.grounded ? 1 : 0;
-    this.char.applyWorldTransforms(this._pose);
+    const feet = this.physMode === 'anim' && this.rig.anim.plantedFeet;
+    this.char.applyWorldTransforms(this._pose, feet && this.rig.anim.mcOn ? this.rig.anim.mc.foot : feet);
   }
 
   // Mis manos que tienen a alguien: su cuerpo dibujado (en MI pantalla) va pegado a mi mano en este cuadro
@@ -3037,7 +3039,7 @@ export class RemotePlayer {
     if (this.gripViews) this.gripViews.length = 0;
     if (pose) {
       this.char.flatFeet = s.ff ? 1 : 0;
-      this.char.applyWorldTransforms(pose);
+      this.char.applyWorldTransforms(pose, this.standing && s.g !== 0 && !s.em && !LEG_ACTIONS.has(s.ac));
       if (this.proxy.alive) {
         // teletransporte (respawn): mover sin arrastrar a nadie
         const p0 = this.proxy.bodies[0].translation();

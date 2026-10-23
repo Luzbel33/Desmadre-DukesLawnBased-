@@ -2,6 +2,12 @@
 import * as THREE from 'three';
 import { G, clamp, lerp, rng } from '../core/G.js';
 import { polePose, gogoPose, djPose, clubPose, trancePose } from './pole-dance.js';
+import { locomotion, loadMocap } from './mocap.js';
+
+// Load once in the browser; Node regression tests load the same clips explicitly.
+if (typeof document !== 'undefined') loadMocap();
+// Full-body actions own their legs and must not inherit mocap offsets or ankle poses.
+export const LEG_ACTIONS = new Set(['kick', 'getup', 'vomit', 'puke', 'fart', 'fartflame', 'pee', 'cower', 'brace', 'stagger', 'dig']);
 
 export const P = {
   PELVIS: 0, TORSO: 1, HEAD: 2, UARM_L: 3, FARM_L: 4, UARM_R: 5, FARM_R: 6, THIGH_L: 7, SHIN_L: 8, THIGH_R: 9, SHIN_R: 10,
@@ -12,6 +18,23 @@ export const CHILDREN = PARENT.map((_, i) => PARENT.map((p, j) => (p === i ? j :
 export const JOINT_NAMES = ['hips', 'spine', 'neck', 'shoulderL', 'elbowL', 'shoulderR', 'elbowR', 'hipL', 'kneeL', 'hipR', 'kneeR'];
 export const DMG_RES = 64;
 const SPRING_OMEGA = [13, 10, 9, 13, 15, 13, 15, 20, 22, 20, 22]; // frecuencia natural (rad/s) de cada articulación (hips, spine, neck, brazos, piernas)
+const AXES = ['x', 'y', 'z'];
+const SPRING_COEFF = SPRING_OMEGA.map(() => [0, 0, 0, 0]);
+let springDt = -1;
+
+function springCoefficients(dt) {
+  if (dt === springDt) return SPRING_COEFF;
+  springDt = dt;
+  for (let i = 0; i < SPRING_OMEGA.length; i++) {
+    const w = SPRING_OMEGA[i], z = i >= 7 ? 0.95 : 0.7;
+    const d = z * w, wd = w * Math.sqrt(1 - z * z), decay = Math.exp(-d * dt);
+    const s = Math.sin(wd * dt) / wd, c = Math.cos(wd * dt), out = SPRING_COEFF[i];
+    // Exact damped-spring solution: semi-implicit Euler diverged at 20 FPS.
+    out[0] = decay * (c + d * s); out[1] = decay * s;
+    out[2] = -decay * w * w * s; out[3] = decay * (c - d * s);
+  }
+  return SPRING_COEFF;
+}
 
 function specs(body) {
   const fat = body === 'gordo', thin = body === 'flaco';
@@ -672,8 +695,8 @@ export class Character {
     if (this.mode !== 'anim') return;
     const A = this.anim;
     const t = (A.idleT += dt);
-    const J = {};
-    for (const n of JOINT_NAMES) J[n] = [0, 0, 0];
+    const J = A.pose || (A.pose = Object.fromEntries(JOINT_NAMES.map(n => [n, [0, 0, 0]])));
+    for (const n of JOINT_NAMES) J[n].fill(0);
     const drunk = clamp(st.drunk || 0, 0, 1.5), high = clamp(st.high || 0, 0, 1.5);
     let hipsY = 0;
     const spd = st.speed || 0;
@@ -688,6 +711,8 @@ export class Character {
     const ph = A.phase;
     const run = clamp((spd - 4) / 3, 0, 1);
     const walkAmt = clamp(spd / 3.5, 0, 1);
+    A.mcOn = false;
+    A.plantedFeet = !st.sit && !st.drive && st.grounded !== false && !st.slide && !st.dive && !st.emote && !LEG_ACTIONS.has(st.action);
 
     if (st.sit || st.drive) {
       J.hipL[0] = J.hipR[0] = -1.5;
@@ -740,6 +765,15 @@ export class Character {
       J.shoulderL[2] = lerp(0.35, 0.12, leap); J.shoulderR[2] = -lerp(0.35, 0.12, leap);
       J.elbowL[0] = J.elbowR[0] = lerp(-0.5, -1.05, leap);
       J.spine[0] = leap * 0.18;
+    } else if (A.plantedFeet && locomotion(A, st, dt, J, (this.jointRest?.[0]?.y || 0.95) * (this.root?.scale?.y || 1))) {
+      // captura de movimiento (char/mocap.js): parado, caminar, trotar, correr o agachado según la velocidad
+      A.mcOn = true;
+      hipsY = A.mc.hy / (this.root.scale.y || 1);
+      // de costado o en diagonal: la cadera (y las piernas) se orientan hacia el paso y el torso vuelve al frente,
+      // así camina de costado apuntando sin patinar; para atrás, el ciclo ya corre al revés
+      const mv = clamp((spd - 0.2) / 0.6, 0, 1), fs = (A.dirF ?? 1) < -0.2 ? -1 : 1;
+      const twist = clamp(-fs * Math.atan2(A.dirS || 0, Math.max(0.05, Math.abs(A.dirF ?? 1))) * 0.62, -0.8, 0.8) * mv;
+      if (Math.abs(twist) > 1e-3) { J.hips[1] += twist; J.spine[1] -= twist * 0.72; J.neck[1] -= twist * 0.22; }
     } else {
       // caminar/correr
       const amp = lerp(0.55, 0.85, run) * walkAmt;
@@ -1203,7 +1237,7 @@ export class Character {
         J.shoulderL[0] = 0.55; J.shoulderL[2] = 0.45; J.elbowL[0] = -0.2;
         J.shoulderR[0] = -0.9; J.elbowR[0] = -0.7;
         hipsY -= 0.62;
-      } else if (st.crouch) {
+      } else if (st.crouch && !A.mcOn) {
         // agachado: rodillas dobladas, torso adelante; caminando, pasos cortos
         J.hipL[0] = J.hipL[0] * 0.55 - 1.0; J.hipR[0] = J.hipR[0] * 0.55 - 1.0;
         J.kneeL[0] = J.kneeL[0] * 0.5 + 1.65; J.kneeR[0] = J.kneeR[0] * 0.5 + 1.65;
@@ -1224,19 +1258,20 @@ export class Character {
     // de rebote y retraso distinto por parte: la cadera primero, el torso después y la cabeza al final), así los
     // arranques, frenadas y giros no se ven de robot. Las acciones (golpes, bailes, poses) siguen con el suavizado
     // rápido de siempre, que es el que tienen calibrado.
-    const spring = !st.action && !st.emote && !st.sit && !st.drive && !st.slide && !st.dive && !st.crouch;
+    // (con captura de movimiento no: la animación ya trae su inercia, y el resorte la achataba y la atrasaba)
+    const spring = !A.mcOn && !st.action && !st.emote && !st.sit && !st.drive && !st.slide && !st.dive && !st.crouch;
     const V = A.vel || (A.vel = JOINT_NAMES.map(() => ({ x: 0, y: 0, z: 0 })));
-    const OM = SPRING_OMEGA, hdt = Math.min(dt, 1 / 20);
+    const coeff = spring ? springCoefficients(Math.max(0, dt)) : null;
     for (let i = 0; i < JOINT_NAMES.length; i++) {
       const n = JOINT_NAMES[i];
       const tgt = J[n];
       const c = A.cur[i];
-      if (spring && hdt > 0) {
-        const w = OM[i], z = i >= 7 ? 0.95 : 0.7, v = V[i];
-        for (const ax of ['x', 'y', 'z']) {
-          const to = tgt[ax === 'x' ? 0 : ax === 'y' ? 1 : 2];
-          v[ax] += ((to - c[ax]) * w * w - 2 * z * w * v[ax]) * hdt;
-          c[ax] += v[ax] * hdt;
+      if (spring) {
+        const cf = coeff[i], v = V[i];
+        for (let a = 0; a < 3; a++) {
+          const ax = AXES[a], y = c[ax] - tgt[a], velocity = v[ax];
+          c[ax] = tgt[a] + cf[0] * y + cf[1] * velocity;
+          v[ax] = cf[2] * y + cf[3] * velocity;
         }
         const j2 = this.joints[i];
         if (!this.detached[i]) j2.rotation.set(c.x, c.y, c.z, 'YXZ');
@@ -1252,7 +1287,10 @@ export class Character {
       j.rotation.set(c.x, c.y, c.z, 'YXZ');
     }
     A.bob += (hipsY - A.bob) * k;
-    this.joints[0].position.set(this.jointRest[0].x, this.jointRest[0].y + A.bob, this.jointRest[0].z);
+    const scaleY = this.root.scale.y || 1;
+    A.bobX = (A.bobX || 0) + ((A.mcOn ? A.mc.hx / scaleY : 0) - (A.bobX || 0)) * k;
+    A.bobZ = (A.bobZ || 0) + ((A.mcOn ? A.mc.hz / scaleY : 0) - (A.bobZ || 0)) * k;
+    this.joints[0].position.set(this.jointRest[0].x + A.bobX, this.jointRest[0].y + A.bob, this.jointRest[0].z + A.bobZ);
   }
 
   _emote(J, id, et, t, addY) {

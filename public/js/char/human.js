@@ -74,6 +74,7 @@ const QA = new THREE.Quaternion();
 const QB = new THREE.Quaternion();
 const QC = new THREE.Quaternion();
 const QD = new THREE.Quaternion();
+const E1 = new THREE.Euler();
 // cuánto puede girar la muñeca para acomodar la mano al mango (rad)
 const WRIST_MAX = 1.25;
 // dedos: grosor (m) y cierre máximo por falange (rad) [base, medio, punta]
@@ -344,6 +345,13 @@ function buildMeta(scene) {
     l: { rest: B.foot_l.quaternion.clone(), axis: localAxis('foot_l', new THREE.Vector3(1, 0, 0)), bindW: nWorld.foot_l.clone() },
     r: { rest: B.foot_r.quaternion.clone(), axis: localAxis('foot_r', new THREE.Vector3(1, 0, 0)), bindW: nWorld.foot_r.clone() },
   };
+  for (const side of ['l', 'r']) {
+    const f = feet[side];
+    f.pre = nWorld['lowerleg_' + side].clone().invert();
+    f.toeRest = B['ball_' + side]?.quaternion.clone();
+    f.toePre = nWorld['foot_' + side].clone().invert();
+    f.toePost = nWorld['ball_' + side]?.clone();
+  }
   // palma (punto de agarre) en espacio local de la mano
   const grip = {};
   for (const side of ['l', 'r']) {
@@ -738,11 +746,13 @@ export class HumanCharacter {
     } else if (this._poleGrip) { this._poleGrip = false; this.gripOn.l = this.gripOn.r = false; this.gripRadius.l = this.gripRadius.r = 0; }
     this.grip.r += (gr - this.grip.r) * Math.min(1, dt * 14);
     this.grip.l += (gl - this.grip.l) * Math.min(1, dt * 14);
-    this._walkLegs = true;
+    this._walkLegs = this.anim.plantedFeet;
+    this._footPose = this.anim.mcOn && this._walkLegs ? this.anim.mc.foot : null;
   }
   _emote(...args) { return Character.prototype._emote.apply(this, args); }
-  applyWorldTransforms(tr) {
-    this._walkLegs = false;
+  applyWorldTransforms(tr, feet = false) {
+    this._walkLegs = !!feet;
+    this._footPose = feet && typeof feet === 'object' ? feet : null;
     return Character.prototype.applyWorldTransforms.call(this, tr);
   }
   readWorldTransforms() { return Character.prototype.readWorldTransforms.call(this); }
@@ -770,8 +780,8 @@ export class HumanCharacter {
     this.material.userData.u.uMask.value = 0;
     if (!type || type === 'none' || MODELS[this.modelKey]?.devil || !Object.prototype.hasOwnProperty.call(MASK_FILES, type)) return false;
     if (!MASK_CACHE.has(type)) {
-      loadMask(type).then(() => {
-        if (this._maskRequest === request && this.headAnchor === anchor) this.wearMask(type);
+      loadMask(type).then((loaded) => {
+        if (loaded && this._maskRequest === request && this.headAnchor === anchor) this.wearMask(type);
       }).catch(error => console.warn('No se pudo cargar la máscara', type, error));
       return false;
     }
@@ -919,28 +929,34 @@ export class HumanCharacter {
     }
     // cadera: posición (rebote al caminar, sentado, ragdoll)
     B.hip.position.copy(J[0].position);
-    // pies planos al caminar
-    if (this._walkLegs) {
-      for (const [side, hi, kn] of [['l', 7, 8], ['r', 9, 10]]) {
-        const f = this.meta.feet[side];
-        const pitch = -(this.anim.cur[hi].x + this.anim.cur[kn].x) * 0.85;
-        Q2.setFromAxisAngle(f.axis, pitch);
-        B['foot_' + side].quaternion.copy(f.rest).multiply(Q2);
+    // Reset every frame: a previous crouch/walk must not leave bent ankles on a ragdoll or a kick.
+    for (const side of ['l', 'r']) {
+      const f = this.meta.feet[side], fb = B['foot_' + side], toe = B['ball_' + side];
+      fb.quaternion.copy(f.rest);
+      if (toe && f.toeRest) toe.quaternion.copy(f.toeRest);
+      const pose = this._footPose;
+      if (!pose || this.detached[side === 'l' ? 8 : 10]) continue;
+      const a = pose[side];
+      Q2.setFromEuler(E1.set(a[0], a[1], a[2], 'YXZ'));
+      fb.quaternion.copy(f.pre).multiply(Q2).multiply(f.bindW);
+      const b = pose['b' + side];
+      if (toe && f.toePost) {
+        Q2.setFromEuler(E1.set(b[0], b[1], b[2], 'YXZ'));
+        toe.quaternion.copy(f.toePre).multiply(Q2).multiply(f.toePost);
       }
     }
     // agachado: los pies apoyados planos (como en la pose de reposo, girados con la cadera); si no, las puntas se
     // clavaban en el piso al doblar las rodillas
-    if (this.flatFeet > 0 && !this._walkLegs) {
-      const mq = this.model.getWorldQuaternion(QA).invert();
-      const lx = V1.set(1, 0, 0).applyQuaternion(QB.copy(mq).multiply(J[0].getWorldQuaternion(QC)));
+    if (!this._footPose && (this.flatFeet > 0 || this._walkLegs)) {
+      const lx = V1.set(1, 0, 0).applyQuaternion(J[0].quaternion);
       const yawQ = QD.setFromAxisAngle(V2.set(0, 1, 0), Math.atan2(-lx.z, lx.x));
-      for (const side of ['l', 'r']) {
+      for (const [side, hi, kn] of [['l', 7, 8], ['r', 9, 10]]) {
         const f = this.meta.feet[side], fb = B['foot_' + side];
         if (!f.bindW || !fb || this.detached[side === 'l' ? 8 : 10]) continue;
-        fb.parent.updateWorldMatrix(true, false);
-        const pq = QB.copy(mq).multiply(fb.parent.getWorldQuaternion(QC)).invert();
-        Q2.copy(yawQ).multiply(f.bindW).premultiply(pq);
-        fb.quaternion.slerp(Q2, Math.min(1, this.flatFeet));
+        // The virtual chain already contains the shin orientation; avoid walking the real bone parents again.
+        QB.copy(J[0].quaternion).multiply(J[hi].quaternion).multiply(J[kn].quaternion).invert();
+        Q2.copy(f.pre).multiply(QB).multiply(yawQ).multiply(f.bindW);
+        fb.quaternion.slerp(Q2, this._walkLegs ? 1 : Math.min(1, this.flatFeet));
       }
     }
     // dedos: con algo en la mano cada falange se cierra hasta tocar su forma (un mango fino queda en puño, una
@@ -989,17 +1005,21 @@ export class HumanCharacter {
     const sk = this.skinned;
     if (!sk) return;
     sk.updateWorldMatrix(true, false);
-    this.joints[0].updateWorldMatrix(true, false);
-    V1.setFromMatrixPosition(this.joints[0].matrixWorld).applyMatrix4(M1.copy(sk.matrixWorld).invert());
+    // Parent-before-child order updates each virtual joint once, including after a teleport.
+    for (let i = 0; i < this.joints.length; i++) {
+      const joint = this.joints[i], parent = PARENT[i] < 0 ? this.root : this.joints[PARENT[i]];
+      joint.updateWorldMatrix(joint.parent !== parent, false);
+    }
+    const inverse = M1.copy(sk.matrixWorld).invert();
+    V1.setFromMatrixPosition(this.joints[0].matrixWorld).applyMatrix4(inverse);
     const bs = sk.boundingSphere || (sk.boundingSphere = new THREE.Sphere());
     bs.center.copy(V1);
-    bs.radius = (1.45 * (this.meta.height || 1.8) / 1.8) / Math.max(1e-6, sk.matrixWorld.getMaxScaleOnAxis()) * Math.max(1e-6, this.root.matrixWorld.getMaxScaleOnAxis());
+    const scale = Math.max(1e-6, this.root.matrixWorld.getMaxScaleOnAxis()) / Math.max(1e-6, sk.matrixWorld.getMaxScaleOnAxis());
+    bs.radius = 1.45 * (this.meta.height || 1.8) / 1.8 * scale;
     // A ragdoll can extend well beyond its pelvis sphere. Include every current bone.
-    const inverse = M1.copy(sk.matrixWorld).invert();
-    const padding = .45 * Math.max(1e-6, this.root.matrixWorld.getMaxScaleOnAxis()) / Math.max(1e-6, sk.matrixWorld.getMaxScaleOnAxis());
+    const padding = .45 * scale;
     for (const joint of this.joints) {
       if (!joint) continue;
-      joint.updateWorldMatrix(true, false);
       V1.setFromMatrixPosition(joint.matrixWorld).applyMatrix4(inverse);
       const radius = V1.distanceTo(bs.center) + padding;
       if (Number.isFinite(radius)) bs.radius = Math.max(bs.radius, radius);
