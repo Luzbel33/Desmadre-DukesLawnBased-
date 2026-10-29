@@ -2554,6 +2554,22 @@ export class LocalPlayer {
       J[1].quaternion.multiply(Q1.setFromAxisAngle(V1.set(1, 0, 0), sp));
       J[2].quaternion.multiply(Q1.setFromAxisAngle(V1.set(1, 0, 0), nk));
     }
+    // Mocap and acceleration lean add together. Keep ordinary grounded locomotion
+    // upright without limiting combat, stagger, crouch or ragdoll poses.
+    if (this.state === 'active' && this.physMode === 'anim' && this.grounded && !this.crouching &&
+        this.speed > 0.4 && !this.action && !this.guard && !this.armActive() && !this.grabbedBy.size &&
+        !this.arm.l.script && !this.arm.r.script && this.bal.mode === 'stand') {
+      const limit = 0.78, minY = Math.cos(limit);
+      V1.copy(UP).applyQuaternion(Q1.copy(J[0].quaternion).multiply(J[1].quaternion));
+      if (V1.y < minY) {
+        V2.set(V1.x, 0, V1.z);
+        if (V2.lengthSq() < 1e-12) V2.set(1, 0, 0);
+        V2.normalize().multiplyScalar(Math.sin(limit)); V2.y = minY;
+        Q2.setFromUnitVectors(V1, V2);
+        Q1.copy(J[0].quaternion).invert().multiply(Q2).multiply(J[0].quaternion);
+        J[1].quaternion.premultiply(Q1);
+      }
+    }
   }
 
   afterPhysics() {

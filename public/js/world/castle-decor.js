@@ -176,19 +176,12 @@ function sigilCanvas() {
 
 function signCanvas() {
   const W = 1024, H = 256, cv = canvas(W, H), c = cv.getContext('2d');
-  // tablón viejo
-  c.fillStyle = '#3a2618'; c.fillRect(0, 0, W, H);
-  for (let i = 0; i < 60; i++) { c.fillStyle = `rgba(0,0,0,${Math.random() * 0.25})`; c.fillRect(0, Math.random() * H, W, 2 + Math.random() * 3); }
-  c.fillStyle = 'rgba(0,0,0,0.5)'; c.fillRect(0, H / 2 - 2, W, 4);
+  c.fillStyle = '#211913'; c.fillRect(0, 0, W, H);
+  c.strokeStyle = '#b09460'; c.lineWidth = 5; c.strokeRect(16, 16, W - 32, H - 32);
+  c.strokeStyle = '#675139'; c.lineWidth = 2; c.strokeRect(28, 28, W - 56, H - 56);
   c.textAlign = 'center';
-  let fs = 118;
-  c.font = `bold ${fs}px "Times New Roman", Georgia, serif`;
-  while (c.measureText('CASTILLO DEL TERROR').width > W - 70 && fs > 40) { fs -= 4; c.font = `bold ${fs}px "Times New Roman", Georgia, serif`; }
-  c.fillStyle = '#0c0606'; c.fillText('CASTILLO DEL TERROR', W / 2 + 4, 128 + fs * 0.36);
-  c.fillStyle = '#b01010'; c.fillText('CASTILLO DEL TERROR', W / 2, 124 + fs * 0.36);
-  // chorreado de pintura
-  c.fillStyle = '#9a0c0c';
-  for (let i = 0; i < 22; i++) { const x = 70 + Math.random() * (W - 140), l = 12 + Math.random() * 60; c.fillRect(x, 150, 4, l); c.beginPath(); c.arc(x + 2, 150 + l, 4, 0, Math.PI * 2); c.fill(); }
+  c.fillStyle = '#dcc18b'; c.font = 'bold 80px Georgia, serif';
+  c.fillText('CASTILLO DEL TERROR', W / 2, 153, W - 100);
   return cv;
 }
 
@@ -557,7 +550,13 @@ export class Decor {
         const top = new THREE.Box3().setFromObject(m).max.y; // punta de los remates de la vara
         // Leave clearance for the baked cloth folds and the full wind amplitude.
         // The gate's moulding protrudes beyond its nominal facade plane.
-        m.position.set(x, y - (top - 0.035 * k), z + 0.18);
+        const projection = z === Z ? 0.55 : 0.18;
+        m.position.set(x, y - (top - 0.035 * k), z + projection);
+        if (z === Z) for (const side of [-1, 1]) {
+          const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, projection), getMat('iron'));
+          bracket.position.set(x + side * 0.56, y - 0.1, z + projection / 2);
+          this.scene.add(bracket);
+        }
         m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
         this.scene.add(m);
         m.updateMatrixWorld(true);
@@ -566,16 +565,12 @@ export class Decor {
       });
     }
     this.anim.push((time) => { U.uT.value = time; });
-    // cartel: las argollas de la pared a 10,85 m
-    whenAsset('c_gate_sign', () => {
-      const m = assetModel('c_gate_sign');
-      if (!m) return;
-      const top = new THREE.Box3().setFromObject(m).max.y;
-      m.position.set(0, 10.85 - (top - 0.05), Z);
-      this.scene.add(m);
-      m.updateMatrixWorld(true);
-      m.traverse((o) => { o.matrixAutoUpdate = false; });
-    });
+    // A legible plaque stands clear of the projecting gate moulding.
+    const plaque = new THREE.Mesh(new THREE.BoxGeometry(3.85, 0.92, 0.12), getMat('woodDark'));
+    plaque.position.set(0, 10.0, Z + 0.42); plaque.castShadow = true;
+    const texture = new THREE.CanvasTexture(signCanvas()); texture.colorSpace = THREE.SRGBColorSpace;
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(3.68, 0.78), new THREE.MeshStandardMaterial({ map: texture, roughness: 0.85 }));
+    face.position.z = 0.061; plaque.add(face); this.scene.add(plaque);
   }
 
   _courtyardLife() {

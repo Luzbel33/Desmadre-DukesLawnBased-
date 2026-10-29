@@ -992,6 +992,22 @@ test('el arma no atraviesa a otro jugador: si queda metida en su cuerpo, la mano
   ph.world.free();
 });
 
+test('grounded locomotion limits combined torso tilt without flattening combat poses', async () => {
+  const { p, ph } = await fixture(new Set());
+  p.state = 'active'; p.physMode = 'anim'; p.grounded = true; p.speed = 4;
+  p.lean.set(0, 0); p.bal.reset();
+  const hips = p.rig.joints[0], spine = p.rig.joints[1];
+  const tilt = () => new THREE.Vector3(0, 1, 0).applyQuaternion(hips.quaternion.clone().multiply(spine.quaternion)).y;
+  const extreme = () => { hips.rotation.set(0.3, 0.2, 0); spine.rotation.set(0.9, -0.2, 0.1); };
+  extreme(); p._overrides();
+  assert.ok(tilt() >= Math.cos(0.78) - 1e-6, `locomotion torso tilted too far: ${tilt()}`);
+  hips.rotation.set(Math.PI, 0, 0); spine.rotation.set(0, 0, 0); p._overrides();
+  assert.ok(tilt() >= Math.cos(0.78) - 1e-6, 'inverted torso did not recover');
+  p.action = 'kick'; extreme(); const before = tilt(); p._overrides();
+  assert.ok(Math.abs(tilt() - before) < 1e-6, 'combat pose was constrained by the locomotion limit');
+  ph.world.free();
+});
+
 test('cuerpo con peso: al frenar el torso se va, se pasa un poco y vuelve; al caer de un salto las rodillas ceden', async () => {
   const keys = new Set(['KeyW']);
   const { p, ph } = await fixture(keys);

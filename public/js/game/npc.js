@@ -72,6 +72,20 @@ const CUT = new Set(['sword', 'machete', 'knife', 'axe', 'broken_bottle', 'hatch
 const PART_K = [0.9, 1, 1.7, 0.6, 0.5, 0.6, 0.5, 0.7, 0.55, 0.7, 0.55];
 function angleDiff(a, b) { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; }
 
+// Exact damped spring: NPC LOD can advance by 0.2s, which destabilizes Euler integration.
+export function stepNpcRecoil(snap, dt) {
+  const w = 22, damping = 0.35 * w, wd = Math.sqrt(w * w - damping * damping);
+  const decay = Math.exp(-damping * Math.max(0, dt));
+  const c = Math.cos(wd * Math.max(0, dt)), s = Math.sin(wd * Math.max(0, dt)) / wd;
+  for (const [position, velocity] of [[snap.head, snap.headV], [snap.torso, snap.torsoV]]) {
+    for (const axis of ['x', 'y']) {
+      const x = position[axis], v = velocity[axis];
+      position[axis] = decay * (x * c + (v + damping * x) * s);
+      velocity[axis] = decay * (v * c - (damping * v + w * w * x) * s);
+    }
+  }
+}
+
 export class Npc {
   constructor(scene, { name = '', look = {}, pos, yaw = 0, role = null, height = 1 } = {}) {
     this.scene = scene;
@@ -494,11 +508,8 @@ export class Npc {
       if (updatePose) ch.animate({ speed: this.speed, fwdSpeed: this.fwdSpeed, sideSpeed: this.sideSpeed, grounded: true, sit: this.sit, table: this.table, crouch: this.crouch && this.action !== 'cower', aimPitch: this.aimPitch, headYaw: this.headYaw, emote: this.emote, emoteT: this.emoteT, action: this.action, actionT: this.actionT, actionDur: this.actionEnd, stagger: this._stagLocal, kickKind: this.kickKind, held: this.item || (this.prop && !this.propHang) ? 'item' : null }, dt);
       if (this.propHang) ch.grip.r = 1; // el farol cuelga del puño cerrado, con el brazo suelto
       // resortes de los golpes (subamortiguados: la cabeza se va y vuelve)
-      const S = this.snap, w = 22, z = 0.35;
-      for (const [a, v] of [[S.head, S.headV], [S.torso, S.torsoV]]) {
-        v.x += (-w * w * a.x - 2 * z * w * v.x) * dt; v.y += (-w * w * a.y - 2 * z * w * v.y) * dt;
-        a.x += v.x * dt; a.y += v.y * dt;
-      }
+      const S = this.snap;
+      stepNpcRecoil(S, dt);
       // equilibrio: el torso se va con el empujón y vuelve
       if (updatePose && Math.abs(this.bal.leanX) + Math.abs(this.bal.leanZ) > 1e-3) {
         const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw), lf = this.bal.leanX * fx + this.bal.leanZ * fz, ls = this.bal.leanX * fz - this.bal.leanZ * fx;

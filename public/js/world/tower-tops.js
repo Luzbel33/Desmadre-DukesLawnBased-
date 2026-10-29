@@ -1,7 +1,7 @@
 // La parte de arriba de las cuatro torres de esquina (nivel 11): antes era un cuarto redondo pelado con un brasero y una
 // lámpara en el piso. Cada una cuenta algo y se vive: la del alquimista (estantes, mesa de trabajo, hierbas colgando,
 // la carta del cielo), el cuarto de la guardia (mesa con la partida de dados a medio jugar, banquitos, catres de paja,
-// armas en el muro), el calabozo de arriba (colgados encadenados, huesos, paja podrida, sangre y la rejilla) y el depósito
+// armas en el muro), el calabozo de arriba (jaula suspendida, huesos, paja podrida, sangre y la rejilla) y el depósito
 // de la armería (bastidores con armas, cajones, balas de cañón, la piedra de afilar).
 // Común a todas: techo de vigas radiales con un aro de hierro y una araña de velas colgando de cadena, postes contra el
 // muro, aspilleras con luz de luna, humedad y musgo al pie del muro, telarañas entre las vigas y niebla baja.
@@ -11,6 +11,8 @@ import * as THREE from 'three';
 import { Builder } from './builder.js';
 import { TOWER_DECK } from './castle-expansion.js';
 import { shelfBooks, sackGeo } from './castle-dress.js';
+import { whenAsset, assetBounds } from '../game/assets.js';
+import { supportedMatrix } from '../game/placement.js';
 
 const HAS_DOM = typeof document !== 'undefined';
 const PI = Math.PI, TAU = PI * 2;
@@ -23,14 +25,22 @@ const _q = new THREE.Quaternion(), _e = new THREE.Euler(), _v = new THREE.Vector
 class Inst {
   constructor(d) { this.d = d; this.map = new Map(); }
   add(type, x, y, z, yaw = 0, s = 1, o = {}) {
-    if (!this.map.has(type)) this.map.set(type, { mats: [], shadow: false });
+    if (!this.map.has(type)) this.map.set(type, { mats: [], supports: [], shadow: false });
     const b = this.map.get(type);
     _e.set(o.rx || 0, yaw, o.rz || 0, 'YXZ'); _q.setFromEuler(_e);
     b.mats.push(new THREE.Matrix4().compose(_v.set(x, y, z), _q, _s.set(s, s, s)));
+    b.supports.push(o.ground ? { x, y, z, yaw, s, o } : null);
     if (o.shadow) b.shadow = true;
     return this;
   }
-  flush() { for (const [type, b] of this.map) this.d.instances(type, b.mats, { shadow: b.shadow }); this.map.clear(); }
+  flush() {
+    for (const [type, b] of this.map) whenAsset(type, () => {
+      const bounds = assetBounds(type);
+      b.supports.forEach((p, i) => { if (p && bounds) b.mats[i] = supportedMatrix(bounds, p.x, p.y, p.z, p.yaw, p.s, p.o); });
+      this.d.instances(type, b.mats, { shadow: b.shadow });
+    });
+    this.map.clear();
+  }
 }
 
 // textura de humedad: manchas verdinegras que suben del piso y chorreados
@@ -184,11 +194,13 @@ export function dressTowerTop(d, t, kind) {
     if (a != null) { const [x, z] = P(a, RW - 0.55); for (const s of [-1, 0, 1]) b.cylinder('woodDark', x + s * 0.18, Y + 0.55, z + (s ? 0.1 : -0.15), 0.015, 0.02, 1.1, 4, { rz: s * 0.18, collide: false }); const tube = new THREE.CylinderGeometry(0.07, 0.05, 1.1, 10); tube.rotateZ(PI / 2 - 0.9); tube.rotateY(a + PI / 2); tube.translate(x, Y + 1.25, z); b.geo('bronze', tube); col(x, Y, z, 0.5, 1.2, 0.5); }
   } else if (kind === 'calabozo') {
     // la jaula colgada de la viga, con un esqueleto sentado adentro
-    const a = finish - TAU + 1.2, [x, z] = P(a, 2.4);
+    // Align the suspension with an actual radial ceiling beam.
+    const beamStep = TAU / 8, a = 0.2 + Math.round((finish + 1.2 - 0.2) / beamStep) * beamStep, [x, z] = P(a, 2.4);
     for (let k = 0; k < 8; k++) { const ang = k * TAU / 8; b.cylinder('iron', x + Math.sin(ang) * 0.32, Y + 2.0, z + Math.cos(ang) * 0.32, 0.012, 0.012, 1.0, 4, { collide: false, noShadow: true }); }
     b.cylinder('iron', x, Y + 1.5, z, 0.34, 0.34, 0.04, 12, { collide: false }); b.cylinder('iron', x, Y + 2.5, z, 0.34, 0.34, 0.04, 12, { collide: false });
-    for (let k = 0; k < 14; k++) b.box('iron', x, CEIL - 0.2 - k * 0.14, z, 0.03, 0.11, 0.012, { yaw: k % 2 ? PI / 2 : 0, collide: false, noShadow: true });
-    I.add('c_skel_sit', x, Y + 1.52, z, a, 0.5);
+    const chainBottom = Y + 2.52, links = Math.ceil((CEIL - chainBottom) / 0.14), spacing = (CEIL - chainBottom) / links;
+    for (let k = 0; k < links; k++) b.box('iron', x, chainBottom + (k + 0.5) * spacing, z, 0.03, spacing * 0.9, 0.012, { yaw: k % 2 ? PI / 2 : 0, collide: false, noShadow: true });
+    I.add('c_skel_sit', x - Math.sin(a) * 0.2, Y + 1.52, z - Math.cos(a) * 0.2, a, 0.5);
   }
 
   // ---------------------------------------------------------------- cada torre lo suyo
@@ -202,7 +214,7 @@ export function dressTowerTop(d, t, kind) {
       b.box('oldWood', x, Y + 0.88, z, 1.8, 0.08, 0.8, { yaw, collide: false }); col(x, Y, z, 1.8, 0.92, 0.8, yaw);
       for (const [lx, lz] of [[-0.82, -0.32], [0.82, -0.32], [-0.82, 0.32], [0.82, 0.32]]) b.box('blackWood', x + lx * cx + lz * sx, Y + 0.42, z - lx * sx + lz * cx, 0.08, 0.84, 0.08, { yaw, collide: false });
       const top = Y + 0.92, at3 = (lx, lz, y = top) => loc3(x, z, yaw, lx, lz, y);
-      I.add('c_skull', ...at3(-0.55, 0.05), yaw + 0.4, 1).add('c_book_a', ...at3(-0.15, -0.15), yaw, 1, { rz: PI / 2 });
+      I.add('c_skull', ...at3(-0.55, 0.05), yaw + 0.4, 1).add('c_book_a', ...at3(-0.15, -0.15), yaw, 1, { rz: PI / 2, ground: true });
       I.add('c_compass', ...at3(0.25, 0.1), yaw, 1.2).add('c_bowl', ...at3(0.45, -0.18), 0, 0.8).add('c_metaljug', ...at3(0.7, 0.05), 0, 0.8);
       I.add('c_candles', ...at3(-0.78, -0.2), 0, 1); c.flame(...at3(-0.78, -0.2, top + 0.27), 0.03, 0.08, {});
       // frascos de colores (procedurales, chiquitos)
@@ -220,13 +232,13 @@ export function dressTowerTop(d, t, kind) {
     if (HAS_DOM) { const m = new THREE.Mesh(new THREE.CircleGeometry(0.42, 28), new THREE.MeshStandardMaterial({ map: skyChartTex(), roughness: 0.95 })); m.rotation.x = -PI / 2; m.position.set(t.x, Y + 0.905, t.z); d.scene.add(m); }
     I.add('c_candlestick', t.x + 0.3, Y + 0.9, t.z - 0.1, 0, 1.2); c.flame(t.x + 0.3, Y + 0.9 + 0.27, t.z - 0.1, 0.03, 0.08, {});
     I.add('c_specs', t.x - 0.15, Y + 0.905, t.z + 0.12, 1.1, 1);
-    scatter('c_book_a', 3, 1.5, 3.4, 1, 0, { rz: PI / 2 }); scatter('c_rat', 2, 2, 3.6);
+    scatter('c_book_a', 3, 1.5, 3.4, 1, 0, { rz: PI / 2, ground: true }); scatter('c_rat', 2, 2, 3.6);
   } else if (kind === 'guardia') {
     // la mesa de la guardia en el medio: dados, jarras, una vela casi consumida y tres banquitos
     I.add('c_roundtable', t.x, Y, t.z, 0, 1.25, { shadow: true }); col(t.x, Y, t.z, 1.0, 0.94, 1.0);
     const top = Y + 0.94;
     I.add('c_board', t.x - 0.1, top, t.z + 0.05, 0.5, 1).add('c_goblet_a', t.x + 0.3, top, t.z - 0.2, 0, 0.8).add('c_goblet_b', t.x - 0.32, top, t.z - 0.18, 0, 0.8);
-    I.add('c_goblet_a', t.x + 0.22, top, t.z + 0.32, 0, 0.8, { rz: PI / 2 }).add('c_jug', t.x - 0.05, top, t.z - 0.35, 1, 0.9).add('c_plate', t.x + 0.05, top, t.z + 0.32, 0, 1);
+    I.add('c_goblet_a', t.x + 0.22, top, t.z + 0.32, 0, 0.8, { rz: PI / 2, ground: true }).add('c_jug', t.x - 0.05, top, t.z - 0.35, 1, 0.9).add('c_plate', t.x + 0.05, top, t.z + 0.32, 0, 1);
     I.add('c_candles', t.x + 0.38, top, t.z + 0.08, 0, 0.9); c.flame(t.x + 0.38, top + 0.24, t.z + 0.08, 0.03, 0.08, {});
     for (let k = 0; k < 6; k++) { const a = r() * TAU, dd = r() * 0.3; b.box('bone', t.x + Math.cos(a) * dd, top + 0.012, t.z + Math.sin(a) * dd, 0.025, 0.025, 0.025, { yaw: r() * TAU, collide: false, noShadow: true }); } // dados
     for (let k = 0; k < 3; k++) { const a = k * TAU / 3 + 0.5, [sx, sz] = P(a, 0.95); I.add('c_stool2', sx, Y, sz, r() * TAU, 1, { shadow: true }); col(sx, Y, sz, 0.42, 0.44, 0.42); }
@@ -258,14 +270,14 @@ export function dressTowerTop(d, t, kind) {
     scatter('c_firewood', 3, 1.6, 3.3); scatter('c_rat', 1, 2.5, 3.6);
     stain(t.x + 0.5, t.z - 0.4, 1.3, '60,10,20', 91); // vino volcado
   } else if (kind === 'calabozo') {
-    // colgados encadenados al muro, huesos y calaveras amontonados, paja podrida, baldes y la rejilla con sangre
-    for (let k = 0; k < 2; k++) {
-      const a = slot(0.8);
-      if (a == null) break;
-      const [x, z] = P(a, RW - 0.32);
-      I.add('c_skel_hang', x, Y + 0.55, z, face(a) + PI, 1);
-      for (const s of [-1, 1]) { const [cx, cz] = P(a + s * 0.07, RW - 0.08); for (let j = 0; j < 7; j++) b.box('iron', cx, Y + 2.85 - j * 0.11, cz, 0.03, 0.09, 0.012, { yaw: face(a) + (j % 2) * PI / 2, collide: false, noShadow: true }); b.box('iron', cx, Y + 2.95, cz, 0.12, 0.06, 0.1, { yaw: face(a), collide: false }); }
-      straw(x, z, 40, 0.8);
+    // Remains lie on the floor; the cage above provides the room's suspended figure.
+    {
+      const a = slot(1.6);
+      if (a != null) {
+        const [x, z] = P(a, RW - 0.8);
+        I.add('c_skel_lie', x, Y, z, face(a), 0.8);
+        straw(x, z, 40, 0.8);
+      }
     }
     let a = slot(1.1);
     if (a != null) { const [x, z] = against(a, 1.0); I.add('c_bones', x, Y, z, face(a), 1); I.add('c_skull', x + 0.2, Y + 0.08, z - 0.1, r() * TAU, 1).add('c_skull', x - 0.25, Y + 0.05, z + 0.12, r() * TAU, 1); }
@@ -306,7 +318,7 @@ export function dressTowerTop(d, t, kind) {
     b.box('woodDark', t.x, Y + 0.35, t.z, 0.9, 0.08, 0.35, { collide: false }); for (const s of [-0.38, 0.38]) b.box('woodDark', t.x + s, Y + 0.17, t.z, 0.07, 0.34, 0.3, { collide: false });
     b.cylinder('stone', t.x, Y + 0.68, t.z, 0.32, 0.32, 0.1, 18, { rz: PI / 2, collide: false }); b.cylinder('iron', t.x, Y + 0.68, t.z, 0.025, 0.025, 0.6, 6, { rz: PI / 2, collide: false, noShadow: true });
     col(t.x, Y, t.z, 0.9, 1.0, 0.5);
-    I.add('c_hatchet', t.x + 0.3, Y + 0.39, t.z + 0.05, 0.4, 1, { rz: PI / 2 });
+    I.add('c_hatchet', t.x + 0.3, Y + 0.39, t.z + 0.05, 0.4, 1, { rz: PI / 2, ground: true });
     for (const k of [0.8, 2.0, 3.2, 4.4]) { const aa = finish - k; if (!wallFree(aa, 0.25)) continue; const [x, z] = P(aa, RW - 0.06); I.add('c_shield', x, Y + 1.6, z, face(aa), 0.75); }
     scatter('c_firewood', 2, 1.5, 3.2);
     stain(t.x + 0.9, t.z + 0.3, 1.2, '20,16,10', 55); // aceite de engrasar

@@ -673,17 +673,19 @@ function towerRoom(d, t, kind, rnd) {
   { const [lx, lz] = at(t, inward + PI / 2, 3.6); c.light(lx, 0.9, lz, tint, 2.6, 6, { priority: 1 }); }
   if (kind === 'calabozo') {
     // celdas con rejas, cadenas, el potro de tortura y huesos
-    for (const a of [inward + 1.9, inward - 1.9]) { // dos celdas contra el muro
-      const [x, z] = at(t, a, R - 0.55);
-      b.box('keepStone', x, 0.3, z, 1.1, 0.6, 0.9, { yaw: a, collide: true }); // catre de piedra
-      for (let k = -2; k <= 2; k++) { const [bx, bz] = at(t, a + k * 0.095, R - 1.2); b.cylinder('iron', bx, 1.1, bz, 0.016, 0.016, 2.2, 5, { collide: false }); }
-      ground(d, 'c_skel_lie', x, 0.62, z, a, 0.9, { solid: false });
+    // Keep the tall bars under the raised side of the spiral, away from its first steps.
+    for (const a of [inward - 0.9, inward - 1.9]) { // dos celdas contra el muro
+      const [x, z] = at(t, a, R - 0.8);
+      // The full skeleton fits on the cot, with its long axis along the wall.
+      b.box('keepStone', x, 0.3, z, 1.8, 0.6, 1.45, { yaw: a, collide: true });
+      for (let k = -3; k <= 3; k++) { const [bx, bz] = at(t, a + k * 0.125, R - 1.58); b.cylinder('iron', bx, 1.1, bz, 0.016, 0.016, 2.2, 5, { collide: false }); }
+      ground(d, 'c_skel_lie', x, 0.6, z, a + PI / 2, 0.9, { solid: false });
     }
     const [rx, rz] = at(t, inward + PI, 1.6); // el potro, cerca del pilar
     b.box('woodDark', rx, 0.5, rz, 0.8, 0.12, 2.0, { yaw: inward, collide: true });
     for (const s of [-1, 1]) b.box('woodDark', rx + Math.sin(inward + PI / 2) * 0.5 * s, 0.25, rz + Math.cos(inward + PI / 2) * 0.5 * s, 0.1, 0.5, 1.9, { yaw: inward, collide: false });
     b.cylinder('woodDark', rx + Math.sin(inward) * 1.0, 0.7, rz + Math.cos(inward) * 1.0, 0.09, 0.09, 0.5, 8, { rz: PI / 2, yaw: inward, collide: false });
-    for (const a of [inward + 0.7, inward - 0.7, inward + 2.9]) { // cadenas colgando del muro
+    for (const a of [inward + 0.7, inward - 0.7, inward - 1.3]) { // cadenas colgando del muro
       const [x, z] = at(t, a, R + 0.02);
       for (let k = 0; k < 6; k++) b.box('iron', x, 2.6 - k * 0.2, z, 0.05, 0.14, 0.05, { yaw: a, collide: false, noShadow: true });
       b.box('iron', x, 1.9, z, 0.2, 0.05, 0.1, { yaw: a, collide: false });
@@ -696,7 +698,7 @@ function towerRoom(d, t, kind, rnd) {
     const blood = new THREE.CircleGeometry(0.9, 16); blood.rotateX(-PI / 2); blood.translate(rx, 0.12, rz);
     if (HAS_DOM) d.scene.add(new THREE.Mesh(blood, new THREE.MeshBasicMaterial({ color: 0x3a0606, transparent: true, opacity: 0.65, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 })));
   } else if (kind === 'armeria') {
-    for (const a of [inward + 0.9, inward - 0.9, inward + 2.1, inward - 2.1]) { // estantes con lanzas y escudos
+    for (const a of [inward + 0.9, inward - 0.9]) { // estantes con lanzas y escudos
       const [x, z] = at(t, a, R - 0.3);
       b.box('woodDark', x, 0.9, z, 1.3, 0.06, 0.5, { yaw: a, collide: false }); b.box('woodDark', x, 1.5, z, 1.3, 0.06, 0.5, { yaw: a, collide: false });
       for (const s of [-0.62, 0.62]) b.box('woodDark', x + Math.cos(a) * s, 0.9, z - Math.sin(a) * s, 0.08, 1.8, 0.5, { yaw: a, collide: true });
@@ -713,7 +715,7 @@ function towerRoom(d, t, kind, rnd) {
     const [tx, tz] = at(t, inward + PI, 1.5);
     b.box('woodDark', tx, 0.85, tz, 1.8, 0.08, 0.8, { yaw: inward, collide: true });
     for (const dx of [-0.8, 0.8]) b.box('woodDark', tx + Math.cos(inward) * dx, 0.42, tz - Math.sin(inward) * dx, 0.08, 0.84, 0.7, { yaw: inward, collide: false });
-    const a0 = inward + 2.4, [cx, cz] = at(t, a0, 3.2);
+    const a0 = inward - 2.9, [cx, cz] = at(t, a0, 3.2);
     b.cylinder('ember', cx, 0.09, cz, 0.36, 0.3, 0.14, 12, { collide: true }); // brasas debajo
     d.world.embers?.add(cx, 0.2, cz, 6, { radius: 0.3, height: 0.8, strength: 0.5 });
     c.light(cx, 0.9, cz, 0x6aff6a, 2.4, 5.5, { flicker: true, priority: 0.9 });
@@ -721,14 +723,14 @@ function towerRoom(d, t, kind, rnd) {
       d.phys.cylinder(cx, 0.45, cz, 0.45, 0.4, { mat: 'metal' });
       m.traverse((o) => { if (o.isMesh) { o.castShadow = true; if (/liquid/i.test(o.name) && o.material) { o.material = o.material.clone(); o.material.emissive = new THREE.Color(0x3aff40); d.anim.push((tt) => { o.material.emissiveIntensity = 1.0 + Math.sin(tt * 3 + cx) * 0.3; }); } } });
     } });
-    for (const a of [inward + 0.9, inward - 0.9, inward + 2.6]) { // estantes
+    for (const a of [inward + 0.9, inward - 0.9]) { // estantes
       const [x, z] = at(t, a, R - 0.25);
       b.box('woodDark', x, 1.0, z, 1.4, 0.05, 0.4, { yaw: a, collide: false }); b.box('woodDark', x, 1.6, z, 1.4, 0.05, 0.4, { yaw: a, collide: false }); b.box('woodDark', x, 2.2, z, 1.4, 0.05, 0.4, { yaw: a, collide: false });
       for (const s of [-0.68, 0.68]) b.box('woodDark', x + Math.cos(a) * s, 1.1, z - Math.sin(a) * s, 0.06, 2.3, 0.4, { yaw: a, collide: true });
       for (let k = 0; k < 6; k++) { const col = ['green', 'red', 'fluo', 'glass'][k % 4]; const [bx, bz] = at(t, a + (k - 2.5) * 0.06, R - 0.25); b.cylinder(col, bx, 1.1 + (k % 3) * 0.6, bz, 0.05, 0.06, 0.2, 8, { collide: false, noShadow: true }); }
     }
-    ground(d, 'c_microscope', tx, 0.89, tz, inward, 1, { solid: false });
-    ground(d, 'c_books', tx + 0.3, 0.89, tz + 0.1, 0.4, 1, { solid: false });
+    ground(d, 'c_microscope', tx - Math.cos(inward) * 0.45, 0.89, tz + Math.sin(inward) * 0.45, inward, 1, { solid: false });
+    ground(d, 'c_books', tx + Math.cos(inward) * 0.4, 0.89, tz - Math.sin(inward) * 0.4, inward, 1, { solid: false });
     { const [bx, bz] = at(t, inward - 2.2, 3.4); ground(d, 'c_skel_sit', bx, 0.1, bz, inward - 2.2 + PI, 0.9, { solid: false }); }
     for (const a of [inward + 1.5, inward - 1.5]) torch(a);
   } else if (kind === 'guardia') {
@@ -743,7 +745,7 @@ function towerRoom(d, t, kind, rnd) {
     b.box('woodDark', tx, 0.78, tz, 1.1, 0.07, 0.7, { yaw: inward, collide: true });
     for (const [dx, dz] of [[-0.45, -0.28], [0.45, -0.28], [-0.45, 0.28], [0.45, 0.28]]) b.box('woodDark', tx + dx, 0.38, tz + dz, 0.06, 0.76, 0.06, { yaw: inward, collide: false });
     for (const o of [-0.7, 0.7]) { const [sx, sz] = [tx + Math.sin(inward + PI / 2) * o, tz + Math.cos(inward + PI / 2) * o]; b.cylinder('woodDark', sx, 0.22, sz, 0.18, 0.2, 0.44, 8, { collide: true }); }
-    d.candleCluster(tx, 0.82, tz - 0.1, 3, 0.12, 1.6);
+    d.candleCluster(tx + Math.cos(inward) * 0.36, 0.82, tz - Math.sin(inward) * 0.36, 3, 0.1, 1.6);
     ground(d, 'c_chess', tx, 0.82, tz, inward, 0.55, { solid: false });
     const [cx, cz] = at(t, inward + 2.7, R - 0.35);
     b.box('woodDark', cx, 0.3, cz, 1.0, 0.6, 0.55, { yaw: inward + 2.7, collide: true }); b.box('iron', cx, 0.62, cz, 1.02, 0.05, 0.57, { yaw: inward + 2.7, collide: false });

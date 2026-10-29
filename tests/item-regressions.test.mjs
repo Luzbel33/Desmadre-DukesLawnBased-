@@ -4,7 +4,21 @@ import * as THREE from 'three';
 import { G } from '../public/js/core/G.js';
 import { LocalPlayer } from '../public/js/game/player.js';
 import { PropManager, defOf } from '../public/js/game/props.js';
-import { Npc } from '../public/js/game/npc.js';
+import { Npc, stepNpcRecoil } from '../public/js/game/npc.js';
+
+test('NPC recoil remains bounded and frame-rate independent at distant LOD intervals', () => {
+  const snap = () => ({ head: new THREE.Vector2(), headV: new THREE.Vector2(1, -1), torso: new THREE.Vector2(), torsoV: new THREE.Vector2(2, -2) });
+  const coarse = snap(), fine = snap();
+  for (let i = 0; i < 10; i++) {
+    stepNpcRecoil(coarse, 0.2);
+    for (let j = 0; j < 20; j++) stepNpcRecoil(fine, 0.01);
+    for (const part of ['head', 'torso']) {
+      assert.ok(coarse[part].length() < 0.2, `${part} reaction diverged`);
+      assert.ok(coarse[part].distanceTo(fine[part]) < 1e-10, `${part} changes with update rate`);
+    }
+  }
+  assert.ok(coarse.torso.length() < 1e-5, 'recoil must settle');
+});
 
 for (const item of ['beer','smoke','spray','cash','pistol','grenade','potion','chori','apple']) {
   test(`dropping ${item} creates that physical item rather than deleting it`, () => {
