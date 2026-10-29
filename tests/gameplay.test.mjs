@@ -17,9 +17,10 @@ import { HitReact } from '../public/js/game/react.js';
 import { PokerView } from '../public/js/game/poker.js';
 import { fakeMeta } from './ragdoll-bench.mjs';
 import { Input } from '../public/js/core/input.js';
-import { VehicleManager } from '../public/js/game/entities.js';
+import { VehicleManager, updateVehicleVisibility } from '../public/js/game/entities.js';
+import { Cctv } from '../public/js/game/cctv.js';
 import { mowerSweep } from '../public/js/shared/mower.js';
-import { supportedMatrix } from '../public/js/game/placement.js';
+import { supportedMatrix, yawCollider } from '../public/js/game/placement.js';
 import { GRASSMAP, GRASS } from '../public/js/shared/mapdata.js';
 import { VEHICLES } from '../public/js/shared/mapdata.js';
 import { cutRect } from '../public/js/shared/raster.js';
@@ -1076,4 +1077,50 @@ test('una patada que toca con el pie en su ventana pega aunque el pie llegue fre
   p._limbContact({ part: 10, collider: { handle: 78 }, info: { kind: 'bag', ref: bag }, contact: { normal1: { x: 0, y: 0, z: -1 }, point1: { x: 0, y: 0.5, z: 0.7 } } }, still, still, 1 / 60);
   assert.equal(hits.length, 1);
   G.players = new Map(); ph.world.free();
+});
+
+
+test('a rotated prop collider follows its footprint instead of blocking empty corners', async () => {
+  const bounds = new THREE.Box3(new THREE.Vector3(-.25, 0, -2), new THREE.Vector3(.25, 1, 2));
+  const position = new THREE.Vector3(3, 0, 4), yaw = Math.PI / 4;
+  const { center, half } = yawCollider(bounds, position, yaw, 1);
+  const phys = new Physics(); await phys.init();
+  phys.box(center.x, center.y, center.z, half.x, half.y, half.z, yaw);
+  phys.world.step();
+  const point = (x, z) => phys.overlapBox(x, .5, z, .02, .1, .02);
+  assert.ok(point(3, 4), 'the model interior must remain solid');
+  assert.equal(point(4.3, 2.7), null, 'an empty corner of the world AABB must stay walkable');
+  phys.world.free();
+});
+
+
+test('distant vehicles are culled visually without changing the vehicle or its physics', () => {
+  const camera = new THREE.Vector3(0, 2, 0);
+  const vehicle = { pos: new THREE.Vector3(190, 0, 0), group: { visible: true }, body: {} };
+  const body = vehicle.body;
+  updateVehicleVisibility(vehicle, camera, null);
+  assert.equal(vehicle.group.visible, false);
+  assert.equal(vehicle.body, body);
+  vehicle.pos.x = 175; updateVehicleVisibility(vehicle, camera, null);
+  assert.equal(vehicle.group.visible, false, 'hysteresis avoids popping at the boundary');
+  vehicle.pos.x = 160; updateVehicleVisibility(vehicle, camera, null);
+  assert.equal(vehicle.group.visible, true);
+  vehicle.pos.x = 500; updateVehicleVisibility(vehicle, camera, vehicle);
+  assert.equal(vehicle.group.visible, true, 'the local occupied vehicle remains visible');
+});
+
+
+test('security camera renders distant vehicles and restores main-view visibility', () => {
+  const hidden = { group: { visible: false } }, visible = { group: { visible: true } };
+  const oldVehicles = G.vehicles; G.vehicles = { items: new Map([[1, hidden], [2, visible]]) };
+  const oldTarget = {}, feedTarget = {}; let target = oldTarget, shown = false;
+  const renderer = { shadowMap: { autoUpdate: true }, getRenderTarget: () => target, setRenderTarget: v => { target = v; },
+    render() { shown = hidden.group.visible && visible.group.visible; } };
+  const camera = new Cctv({ scene: {}, renderer, world: {}, getLocal: () => null });
+  camera.pose = () => {};
+  try {
+    camera.renderFeed(0, feedTarget);
+    assert.ok(shown); assert.equal(hidden.group.visible, false); assert.equal(visible.group.visible, true);
+    assert.equal(target, oldTarget); assert.equal(renderer.shadowMap.autoUpdate, true);
+  } finally { G.vehicles = oldVehicles; }
 });

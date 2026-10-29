@@ -443,6 +443,8 @@ export class ClubGame {
     [['lilith', 'Lilith'], ['coneja', 'La Coneja'], ['venus', 'Venus']].forEach(([m, name], i) => { if (P[i]) add({ name, look: { model: m }, pos: P[i].clone(), role: this._poleRole(P[i], i) }); });
     // gogós en las jaulas colgantes: su rutina al compás (char/pole-dance.js), girando despacio para que la vean todos
     const cage = (c, phase) => (n, dt) => {
+      // colgada en su jaula: nada la saca de ahí (ni empujones ni el pánico de la pista)
+      n.noCollide = true; n.scripted = true; n.react = null;
       const fo = feetOffset(n.char), want = fo === null ? c.y : c.y + FOOT_SINK - fo;
       n.data.y = (n.data.y ?? want) + (want - (n.data.y ?? want)) * Math.min(1, dt * 10);
       n.pos.set(c.x, n.data.y, c.z);
@@ -472,8 +474,11 @@ export class ClubGame {
       const chacal = add({ name: 'El Chacal', look: { model: 'chacal' }, pos: c.clone().add(V1.set(1, 0, 0)), yaw: -Math.PI / 2 });
       for (const [a, b] of [[toro, chacal], [chacal, toro]]) {
         a.physical = true;
+        a.scripted = true; // pelean aunque la pista entre en pánico (y no salen corriendo de la jaula)
         a.role = (n, dt) => this._fighter(n, b, dt);
         a.onHurt = (n, s, point, byPlayer) => {
+          // entre ellos es una pelea de jaula: quedan noqueados, no muertos (si los matás vos, eso sí)
+          if (!byPlayer) n.hp = Math.max(n.hp, 6);
           G.sfx?.trigger(s > 0.8 ? 'hit' : 'hit-soft', point, Math.min(1, 0.4 + s * 0.4));
           G.fx?.blood(point.clone(), V1.set(Math.random() - 0.5, 0.6, Math.random() - 0.5).normalize(), Math.min(1.2, s));
           if (byPlayer) { n.data.aggroT = G.time + 15; if (!n.data.saidAggro || G.time > n.data.saidAggro) { n.data.saidAggro = G.time + 6; n.say(['¡¿Me pegaste a MÍ?!', 'Vení, vení, dale.', 'Te hago mierda, gil.'][Math.floor(Math.random() * 3)], 2.5); } }
@@ -543,6 +548,7 @@ export class ClubGame {
   // DJ: pasa música al compás (char/pole-dance.js djPose) y mira a los que se acercan
   _djRole(r = 8, off = 0) {
     return (n) => {
+      n.scripted = true; // el DJ no deja las bandejas
       n.emote = 'dj'; n.emoteT = (this.beat?.beat ?? G.time * BPM / 60) + off;
       n.lookAt = this._near(n, r);
     };

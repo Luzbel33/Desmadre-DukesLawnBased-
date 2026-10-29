@@ -85,7 +85,7 @@ export class Npc {
     this.char = null;
     this.emote = null; this.emoteT = 0;
     this.headYaw = 0; this.aimPitch = 0;
-    this.speed = 0;
+    this.speed = 0; this.fwdSpeed = 0; this.sideSpeed = 0;
     this.sit = false; this.table = false;
     this.action = null; this.actionT = 0;
     this.talk = 0;
@@ -441,7 +441,15 @@ export class Npc {
       this.actionEnd = this.actionT + 0.3;
     } else if (simulate && !(this.burnT > 0) && !(this.down > 0) && !stepNpcDefense(this, dt) && !stepReaction(this, dt)) this.role?.(this, dt);
     if (simulate) this._resolveMove();
-    if (simulate && !this.sit && !this.down && !this.dead && !(this.burnT > 0) && dt > 0) this.speed = Math.min(5, Math.hypot(this.pos.x - moveX, this.pos.z - moveZ) / dt);
+    if (simulate && !this.sit && !this.down && !this.dead && !(this.burnT > 0) && dt > 0) {
+      const mx = this.pos.x - moveX, mz = this.pos.z - moveZ;
+      this.speed = Math.min(5.5, Math.hypot(mx, mz) / dt);
+      // hacia dónde se mueve respecto del cuerpo (de costado rodeando al rival, para atrás con las manos arriba...):
+      // las piernas dan el paso para ese lado en vez de patinar caminando para adelante
+      const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw), k = Math.min(1, dt * 12);
+      this.fwdSpeed += ((mx * fx + mz * fz) / dt - this.fwdSpeed) * k;
+      this.sideSpeed += ((mx * -fz + mz * fx) / dt - this.sideSpeed) * k;
+    }
     // mirar a alguien: la cabeza primero, el cuerpo si hace falta
     let want = this.baseYaw, hy = 0;
     if (this.lookAt) {
@@ -450,7 +458,7 @@ export class Npc {
       if (Math.abs(d) > 0.9) want = this.baseYaw + d - Math.sign(d) * 0.9;
       hy = clamp(angleDiff(want, a), -1.1, 1.1);
     }
-    if (!this.sit) this.yaw += angleDiff(this.yaw, want) * Math.min(1, dt * (this.react ? 9 : 3));
+    if (!this.sit) this.yaw += angleDiff(this.yaw, want) * Math.min(1, dt * (this.react ? 9 : this.speed > 0.6 ? 6 : 3));
     this.headYaw += (hy - this.headYaw) * Math.min(1, dt * 4);
     if (this.emote) this.emoteT += dt;
     if (this.action) { this.actionT += dt; if (this.actionT > (this.actionEnd || 1.6)) this.action = null; }
@@ -483,7 +491,7 @@ export class Npc {
         else this._getUp();
       }
     } else {
-      if (updatePose) ch.animate({ speed: this.speed, grounded: true, sit: this.sit, table: this.table, crouch: this.crouch && this.action !== 'cower', aimPitch: this.aimPitch, headYaw: this.headYaw, emote: this.emote, emoteT: this.emoteT, action: this.action, actionT: this.actionT, actionDur: this.actionEnd, stagger: this._stagLocal, kickKind: this.kickKind, held: this.item || (this.prop && !this.propHang) ? 'item' : null }, dt);
+      if (updatePose) ch.animate({ speed: this.speed, fwdSpeed: this.fwdSpeed, sideSpeed: this.sideSpeed, grounded: true, sit: this.sit, table: this.table, crouch: this.crouch && this.action !== 'cower', aimPitch: this.aimPitch, headYaw: this.headYaw, emote: this.emote, emoteT: this.emoteT, action: this.action, actionT: this.actionT, actionDur: this.actionEnd, stagger: this._stagLocal, kickKind: this.kickKind, held: this.item || (this.prop && !this.propHang) ? 'item' : null }, dt);
       if (this.propHang) ch.grip.r = 1; // el farol cuelga del puño cerrado, con el brazo suelto
       // resortes de los golpes (subamortiguados: la cabeza se va y vuelve)
       const S = this.snap, w = 22, z = 0.35;

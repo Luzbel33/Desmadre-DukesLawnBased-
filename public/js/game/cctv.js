@@ -253,10 +253,20 @@ export class Cctv {
     const r = this.renderer;
     this.pose(i, this.feedCam, G.time || 0);
     const prev = r.getRenderTarget(), sh = r.shadowMap.autoUpdate;
-    r.shadowMap.autoUpdate = false;
-    r.setRenderTarget(rt);
-    r.render(this.scene, this.feedCam);
-    r.setRenderTarget(prev);
-    r.shadowMap.autoUpdate = sh;
+    // The monitor camera is elsewhere in the world, so main-view distance
+    // culling cannot decide which vehicles it can see.
+    const hiddenVehicles = [];
+    for (const v of G.vehicles?.items?.values() || []) {
+      if (!v.group.visible) { hiddenVehicles.push(v.group); v.group.visible = true; }
+    }
+    try {
+      r.shadowMap.autoUpdate = false;
+      r.setRenderTarget(rt);
+      r.render(this.scene, this.feedCam);
+    } finally {
+      for (const group of hiddenVehicles) group.visible = false;
+      r.setRenderTarget(prev);
+      r.shadowMap.autoUpdate = sh;
+    }
   }
 }

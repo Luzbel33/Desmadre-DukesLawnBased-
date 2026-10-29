@@ -5,8 +5,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Builder, getMat } from './builder.js';
-import { assetBounds } from '../game/assets.js';
-import { whenAsset } from '../game/assets.js';
+import { assetBounds, whenAsset } from '../game/assets.js';
+import { yawCollider } from '../game/placement.js';
 import { dressTowerTop } from './tower-tops.js';
 import { buildPuddles } from '../fx/puddles.js';
 
@@ -213,12 +213,13 @@ function glow(scene, x, y, z, size, color, op = 0.8) {
 function ground(d, type, x, y, z, yaw, scale, { solid = true, mat = 'wood', shrink = 1 } = {}) {
   d.place(type, x, y, z, yaw, scale, { onReady: (m) => {
     m.updateMatrixWorld(true);
-    let box = new THREE.Box3().setFromObject(m);
+    const box = new THREE.Box3().setFromObject(m);
     m.position.y += y - box.min.y; m.updateMatrix(); m.updateMatrixWorld(true);
-    box = new THREE.Box3().setFromObject(m);
     if (solid) {
-      const s = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
-      d.phys.box(c.x, c.y, c.z, s.x / 2 * shrink, s.y / 2, s.z / 2 * shrink, 0, { paint: false, mat });
+      const bounds = assetBounds(type);
+      if (!bounds) return;
+      const { center, half } = yawCollider(bounds, m.position, yaw, scale, shrink);
+      d.phys.box(center.x, center.y, center.z, half.x, half.y, half.z, yaw, { paint: false, mat });
     }
   } });
 }

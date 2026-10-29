@@ -72,6 +72,15 @@ const isSlope = (h) => Math.max(Math.abs(h.normal1?.y || 0), Math.abs(h.normal2?
 const GROUND_GROUPS = groups(0xffff, GR.WORLD);
 const TMPE = new THREE.Euler();
 
+// Distant detailed vehicles can cost dozens of draws each; their physics and
+// network updates continue while their visual group is outside the useful range.
+export function updateVehicleVisibility(vehicle, cameraPosition, localVehicle) {
+  if (!cameraPosition || vehicle === localVehicle) { vehicle.group.visible = true; return; }
+  const dx = vehicle.pos.x - cameraPosition.x, dy = vehicle.pos.y - cameraPosition.y, dz = vehicle.pos.z - cameraPosition.z;
+  const limit = vehicle.group.visible ? 185 : 165;
+  vehicle.group.visible = dx * dx + dy * dy + dz * dz <= limit * limit;
+}
+
 export class VehicleManager {
   constructor(net, local) {
     this.net = net;
@@ -294,7 +303,10 @@ export class VehicleManager {
         v.body.setNextKinematicRotation({ x: v.quat.x, y: v.quat.y, z: v.quat.z, w: v.quat.w });
       }
     }
-    for (const v of this.items.values()) this._animate(v, dt);
+    for (const v of this.items.values()) {
+      updateVehicleVisibility(v, G.camera?.position, localV);
+      this._animate(v, dt);
+    }
   }
 
   // El piso debajo de las ruedas (adelante y atrás): sube por las rampas con el cabeceo de la pendiente; si el piso se

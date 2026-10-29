@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { G, clamp, lerp, rng } from '../core/G.js';
 import { polePose, gogoPose, djPose, clubPose, trancePose } from './pole-dance.js';
-import { locomotion, loadMocap } from './mocap.js';
+import { alignEuler, locomotion, loadMocap } from './mocap.js';
 
 // Load once in the browser; Node regression tests load the same clips explicitly.
 if (typeof document !== 'undefined') loadMocap();
@@ -1264,13 +1264,15 @@ export class Character {
     const coeff = spring ? springCoefficients(Math.max(0, dt)) : null;
     for (let i = 0; i < JOINT_NAMES.length; i++) {
       const n = JOINT_NAMES[i];
-      const tgt = J[n];
+      const pose = J[n];
       const c = A.cur[i];
+      const tgt = st.emote ? pose : alignEuler(pose[0], pose[1], pose[2], c.x, c.y, c.z, A.targetEuler || (A.targetEuler = [0, 0, 0]));
       if (spring) {
         const cf = coeff[i], v = V[i];
         for (let a = 0; a < 3; a++) {
-          const ax = AXES[a], y = c[ax] - tgt[a], velocity = v[ax];
-          c[ax] = tgt[a] + cf[0] * y + cf[1] * velocity;
+          const ax = AXES[a], target = tgt[a];
+          const y = c[ax] - target, velocity = v[ax];
+          c[ax] = target + cf[0] * y + cf[1] * velocity;
           v[ax] = cf[2] * y + cf[3] * velocity;
         }
         const j2 = this.joints[i];

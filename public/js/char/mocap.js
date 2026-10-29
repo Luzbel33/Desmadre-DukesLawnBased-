@@ -10,6 +10,20 @@
 import { clamp } from '../core/G.js';
 
 const ROW = 48;
+export function angleDelta(a, b) {
+  let d = a - b;
+  if (d > Math.PI || d < -Math.PI) d -= Math.round(d / (2 * Math.PI)) * (2 * Math.PI);
+  return d;
+}
+// Resolve the two YXZ representations together, relative to the filtered pose.
+export function alignEuler(x, y, z, rx, ry, rz, out) {
+  const dx = angleDelta(x, rx), dy = angleDelta(y, ry), dz = angleDelta(z, rz);
+  const ax = angleDelta(Math.PI - x, rx), ay = angleDelta(y + Math.PI, ry), az = angleDelta(z + Math.PI, rz);
+  const flip = ax * ax + ay * ay + az * az < dx * dx + dy * dy + dz * dz;
+  out[0] = rx + (flip ? ax : dx); out[1] = ry + (flip ? ay : dy); out[2] = rz + (flip ? az : dz);
+  return out;
+}
+const isAngle = (k) => k < 33 || k >= 36;
 export const MOCAP = { ready: false, clips: null };
 let loading = null;
 const REQUIRED = ['Idle_Loop', 'Idle_Talking_Loop', 'Walk_Loop', 'Walk_Formal_Loop', 'Jog_Fwd_Loop', 'Sprint_Loop', 'Crouch_Idle_Loop', 'Crouch_Fwd_Loop'];
@@ -33,6 +47,17 @@ export function loadMocap(url = new URL('../../assets/anim/ual.json', import.met
         if (row.length !== ROW || !row.every(Number.isFinite)) throw new Error(`invalid mocap frame ${name}:${i}`);
         f.set(row, i * ROW);
       });
+      // Keep adjacent frames on the same Euler branch before calculating the
+      // stride center; averaging equivalent branches would invent a bent leg.
+      const aligned = [0, 0, 0];
+      for (let i = 1; i < nf; i++) {
+        const here = i * ROW, prev = here - ROW;
+        for (let k = 0; k < ROW; k += 3) {
+          if (!isAngle(k)) continue;
+          alignEuler(f[here + k], f[here + k + 1], f[here + k + 2], f[prev + k], f[prev + k + 1], f[prev + k + 2], aligned);
+          f.set(aligned, here + k);
+        }
+      }
       // promedio de cada valor en el ciclo (el centro alrededor del que se achica o se alarga el paso)
       const mean = new Float32Array(ROW);
       for (let i = 0; i < nf; i++) for (let k = 0; k < ROW; k++) mean[k] += f[i * ROW + k] / nf;
@@ -47,7 +72,7 @@ export function loadMocap(url = new URL('../../assets/anim/ual.json', import.met
 
 // suma w * (pose del clip en u) en out. u: fase 0..1 (ciclos) o segundos (de una vez). warp: cuánto se alarga (>1) o
 // se achica (<1) el paso respecto del de la animación
-export function addClip(out, clip, u, w, warp = 1, loop = clip.loop) {
+export function addClip(out, clip, u, w, warp = 1, loop = clip.loop, previousWeight = 0) {
   if (w <= 1e-4) return;
   const nf = clip.nf, f = clip.f;
   let x;
@@ -55,17 +80,40 @@ export function addClip(out, clip, u, w, warp = 1, loop = clip.loop) {
   else x = clamp(u * clip.fps, 0, nf - 1);
   const i0 = Math.floor(x) % nf, i1 = loop ? (i0 + 1) % nf : Math.min(nf - 1, i0 + 1), a = x - Math.floor(x);
   const o0 = i0 * ROW, o1 = i1 * ROW, m = clip.mean;
-  for (let k = 0; k < ROW; k++) {
-    let v = f[o0 + k] + (f[o1 + k] - f[o0 + k]) * a;
-    if (warp !== 1) {
-      // el paso: la cadera (adelante/atrás) y los brazos acompañan; la rodilla un poco; el vaivén de la cadera también
-      const s = k === 21 || k === 27 ? warp : k === 24 || k === 30 ? 0.7 + 0.3 * warp : k === 9 || k === 15 ? 0.55 + 0.45 * warp : k === 35 ? warp : 1;
-      if (s !== 1) v = m[k] + (v - m[k]) * s;
+  for (let k = 0; k < ROW;) {
+    if (!isAngle(k)) {
+      let v = f[o0 + k] + (f[o1 + k] - f[o0 + k]) * a;
+      if (k === 35 && warp !== 1) v = m[k] + (v - m[k]) * warp;
+      out[k] += v * w;
+      k++;
+      continue;
     }
-    out[k] += v * w;
+    // YXZ has two equivalent Euler representations. Align all three axes
+    // together before interpolating; wrapping each axis independently can bend
+    // a knee the wrong way even when both endpoint quaternions are nearly equal.
+    const x0 = f[o0 + k], y0 = f[o0 + k + 1], z0 = f[o0 + k + 2];
+    const x1 = f[o1 + k], y1 = f[o1 + k + 1], z1 = f[o1 + k + 2];
+    const dx = angleDelta(x1, x0), dy = angleDelta(y1, y0), dz = angleDelta(z1, z0);
+    const ax = angleDelta(Math.PI - x1, x0), ay = angleDelta(y1 + Math.PI, y0), az = angleDelta(z1 + Math.PI, z0);
+    const alternate = ax * ax + ay * ay + az * az < dx * dx + dy * dy + dz * dz;
+    let x = x0 + (alternate ? ax : dx) * a;
+    let y = y0 + (alternate ? ay : dy) * a;
+    let z = z0 + (alternate ? az : dz) * a;
+    const scale = k === 21 || k === 27 ? warp : k === 24 || k === 30 ? 0.7 + 0.3 * warp : k === 9 || k === 15 ? 0.55 + 0.45 * warp : 1;
+    if (scale !== 1) x = m[k] + angleDelta(x, m[k]) * scale;
+    if (previousWeight > 0) {
+      const rx = out[k] / previousWeight, ry = out[k + 1] / previousWeight, rz = out[k + 2] / previousWeight;
+      const bx = angleDelta(x, rx), by = angleDelta(y, ry), bz = angleDelta(z, rz);
+      const cx = angleDelta(Math.PI - x, rx), cy = angleDelta(y + Math.PI, ry), cz = angleDelta(z + Math.PI, rz);
+      const flip = cx * cx + cy * cy + cz * cz < bx * bx + by * by + bz * bz;
+      x = rx + (flip ? cx : bx); y = ry + (flip ? cy : by); z = rz + (flip ? cz : bz);
+    }
+    out[k] += x * w; out[k + 1] += y * w; out[k + 2] += z * w;
+    k += 3;
   }
 }
 
+const FOOT_JOINTS = [['l', 36], ['r', 39], ['bl', 42], ['br', 45]];
 const NAMES = ['hips', 'spine', 'neck', 'shoulderL', 'elbowL', 'shoulderR', 'elbowR', 'hipL', 'kneeL', 'hipR', 'kneeR'];
 const BUF = new Float32Array(ROW);
 
@@ -111,18 +159,23 @@ export function locomotion(A, st, dt, J, H) {
   A.mcIdle = (A.mcIdle ?? Math.random() * 10) + dt;
   // mezcla
   BUF.fill(0);
-  if (move < 1) addClip(BUF, idleC, (A.mcIdle / idleC.dur) % 1, 1 - move);
-  for (let i = 0; i < gaitCount; i++) addClip(BUF, gaits[i], A.mcPhase, W[i] * move, WARP[i]);
+  let weight = 0;
+  if (1 - move > 1e-4) { weight = 1 - move; addClip(BUF, idleC, (A.mcIdle / idleC.dur) % 1, weight); }
+  for (let i = 0; i < gaitCount; i++) {
+    const w = W[i] * move;
+    addClip(BUF, gaits[i], A.mcPhase, w, WARP[i], gaits[i].loop, weight);
+    if (w > 1e-4) weight += w;
+  }
   for (let j = 0; j < 11; j++) { const a = J[NAMES[j]]; a[0] = BUF[j * 3]; a[1] = BUF[j * 3 + 1]; a[2] = BUF[j * 3 + 2]; }
   const mc = A.mc || (A.mc = { hx: 0, hy: 0, hz: 0, foot: { l: [0, 0, 0], r: [0, 0, 0], bl: [0, 0, 0], br: [0, 0, 0] }, on: 0 });
   mc.hx = BUF[33] * H; mc.hy = BUF[34] * H; mc.hz = BUF[35] * H;
   const F = mc.foot, smoothing = mc.on ? 1 - Math.exp(-dt * 18) : 1;
   // Match the joint filter: unsmoothed ankles would lead the shins by a frame during a step.
-  for (let k = 0; k < 3; k++) {
-    F.l[k] += (BUF[36 + k] - F.l[k]) * smoothing;
-    F.r[k] += (BUF[39 + k] - F.r[k]) * smoothing;
-    F.bl[k] += (BUF[42 + k] - F.bl[k]) * smoothing;
-    F.br[k] += (BUF[45 + k] - F.br[k]) * smoothing;
+  const footTarget = mc.target || (mc.target = [0, 0, 0]);
+  for (const [name, offset] of FOOT_JOINTS) {
+    const current = F[name];
+    alignEuler(BUF[offset], BUF[offset + 1], BUF[offset + 2], current[0], current[1], current[2], footTarget);
+    for (let k = 0; k < 3; k++) current[k] += (footTarget[k] - current[k]) * smoothing;
   }
   mc.on = 1;
   return true;

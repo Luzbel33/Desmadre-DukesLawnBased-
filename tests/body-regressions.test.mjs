@@ -5,6 +5,7 @@ import { LocalPlayer } from '../public/js/game/player.js';
 import { Npc } from '../public/js/game/npc.js';
 import { Villagers } from '../public/js/game/villagers.js';
 import { G } from '../public/js/core/G.js';
+import { alarmPeds, aimedAt } from '../public/js/game/ped-react.js';
 
 test('sprinting into a standing player shoves the runner by momentum, once per contact', async () => {
   const { Balance } = await import('../public/js/game/balance.js');
@@ -61,4 +62,19 @@ test('guard patrol speed reflects displacement and does not walk in place at the
     assert.ok(Math.abs(actual - n.speed) < .06, 'animation speed differs from guard displacement');
     assert.ok(actual <= 1.11, 'patrol exceeds its speed limit');
   }
+});
+
+
+test('scripted performers keep their routines while ordinary pedestrians react to danger', () => {
+  const oldNpcs = G.allNpcs;
+  const actor = { name: 'DJ', scripted: true, char: {}, pos: new THREE.Vector3(), emote: 'dj' };
+  const pedestrian = { name: 'Vecino', char: {}, pos: new THREE.Vector3(1, 0, 0), _brave: .5 };
+  G.allNpcs = () => [actor, pedestrian];
+  try {
+    alarmPeds(new THREE.Vector3(), 'shot');
+    assert.equal(actor.react, undefined); assert.equal(actor.emote, 'dj');
+    assert.ok(pedestrian.react && ['flee', 'cower'].includes(pedestrian.react.mode));
+    aimedAt(actor, new THREE.Vector3());
+    assert.equal(actor.react, undefined);
+  } finally { G.allNpcs = oldNpcs; }
 });

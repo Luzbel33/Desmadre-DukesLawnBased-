@@ -7,7 +7,8 @@
 //  - si les apuntás con un arma: manos arriba, ruegan y retroceden; si seguís, salen corriendo.
 //  - cuando se calma (lejos y sin nada nuevo), vuelven caminando a su lugar y retoman lo que hacían.
 // Cada uno tiene su carácter (bravura, sacada del nombre): no todos hacen lo mismo. Sentados se paran; las bailarinas
-// (noCollide: coreografía armada a mano) no se tocan.
+// (noCollide: coreografía armada a mano) y los que tienen un número armado (scripted: gogós de las jaulas, DJs, los
+// boxeadores de la jaula) no se tocan: el show sigue.
 import * as THREE from 'three';
 import { G } from '../core/G.js';
 import { startNpcDefense } from './npc-defense.js';
@@ -28,7 +29,7 @@ const isGuard = (n) => /guardia|guard|patovica|portero|sargento|toro/i.test(n.na
 export function alarmPeds(pos, kind, by = 0) {
   const R = { shot: 32, blast: 40, fight: 11, gore: 14 }[kind] || 12;
   for (const n of G.allNpcs?.() || []) {
-    if (!n.char || n.dead || n.noCollide || n.down > 0) continue;
+    if (!n.char || n.dead || n.noCollide || n.scripted || n.down > 0) continue;
     const d = Math.hypot(n.pos.x - pos.x, n.pos.z - pos.z);
     if (d > R || Math.abs(n.pos.y - pos.y) > 6) continue;
     reactTo(n, pos, kind, d, by);
@@ -36,7 +37,7 @@ export function alarmPeds(pos, kind, by = 0) {
 }
 // alguien le apunta con un arma a este NPC (lo llama main.js mientras apuntás)
 export function aimedAt(n, from) {
-  if (!n?.char || n.dead || n.noCollide || n.down > 0 || n.defense) return;
+  if (!n?.char || n.dead || n.noCollide || n.scripted || n.down > 0 || n.defense) return;
   const r = n.react;
   if (r && (r.mode === 'flee' || r.mode === 'cower')) { r.t = Math.max(r.t, 3); return; }
   if (isGuard(n) && G.me) { startNpcDefense(n, G.me); return; }
