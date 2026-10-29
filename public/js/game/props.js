@@ -448,6 +448,11 @@ export class PropManager {
     this.items.delete(id);
   }
 
+  dispose() {
+    for (const id of [...this.items.keys()]) this.remove(id);
+    this._mine.length = 0;
+  }
+
   get(id) { return this.items.get(id); }
 
   // ---------------------------------------------------------------- autoridad

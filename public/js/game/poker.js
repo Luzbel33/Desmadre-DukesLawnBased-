@@ -464,6 +464,12 @@ export class PokerView {
     }
   }
 
+  dispose() {
+    for (const bot of this.bots.values()) bot.char.dispose();
+    this.bots.clear();
+    this.group.removeFromParent();
+  }
+
   _botEmote(i, e, secs = 1.6) {
     const b = this.bots.get(i);
     if (b) { b.emote = e; b.emoteT = 0; b.emoteEnd = secs; }

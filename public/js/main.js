@@ -1627,6 +1627,7 @@ function setupNetHandlers(net) {
   net.on('fight', (m) => G.money?.fight(m));
   net.on('poolaim', (m) => G.pool?.aimFrom(m));
   net.on('close', () => {
+    if (net !== state.net) return;
     if (!G.inGame) return;
     G.inGame = false; G.input.enabled = false; G.sfx?.stop(); G.media?.stop();
     G.voice?.disableMic();
@@ -1636,6 +1637,20 @@ function setupNetHandlers(net) {
   net.onBin(1, (u8) => G.grass.applyFull(u8).catch((e) => console.warn('grass full', e)));
   net.onBin(2, (u8) => state.graffiti.applyFullPacket(u8));
   net.onBin(3, (u8) => state.graffiti.applyDotsPacket(u8));
+}
+
+// A disconnected or failed join can be retried without reloading the page.
+// Remove the old room's visuals and physics before creating a new session.
+function disposeRoomSession() {
+  state.local?.dispose(); state.local = null; G.me = null;
+  state.props?.dispose(); state.props = null; G.props = null;
+  state.vehicles?.dispose(); state.vehicles = null; G.vehicles = null;
+  state.graffiti?.dispose(); state.graffiti = null; G.graffiti = null;
+  G.poker?.dispose(); G.poker = null;
+  for (const player of G.players.values()) player.dispose();
+  G.players.clear(); clearNameTags();
+  G.voice?.dispose(); G.voice = null;
+  G.media?.dispose(); G.media = null;
 }
 
 function updateMicUI() {
@@ -1684,6 +1699,7 @@ async function joinGame() {
   state.reconnecting = true; state.preparingJoin = true;
   $('m-play').disabled = true;
   try {
+    disposeRoomSession();
     state.local = new LocalPlayer(look); state.local.name = name; G.me = state.local;
     state.net = new Net(); G.net = state.net;
     G.voice?.dispose();
@@ -1729,7 +1745,7 @@ async function joinGame() {
     setTimeout(() => G.hud?.notify('<b>J</b> = ¿qué hacemos? Póker, fútbol, cortadoras, cine, graffiti... Los carteles flotantes marcan cada lugar.', 7000), 1500);
   } catch (e) {
     console.error(e); $('m-err').textContent = e.message || String(e);
-    state.local?.dispose(); state.local = null; G.me = null; G.media?.dispose(); G.media = null; G.sfx?.stop(); state.net?.close();
+    disposeRoomSession(); G.sfx?.stop(); state.net?.close();
   } finally { state.reconnecting = false; state.preparingJoin = false; $('m-play').disabled = false; }
 }
 

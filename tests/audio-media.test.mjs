@@ -133,6 +133,18 @@ test('synthesized game sounds contain finite, audible samples without clipping',
 test('audio unlock handles unsupported browsers without breaking the game',async()=>{
   requireModule(audio);const a=new audio.AudioEngine({contextFactory:()=>null});assert.equal(await a.unlock(),false);a.update(1/60,{});a.dispose();
 });
+test('footsteps follow each lifted foot landing and reset on interruption',()=>{
+  const s={}, step=(l,r,active=true,dt=.1)=>audio.footstepLanding(s,l,r,1.8,dt,active);
+  assert.equal(step(.13,.13),false);
+  assert.equal(step(.3,.13),false);
+  assert.equal(step(.16,.3),true);
+  assert.equal(step(.13,.3),false);
+  assert.equal(step(.13,.16),false, 'the higher foot must not land through the planted foot');
+  assert.equal(step(.3,.16),true);
+  assert.equal(step(.3,.13),false);
+  assert.equal(step(.13,.13,false),false);
+  assert.equal(step(.13,.13),false, 'landing after interruption must not replay a stale step');
+});
 test('client integrates audio unlock on join, per-frame audio/media, and visible retry controls',()=>{
   const main=fs.readFileSync(new URL('../public/js/main.js',import.meta.url),'utf8');
   const html=fs.readFileSync(new URL('../public/index.html',import.meta.url),'utf8');

@@ -91,6 +91,15 @@ export class VehicleManager {
     this._pendingCuts = [];
   }
 
+  dispose() {
+    for (const v of this.items.values()) {
+      for (const part of v.driveParts) G.phys.untag(part.collider);
+      G.phys.world.removeRigidBody(v.body);
+      v.group.removeFromParent();
+    }
+    this.items.clear();
+  }
+
   load(rows = []) {
     for (const r of rows) {
       const def = VDEF.get(r.id) || { id: r.id, type: 'mower', color: 0xc8312b };

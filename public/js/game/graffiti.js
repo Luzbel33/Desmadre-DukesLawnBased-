@@ -32,6 +32,17 @@ export class GraffitiManager {
     for (const def of SURFACES) this._make(def);
   }
 
+  dispose() {
+    for (const s of this.surfaces.values()) {
+      s.mesh.removeFromParent();
+      s.mesh.geometry.dispose();
+      s.mesh.material.dispose();
+      s.tex.dispose();
+    }
+    this.surfaces.clear();
+    this.fixedMeshes.length = 0;
+  }
+
   _make(def) {
     const canvas = document.createElement('canvas');
     canvas.width = def.pw; canvas.height = def.ph;

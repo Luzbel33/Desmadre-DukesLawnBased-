@@ -2,7 +2,32 @@ import { synthesize } from './synthesis.js';
 import { stepSound } from './surface.js';
 import { zoneAt } from '../shared/mapdata.js';
 import { ZoneMusic } from './music.js';
+import * as THREE from 'three';
 const clamp=(x,a=0,b=1)=>Math.min(b,Math.max(a,Number.isFinite(+x)?+x:0));
+const FOOT_POSITION = new THREE.Vector3();
+// Each foot must lift before it can land again. Heights are measured from the
+// character's ground position so the same detector follows the rendered pose
+// for local and interpolated remote players, including changes of gait.
+export function footstepLanding(state, left, right, height, dt, active) {
+  state.since = (state.since ?? 1) + dt;
+  if (!active || !Number.isFinite(left) || !Number.isFinite(right)) {
+    state.left = state.right = false;
+    return false;
+  }
+  const scale = Math.max(1, height || 1.8);
+  const lift = scale * 0.115, landing = scale * 0.095;
+  let landed = false;
+  for (const [side, y, other] of [['left', left, right], ['right', right, left]]) {
+    if (y > lift) state[side] = true;
+    else if (y < landing && y < other - scale * 0.007 && state[side]) {
+      state[side] = false;
+      landed = true;
+    }
+  }
+  if (!landed || state.since < 0.12) return false;
+  state.since = 0;
+  return true;
+}
 const DEFAULTS={vol:.8,volSfx:.8,volAmbient:.35,volMusic:.7,muted:false};
 // Respuesta al impulso sintética (piedra): primeras reflexiones + cola que decae; estéreo decorrelado
 function makeIR(c,secs=2.6,decay=2.2){
@@ -161,19 +186,29 @@ export class AudioEngine {
         let old=this.walkers.get(key);
         if(!old){old={x:pos.x,y:pos.y,z:pos.z,ground,dist:0,action:null,at:0};this.walkers.set(key,old);}
         const moved=Math.hypot(pos.x-old.x,pos.z-old.z);
+        old.still=moved<.0002?(old.still||0)+dt:0;
         if(!dead&&!vehicle){
           if(!old.ground&&ground && pos.y-old.y<.2)this.trigger('land',soundPos,isMe?.5:.6);
           if(old.ground&&!ground && pos.y>old.y+.005)this.trigger('jump',soundPos,.35);
-          if(ground&&moved<2){
+          const bones=p.char?.bones, left=bones?.foot_l, right=bones?.foot_r;
+          const walking=ground && moved<2 && old.still<.12 && (isMe?p.state==='active':(st.s??0)===0) &&
+            (isMe?p.speed:st.sp)>.5 && !!p.char?._walkLegs;
+          let stepNow=false;
+          if(left && right){
+            const l=walking?left.getWorldPosition(FOOT_POSITION).y-pos.y:0;
+            const r=walking?right.getWorldPosition(FOOT_POSITION).y-pos.y:0;
+            stepNow=footstepLanding(old.feet||(old.feet={}),l,r,p.char.meta?.height,dt,walking);
+          }else if(walking){
             old.dist+=moved;
-            if(old.dist>((isMe?p.speed:st.sp)>5?1.25:.88)){
-              old.dist=0;const [step,rate,vol]=stepSound(pos.x,pos.y,pos.z);this.trigger(step,soundPos,(isMe?.4:.55)*vol,{rate:rate*(.94+Math.random()*.12)});
-            }
+            if(old.dist>((isMe?p.speed:st.sp)>5?1.25:.88)){old.dist=0;stepNow=true;}
           }else old.dist=0;
+          if(stepNow){
+            const [step,rate,vol]=stepSound(pos.x,pos.y,pos.z);this.trigger(step,soundPos,(isMe?.4:.55)*vol,{rate:rate*(.94+Math.random()*.12)});
+          }
           if(ACTIONS[action] && (action!==old.action || at+.35<old.at))this.trigger(ACTIONS[action],soundPos,.65);
           const spray=isMe?spraying:action==='spray';
           if(spray)this._loop(`spray-${key}`,'spray',isMe?.24:.35,soundPos,{max:14});
-        }
+        }else if(old.feet){old.feet.left=false;old.feet.right=false;old.dist=0;}
         Object.assign(old,{x:pos.x,y:pos.y,z:pos.z,ground,action,at});
       }
       for(const key of this.walkers.keys())if(!seen.has(key))this.walkers.delete(key);

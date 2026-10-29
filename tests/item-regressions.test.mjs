@@ -76,6 +76,25 @@ test('all equipped drops preserve meshes, state and replica identity with real R
   ph.world.free(); G.phys = null; G.props = null;
 });
 
+test('disposing a room removes prop visuals, colliders and bodies before a retry', async () => {
+  const { Physics } = await import('../public/js/core/physics.js');
+  const ph = new Physics(); await ph.init(); G.phys = ph; G.scene = new THREE.Scene(); G.myId = 1;
+  const pm = new PropManager({ send() {} }, null);
+  const prop = pm.addRow([66, 'cone', 100, 0, -16, 0, 0, 0, 1, 0, 0]);
+  const handle = prop.collider.handle;
+  assert.equal(ph.world.bodies.len(), 1);
+  assert.equal(G.scene.children.length, 1);
+  pm.dispose();
+  assert.equal(ph.world.bodies.len(), 0);
+  assert.equal(ph.meta.has(handle), false);
+  assert.equal(G.scene.children.length, 0);
+  const next = new PropManager({ send() {} }, null);
+  next.addRow([66, 'cone', 100, 0, -16, 0, 0, 0, 1, 0, 0]);
+  assert.equal(ph.world.bodies.len(), 1);
+  assert.equal(G.scene.children.length, 1);
+  next.dispose(); ph.world.free(); G.phys = null;
+});
+
 test('G launches the actual item and drops do not require arm movement', async () => {
   const { releaseEquipped } = await import('../public/js/game/held-release.js');
   const spawned=[]; G.props={spawnThrow(type,pos,vel){spawned.push({type,pos,vel}); return {id:1};}};
