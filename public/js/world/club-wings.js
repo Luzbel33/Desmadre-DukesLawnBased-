@@ -571,7 +571,8 @@ export class ClubWings {
       this.cyl('iron', x, y - 0.02, z, 0.45, 0.45, 0.06, 12);
       for (let k = 0; k < 10; k++) { const a = k / 10 * Math.PI * 2; this.cyl('iron', x + Math.cos(a) * 0.44, y + 0.85, z + Math.sin(a) * 0.44, 0.012, 0.012, 1.7, 4); }
       this.cyl('iron', x, (y + 1.73 + hl.h) / 2, z, 0.015, 0.015, hl.h - y - 1.73, 4);
-      this.model('c_skel_sit', x, y + 0.03, z, r() * 6);
+      const yaw = Math.atan2(-x, ic.z - z) + (r() - 0.5) * 0.12;
+      this.model('c_skel_hang', x - Math.sin(yaw) * 0.13, y + 0.03, z - Math.cos(yaw) * 0.13, yaw, 0.85);
     }
     // carteles
     this.neon('EL INFIERNO', { font: 'Metal Mania', px: 150, color: '#ff3a10' }, 7, 1.75, 0, 9.2, -478.62, Math.PI);

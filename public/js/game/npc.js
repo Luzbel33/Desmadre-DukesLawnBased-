@@ -74,6 +74,7 @@ function angleDiff(a, b) { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -
 
 // Exact damped spring: NPC LOD can advance by 0.2s, which destabilizes Euler integration.
 export function stepNpcRecoil(snap, dt) {
+  if (!snap.head.lengthSq() && !snap.headV.lengthSq() && !snap.torso.lengthSq() && !snap.torsoV.lengthSq()) return;
   const w = 22, damping = 0.35 * w, wd = Math.sqrt(w * w - damping * damping);
   const decay = Math.exp(-damping * Math.max(0, dt));
   const c = Math.cos(wd * Math.max(0, dt)), s = Math.sin(wd * Math.max(0, dt)) / wd;

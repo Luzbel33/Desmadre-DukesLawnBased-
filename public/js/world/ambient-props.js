@@ -125,8 +125,8 @@ function freeAround(x, y, z, r) {
 // 1.7 m quedaba con la punta metida en el mostrador del puesto de manzanas, en una silla o en una pared
 const FOOT = {
   bench: [0.9, 0.36, 0.95], benchRoad: [0.9, 0.36, 0.95], bin: [0.3, 0.3, 0.95], hydrant: [0.2, 0.2, 0.85], mailbox: [0.28, 0.2, 1.4],
-  rock: [0.55, 0.55, 0.6], bush: [0.75, 0.75, 1.0], flowers: [0.6, 0.6, 0.4], logs: [0.95, 0.35, 0.5], crates: [0.45, 0.45, 1.1],
-  barrels: [0.5, 0.5, 1.0], bags: [0.5, 0.5, 0.7], tires: [0.4, 0.4, 0.9], cone: [0.2, 0.2, 0.65], litter: [0.8, 0.8, 0.15],
+  rock: [1.3, 1.3, 1.25], bush: [0.75, 0.75, 1.0], flowers: [0.6, 0.6, 0.4], logs: [0.95, 0.5, 0.6], crates: [1.0, 0.42, 1.3],
+  barrels: [0.63, 0.91, 1.0], bags: [0.75, 0.75, 0.8], tires: [0.4, 0.4, 0.9], cone: [0.2, 0.2, 0.65], litter: [0.8, 0.8, 0.15],
 };
 let RESERVED = null; // puntos de uso (X), asientos y puestos: ahí no se tira nada
 function reserved(world) {
@@ -154,14 +154,19 @@ function wallNear(x, y, z, maxD) {
 }
 
 // ---------------------------------------------------------------- los objetos (cada uno devuelve cuánto lugar ocupa)
-function trashBags(b, x, y, z, rnd) {
+export function trashBags(b, x, y, z, rnd) {
   const n = 2 + Math.floor(rnd() * 3);
   for (let i = 0; i < n; i++) {
     const g = new THREE.SphereGeometry(0.26 + rnd() * 0.1, 8, 6), p = g.attributes.position;
     for (let k = 0; k < p.count; k++) { const s = 1 + 0.15 * Math.sin(p.getX(k) * 21 + p.getZ(k) * 17); p.setXYZ(k, p.getX(k) * s, p.getY(k) * (0.8 + 0.15 * s), p.getZ(k) * s); }
-    g.translate(x + (rnd() - 0.5) * 0.7, y + 0.22 + (i === 2 ? 0.25 : 0), z + (rnd() - 0.5) * 0.7);
+    g.computeBoundingBox();
+    const px = x + (rnd() - 0.5) * 0.7, pz = z + (rnd() - 0.5) * 0.7;
+    const py = y - g.boundingBox.min.y, top = py + g.boundingBox.max.y;
+    g.translate(px, py, pz);
     b.geo(rnd() < 0.7 ? 'latex' : 'leatherBlack', g); // bolsa de consorcio: plástico negro brillante
-    const knot = new THREE.ConeGeometry(0.05, 0.12, 5); knot.translate(x + (rnd() - 0.5) * 0.6, y + 0.52, z + (rnd() - 0.5) * 0.6); b.geo('black', knot);
+    const knot = new THREE.ConeGeometry(0.05, 0.12, 5);
+    knot.rotateX((rnd() - 0.5) * 0.3); knot.rotateZ((rnd() - 0.5) * 0.3); knot.computeBoundingBox();
+    knot.translate(px, top - knot.boundingBox.min.y - 0.02, pz); b.geo('black', knot);
   }
   return 0.9;
 }
@@ -301,22 +306,27 @@ function dressZone(world, zone, rnd) {
       }
       if (mode === 'wall') {
         const w = wallNear(x, y, z, 1.4); if (!w || w.d < 0.5) continue;
-        const gx = w.x + w.nx * 0.55, gz = w.z + w.nz * 0.55;
-        const g2 = groundAt(gx, gz); if (!g2 || Math.abs(g2.y - y) > 0.2 || !freeAround(gx, g2.y, gz, 0.55)) continue;
         const yaw = Math.atan2(w.nx, w.nz) + (rnd() - 0.5) * 0.5;
-        if (!fits(world, kind, gx + w.nx * 0.08, g2.y, gz + w.nz * 0.08, kind === 'bench' ? Math.atan2(w.nx, w.nz) : yaw, 0.02)) continue;
+        const fitYaw = kind === 'bench' ? Math.atan2(w.nx, w.nz) : kind === 'barrels' || kind === 'bags' || kind === 'tires' || kind === 'cone' ? 0 : yaw;
+        const f = FOOT[kind];
+        const normalX = w.nx * Math.cos(fitYaw) - w.nz * Math.sin(fitYaw), normalZ = w.nx * Math.sin(fitYaw) + w.nz * Math.cos(fitYaw);
+        const clearance = Math.max(0.55, Math.abs(normalX) * f[0] + Math.abs(normalZ) * f[1] + 0.06);
+        const gx = w.x + w.nx * clearance, gz = w.z + w.nz * clearance;
+        const g2 = groundAt(gx, gz); if (!g2 || Math.abs(g2.y - y) > 0.2 || !freeAround(gx, g2.y, gz, 0.55)) continue;
+        if (!fits(world, kind, gx, g2.y, gz, fitYaw, 0.02)) continue;
         if (kind === 'bags') trashBags(b, gx, g2.y, gz, rnd);
         else if (kind === 'crates') crateStack(b, gx, g2.y, gz, yaw, rnd);
         else if (kind === 'barrels') barrelGroup(b, gx, g2.y, gz, rnd);
         else if (kind === 'tires') tireStack(b, gx, g2.y, gz, rnd);
-        else if (kind === 'cone') { cone(b, gx, g2.y, gz, rnd); if (rnd() < 0.6) cone(b, gx + w.nz * 0.4, g2.y, gz - w.nx * 0.4, rnd); } // contra la pared, de a uno o dos (no en el medio del playón)
+        else if (kind === 'cone') { cone(b, gx, g2.y, gz, rnd); const x2 = gx + w.nz * 0.4, z2 = gz - w.nx * 0.4; if (rnd() < 0.6 && fits(world, kind, x2, g2.y, z2, 0, 0.02)) cone(b, x2, g2.y, z2, rnd); } // contra la pared, de a uno o dos (no en el medio del playón)
         else if (kind === 'bench') bench(b, gx, g2.y, gz, Math.atan2(w.nx, w.nz));
         placed++; continue;
       }
       // campo abierto
       if (!freeAround(x, y, z, kind === 'bush' ? 1.0 : 0.6)) continue;
       const yaw = rnd() * TAU;
-      if (!fits(world, kind, x, y, z, kind === 'benchRoad' || kind === 'mailbox' ? -PI / 2 : yaw)) continue;
+      const fitYaw = kind === 'benchRoad' || kind === 'mailbox' ? -PI / 2 : kind === 'barrels' || kind === 'bags' ? 0 : yaw;
+      if (!fits(world, kind, x, y, z, fitYaw)) continue;
       // piedras, helechos y flores solo en el pasto (nunca en caminos, veredas, empedrado ni en la cancha)
       if ((kind === 'rock' || kind === 'bush' || kind === 'flowers' || kind === 'logs') && (!grassAllowed()[gridIdx(x, z)] || (Math.abs(x - FIELD.cx) < FIELD.hx + 6 && Math.abs(z - FIELD.cz) < FIELD.hz + 6))) continue;
       if (kind === 'oil') decal(world.scene, oilTex(), x, y, z, 0.8 + rnd() * 1.6, 0.8 + rnd() * 1.4, 0, 1, 0, rnd() * TAU, 0.85);

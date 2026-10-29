@@ -630,7 +630,13 @@ export class Decor {
     const r = this.r;
     // montones en nichos de la cripta y del cuarto secreto
     for (const [x, y, z, n] of [[8.85, 0.12, -110, 9], [8.85, 0.12, -121.5, 7], [23.3, 0.12, -114.5, 6], [9.5, F0 + 0.1, -125.2, 5], [13.9, F0 + 1.14, -125.05, 3]]) {
-      for (let i = 0; i < n; i++) spots.push([x + (r() - 0.5) * 0.5, y + (i > 4 ? 0.17 : 0) + r() * 0.03, z + (r() - 0.5) * 0.9, (r() - 0.5) * 1.5]);
+      // All skulls rest on the niche or altar; random raised layers had no support.
+      const rows = Math.ceil(n / 3);
+      for (let i = 0; i < n; i++) {
+        const row = Math.floor(i / 3);
+        const dx = (r() - 0.5) * 0.02, turn = (r() - 0.5) * 0.15, dz = (r() - 0.5) * 0.02;
+        spots.push([x + (i % 3 - 1) * 0.26 + (row % 2 ? 0.05 : -0.025) + dx, y, z + (row - (rows - 1) / 2) * 0.26 + dz, (r() - 0.5) * 1.5 + turn]);
+      }
     }
     for (const [x, z] of [[33, -109.2], [29.7, -125.5], [42.3, -113]]) spots.push([x, 0.1, z, r() * 3]);
     // calavera anatómica del pase de arte (antes: esferas pintadas); la base del modelo apoya en el piso
@@ -639,7 +645,7 @@ export class Decor {
     this.instances('c_bones', [this.mat4(9.2, 0.02, -110.1, 0.4, 0.8), this.mat4(23.0, 0.02, -114.9, 2.1, 0.7), this.mat4(41.6, 0.01, -121.2, 1.2, 1), this.mat4(28.4, 0.01, -127.6, 3, 0.9)]);
     whenAsset('c_skel_lie', () => placeModel(this.scene, 'c_skel_lie', 38.4, 0.02, -127.1, Math.PI / 2 + 0.15, 1));
     whenAsset('c_skel_sit', () => placeModel(this.scene, 'c_skel_sit', 42.9, 0, -117.2, -Math.PI / 2 - 0.2, 1));
-    // jaula colgante (gibbet) de un poste con brazo, a la entrada del cementerio, con un esqueleto sentado adentro
+    // jaula colgante (gibbet) de un poste con brazo, a la entrada del cementerio
     this._gibbet(25.8, -106.2, 0.4);
   }
   _gibbet(x, z, yaw) {
@@ -655,7 +661,7 @@ export class Decor {
     this.scene.add(g);
     // el modelo: origen en el enganche de arriba, cuelga 3.15 m (1.2 de cadena y la jaula)
     whenAsset('c_gibbet', () => { const m = assetModel('c_gibbet'); if (m) { m.position.y = -3.17; g.add(m); } });
-    whenAsset('c_skel_sit', () => { const m = assetModel('c_skel_sit'); if (m) { m.position.y = -3.1; m.scale.setScalar(0.82); m.rotation.y = 0.6; g.add(m); } });
+    whenAsset('c_skel_hang', () => { const m = assetModel('c_skel_hang'); if (m) { const a = 0.6; m.position.set(-Math.sin(a) * 0.125, -3.15, -Math.cos(a) * 0.125); m.scale.setScalar(0.82); m.rotation.y = a; g.add(m); } });
     this.anim.push((t) => { g.rotation.set(Math.sin(t * 0.8) * 0.035, Math.sin(t * 0.23) * 0.25, Math.sin(t * 0.61) * 0.03); });
   }
 
