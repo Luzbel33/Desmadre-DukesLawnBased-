@@ -4,16 +4,20 @@
 // decor.anim. Hecho para que cada lugar tenga cosas distintas que mirar, con colisiones y sin nada flotando.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { Builder, getMat } from './builder.js';
-import { assetBounds, whenAsset } from '../game/assets.js';
+import { Builder } from './builder.js';
+import { assetBounds, assetModel, whenAsset } from '../game/assets.js';
 import { yawCollider } from '../game/placement.js';
 import { dressTowerTop } from './tower-tops.js';
 import { buildPuddles } from '../fx/puddles.js';
+import { skeletonForearm } from './skeleton-hand.js';
 
 const HAS_DOM = typeof document !== 'undefined';
 const PI = Math.PI, TAU = PI * 2;
 const UP = new THREE.Vector3(0, 1, 0);
 const smooth = (x) => x * x * (3 - 2 * x);
+
+// Keep grave markers and mounds out of the mausoleum footprint.
+export function mausoleumPlot(x, z) { return x > 38.7 && x < 44.5 && z > -115.5 && z < -110.0; }
 
 // ruido barato y repetible (para bordes y terrones que no se vean prolijos)
 function noise2(x, z, s = 1) {
@@ -383,6 +387,7 @@ function cementerio(d) {
   for (let row = 0; row < 4; row++) for (let k = 0; k < 5; k++) {
     const x = 27.8 + k * 3.3, z = -109 - row * 5;
     if (Math.abs(x - 33.5) < 1.5 && Math.abs(z + 117) < 3) continue;
+    if (mausoleumPlot(x, z)) continue;
     mound(sg, x + (rnd() - 0.5) * 0.4, z + 1.35, (rnd() - 0.5) * 0.3, 1.9, 0.95, 0.24);
     clods(sg, x, z + 1.3, 1.1, 2, 9, rnd);
     if (rnd() < 0.55) {
@@ -400,24 +405,34 @@ function cementerio(d) {
   for (const [x, z, nx, nz, w, h] of [[34, -129.45, 0, 1, 8, 4.5], [27, -129.45, 0, 1, 4, 3.5], [43.55, -122, -1, 0, 7, 4], [43.55, -112, -1, 0, 4, 3], [30, -103.1, 0, -1, 5, 3], [39, -103.1, 0, -1, 4, 3.5], [25.05, -123, 1, 0, 6, 4], [25.05, -116, 1, 0, 3, 5]]) ivy(b, x, z, nx, nz, w, h, rnd, 6);
   fenceRect(b, 29.5, -114, 3.2, 2.6, d.phys);
   fenceRect(b, 39.2, -119.8, 3.6, 2.8, d.phys);
-  // el mausoleo: contra la muralla este, con escalones, columnas, frontón y la puerta de hierro entornada
+  // Mausoleum: a closed family vault, set against the eastern wall.
   {
     const mx = 41.2, mz = -112.5, W = 4.6, D = 3.6;
-    b.box('castleStone', mx, 0.12, mz, D + 0.8, 0.24, W + 0.8, { collide: false });
+    b.box('castleStone', mx, 0.12, mz, D + 0.8, 0.24, W + 0.8, { collide: true });
     b.box('castleStone', mx, 0.34, mz, D + 0.3, 0.2, W + 0.3);
     b.box('keepStone', mx + 0.15, 1.9, mz - W / 2 + 0.2, D - 0.3, 3.2, 0.4); // paredes
     b.box('keepStone', mx + 0.15, 1.9, mz + W / 2 - 0.2, D - 0.3, 3.2, 0.4);
     b.box('keepStone', mx + D / 2 - 0.3, 1.9, mz, 0.4, 3.2, W);
     b.box('castleStone', mx + 0.15, 3.65, mz, D - 0.1, 0.3, W + 0.2); // techo
     const roof = new THREE.CylinderGeometry(0.01, 2.8, 1.1, 4, 1); roof.rotateY(PI / 4); roof.scale(1, 1, 0.95); roof.translate(mx + 0.15, 4.3, mz); b.geo('keepStone', roof);
-    for (const zz of [-1.7, -0.6, 0.6, 1.7]) { b.cylinder('castleStone', mx - D / 2 + 0.25, 1.9, mz + zz, 0.2, 0.22, 3.2, 10, { collide: true }); b.box('keepStone', mx - D / 2 + 0.25, 0.46, mz + zz, 0.6, 0.12, 0.6, { collide: false }); }
+    for (const zz of [-1.8, 1.8]) { b.cylinder('castleStone', mx - D / 2 + 0.25, 1.9, mz + zz, 0.2, 0.22, 3.0, 10, { collide: true }); b.box('keepStone', mx - D / 2 + 0.25, 0.46, mz + zz, 0.6, 0.12, 0.6, { collide: false }); b.box('keepStone', mx - D / 2 + 0.25, 3.35, mz + zz, 0.55, 0.18, 0.55, { collide: false }); }
     b.box('keepStone', mx - D / 2 + 0.25, 3.62, mz, 0.55, 0.28, W + 0.2, { collide: false });
-    // dintel y la puerta entornada (hueco en la pared del frente: queda oscuro por dentro)
-    b.box('black', mx - D / 2 + 0.55, 1.2, mz, 0.1, 2.3, 1.5, { collide: false, noShadow: true });
-    b.box('iron', mx - D / 2 + 0.52, 1.2, mz - 0.35, 0.05, 2.3, 0.75, { yaw: 0.9, collide: false });
-    b.box('iron', mx - D / 2 + 0.52, 1.2, mz + 0.78, 0.05, 2.3, 0.7, { collide: false });
-    b.box('keepStone', mx - D / 2 + 0.25, 3.1, mz, 0.3, 0.5, 2, { collide: false });
-    d.c.light(mx - 0.5, 1.4, mz, 0x6a8cff, 3.2, 5, { flicker: true, priority: 0.8 }); // luz fría de adentro
+    const front = mx - D / 2 + 0.25;
+    for (const side of [-1, 1]) b.box('keepStone', front + 0.12, 1.83, mz + side * 1.38, 0.34, 2.9, 0.85, { collide: true });
+    b.box('black', front + 0.08, 1.7, mz, 0.08, 2.48, 1.85, { collide: false, noShadow: true });
+    // Two inset iron leaves, with visible frames and a collider matching the closed gate.
+    for (const side of [-1, 1]) {
+      const cz = mz + side * 0.46;
+      for (const offset of [-0.42, 0.42]) b.box('iron', front - 0.03, 1.7, cz + offset, 0.08, 2.48, 0.07, { collide: false });
+      for (const yy of [0.5, 1.32, 2.75, 2.91]) b.box('iron', front - 0.03, yy, cz, 0.08, 0.07, 0.88, { collide: false });
+      for (const offset of [-0.28, -0.14, 0, 0.14, 0.28]) b.box('iron', front - 0.025, 1.7, cz + offset, 0.05, 2.4, 0.025, { collide: false, noShadow: true });
+      b.box('bronze', front - 0.085, 1.43, mz + side * 0.11, 0.06, 0.13, 0.05, { collide: false });
+    }
+    b.box('keepStone', front + 0.12, 3.14, mz, 0.38, 0.35, 2.05, { collide: false });
+    b.box('bronze', front - 0.085, 3.14, mz, 0.05, 0.22, 0.04, { collide: false, noShadow: true });
+    b.box('bronze', front - 0.085, 3.17, mz, 0.05, 0.04, 0.16, { collide: false, noShadow: true });
+    d.phys.box(front, 1.7, mz, 0.06, 1.24, 0.93, 0, { paint: false, mat: 'metal' });
+    d.c.light(front - 0.7, 2.2, mz, 0xffbe82, 4.0, 6, { flicker: true, priority: 0.8 });
   }
   // tumbas hundidas / lápidas caídas / una cruz torcida suelta
   for (const [x, z, yaw] of [[30.8, -126.5, 0.3], [34.6, -125.2, -0.4], [26.8, -124.2, 1.1]]) {
@@ -469,25 +484,24 @@ function cementerio(d) {
   d.torch(43.4, 2.8, -127.5, -1, 0, 4, 9);
   d.torch(25.4, 2.8, -126, 1, 0, 4, 9);
   if (!HAS_DOM) return;
-  // manos de esqueleto que salen de la tierra a ratos (una por tumba elegida)
+  // A few hands emerge from actual grave mounds, using the same baked skeleton as the rest of the castle.
   const hands = [];
-  const boneMat = getMat('bone');
-  for (const [x, z] of [[28, -110.2], [34.9, -120.2], [31.1, -115.3], [37.9, -109.6], [41, -121.2], [27.6, -124.4]]) {
-    const g = new THREE.Group();
-    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.026, 0.7, 5), boneMat); arm.position.y = 0.35; arm.rotation.z = 0.12; g.add(arm);
-    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 0.03), boneMat); palm.position.set(0.04, 0.74, 0); g.add(palm);
-    for (let f = 0; f < 4; f++) { const fi = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.01, 0.13, 4), boneMat); fi.position.set(0.0 + f * 0.028, 0.86, 0); fi.rotation.z = -0.1 + f * 0.05; g.add(fi); }
-    const th = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.011, 0.1, 4), boneMat); th.position.set(0.1, 0.78, 0); th.rotation.z = -0.9; g.add(th);
-    g.position.set(x, -0.8, z); g.rotation.y = rnd() * TAU; g.castShadow = true;
-    d.scene.add(g);
-    hands.push({ g, y: -0.8, t0: rnd() * 40, period: 22 + rnd() * 20 });
-  }
-  const me = () => (typeof window !== 'undefined' ? window.G?.me?.pos : null);
+  whenAsset('c_skel_hang', () => {
+    const model = assetModel('c_skel_hang'), forearm = model && skeletonForearm(model);
+    if (!forearm) return;
+    for (const [x, z] of [[27.8, -117.65], [37.7, -112.65], [31.1, -122.65]]) {
+      const g = new THREE.Group(), mesh = new THREE.Mesh(forearm.geometry, forearm.material);
+      mesh.castShadow = true; mesh.receiveShadow = true; g.add(mesh); g.name = 'cemetery-hand';
+      g.position.set(x, -0.52, z); g.rotation.y = rnd() * TAU;
+      d.scene.add(g);
+      hands.push({ g, t0: rnd() * 40, period: 22 + rnd() * 20 });
+    }
+  });
   d.anim.push((t) => {
     for (const h of hands) {
       const ph = ((t + h.t0) % h.period) / h.period; // asoma un rato corto de cada ciclo
       const up = ph < 0.14 ? smooth(ph / 0.14) : ph < 0.26 ? 1 : ph < 0.34 ? 1 - smooth((ph - 0.26) / 0.08) : 0;
-      h.g.position.y = -0.8 + up * 0.78;
+      h.g.position.y = -0.52 + up * 0.6;
       h.g.rotation.z = Math.sin(t * 2.2 + h.t0) * 0.08 * up; // la mano tantea
     }
   });

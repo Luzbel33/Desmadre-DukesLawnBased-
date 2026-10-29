@@ -266,12 +266,12 @@ function paperLitter(b, x, y, z, rnd) {
 // ---------------------------------------------------------------- zonas
 // rect = [x0, z0, x1, z1]; items: [kind, cuántos]; mode: 'open' (campo abierto), 'wall' (pegado a la pared)
 const ZONES = [
-  { id: 'callejon', rect: [96, -19.6, 122.6, -12.4], items: [['bags', 5, 'wall'], ['crates', 3, 'wall'], ['barrels', 2, 'wall'], ['litter', 8, 'open'], ['puddle', 5, 'open'], ['leaves', 5, 'open'], ['poster', 9, 'wallv'], ['tag', 7, 'wallv']] },
+  { id: 'callejon', rect: [96, -19.6, 122.6, -12.4], items: [['bags', 6, 'wall'], ['crates', 3, 'wall'], ['barrels', 2, 'wall'], ['litter', 12, 'open'], ['puddle', 5, 'open'], ['leaves', 5, 'open'], ['poster', 9, 'wallv'], ['tag', 7, 'wallv']] },
   { id: 'estacionamiento', rect: [96, 19, 122.6, 43.5], items: [['oil', 14, 'open'], ['cone', 4, 'wall'], ['puddle', 6, 'open'], ['leaves', 6, 'open'], ['litter', 8, 'open'], ['bags', 2, 'wall'], ['poster', 3, 'wallv']] },
   { id: 'bar_afuera', rect: [93, -44, 124.6, -42], items: [['bench', 2, 'wall'], ['litter', 3, 'open'], ['puddle', 3, 'open'], ['poster', 6, 'wallv'], ['tag', 3, 'wallv']] },
   { id: 'bar_dentro', posters: [0, 3, 6, 1, 5, 2], rect: [96, -41, 122, -21], items: [['poster', 9, 'wallv'], ['crates', 2, 'wall'], ['barrels', 2, 'wall'], ['litter', 6, 'open'], ['bags', 1, 'wall']] },
-  { id: 'cine_dentro', posters: [4, 4, 5, 6, 1], rect: [96, -11, 122, 15], items: [['poster', 10, 'wallv'], ['litter', 14, 'open'], ['bags', 2, 'wall']] },
-  { id: 'cine_afuera', posters: [4, 6, 0, 2], rect: [93, -13, 124.5, 17], items: [['bench', 2, 'wall'], ['poster', 6, 'wallv'], ['tag', 4, 'wallv'], ['litter', 5, 'open'], ['puddle', 4, 'open'], ['leaves', 4, 'open']] },
+  { id: 'cine_dentro', posters: [4, 4, 5, 6, 1], rect: [96, -11, 122, 15], items: [['poster', 10, 'wallv']] },
+  { id: 'cine_afuera', posters: [4, 6, 0, 2], rect: [91.4, -13, 94.5, 17], items: [['bench', 2, 'wall'], ['poster', 6, 'wallv'], ['tag', 4, 'wallv'], ['litter', 5, 'open'], ['puddle', 4, 'open'], ['leaves', 4, 'open']] },
   { id: 'galpon', rect: [-101, -21, -87, -7], items: [['tires', 5, 'wall'], ['barrels', 4, 'wall'], ['crates', 3, 'wall'], ['oil', 8, 'open'], ['litter', 5, 'open'], ['poster', 4, 'wallv']] },
   { id: 'galpon_afuera', rect: [-106, -26, -82, -3], items: [['cone', 3, 'wall'], ['oil', 6, 'open'], ['leaves', 6, 'open'], ['puddle', 4, 'open'], ['litter', 6, 'open'], ['tires', 3, 'wall'], ['barrels', 2, 'wall']] },
   { id: 'pasto', rect: [-68, -48, 68, 56], items: [['rock', 16, 'open'], ['bush', 12, 'open'], ['flowers', 22, 'open'], ['logs', 3, 'open']] },
@@ -445,7 +445,6 @@ function barDetails(world) {
 function facades(world) {
   const b = new Builder(world.phys), X = 94.8;
   // cine
-  b.box('darkgray', X, 0.45, 2, 0.12, 0.9, 28.2, { collide: false, noShadow: true });
   b.box('cream', X, 7.75, 2, 0.34, 0.3, 28.8, { collide: false });
   b.box('cream', X, 7.3, 2, 0.2, 0.12, 28.4, { collide: false, noShadow: true });
   for (const z of [-11.85, 15.85, -4.2, 8.2]) { b.box('cream', X, 4, z, 0.26, 8, 0.5, { collide: false }); b.box('cream', X, 0.2, z, 0.34, 0.4, 0.64, { collide: false, noShadow: true }); b.box('cream', X, 7.6, z, 0.34, 0.3, 0.64, { collide: false, noShadow: true }); }
@@ -455,14 +454,14 @@ function facades(world) {
     decal(world.scene, poster(pi), X - 0.08, 1.85, z, 1.2, 1.8, -1, 0, 0, 0, 1, { toneMapped: false });
   }
   // bar
-  b.box('darkgray', X, 0.5, -31, 0.12, 1.0, 22, { collide: false, noShadow: true });
   b.box('woodDark', X, 5.3, -31, 0.34, 0.3, 22.8, { collide: false });
   for (const z of [-41.85, -20.15]) b.box('woodDark', X, 2.7, z, 0.26, 5.4, 0.5, { collide: false });
   for (const z of [-37.5, -24.5]) {
-    b.box('woodDark', X, 1.95, z, 0.14, 1.7, 3.0, { collide: false, noShadow: true });
-    b.box('winGlow', X - 0.05, 1.95, z, 0.04, 1.4, 2.7, { collide: false, noShadow: true });
-    for (const k of [-0.45, 0.45]) b.box('woodDark', X - 0.08, 1.95, z + k * 1.5, 0.05, 1.4, 0.06, { collide: false, noShadow: true });
-    b.box('woodDark', X - 0.08, 1.95, z, 0.05, 0.06, 2.7, { collide: false, noShadow: true });
+    // Separate the backing, glass and mullions: coplanar faces flickered as the camera moved.
+    b.box('woodDark', X - 0.005, 1.95, z, 0.10, 1.7, 3.0, { collide: false, noShadow: true });
+    b.box('winGlow', X - 0.08, 1.95, z, 0.03, 1.4, 2.7, { collide: false, noShadow: true });
+    for (const k of [-0.45, 0.45]) b.box('woodDark', X - 0.11, 1.95, z + k * 1.5, 0.05, 1.4, 0.06, { collide: false, noShadow: true });
+    b.box('woodDark', X - 0.11, 1.95, z, 0.05, 0.06, 2.7, { collide: false, noShadow: true });
     b.box('stone', X - 0.1, 1.05, z, 0.22, 0.1, 3.2, { collide: false, noShadow: true });
   }
   for (const z of [-37.5, -24.5]) decal(world.scene, graffiti(z < -30 ? 3 : 8), X - 0.09, 0.6, z, 1.6, 0.8, -1, 0, 0, 0, 0.9);

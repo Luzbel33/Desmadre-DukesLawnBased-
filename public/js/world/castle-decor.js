@@ -1,7 +1,7 @@
 // Decoración del castillo del terror: modelos (llegan en segundo plano), calabazas talladas con fuego adentro,
 // velas, lápidas con epitafios, telarañas, retratos pintados por código, calaveras, árboles secos, niebla baja,
 // murciélagos, cuervos y el espantapájaros. Todo lo repetido va instanciado.
-import { soilRow, dressYard } from './castle-yard.js';
+import { soilRow, dressYard, mausoleumPlot } from './castle-yard.js';
 import { dressWalls } from './castle-walls.js';
 import * as THREE from 'three';
 import { G, rng } from '../core/G.js';
@@ -138,17 +138,15 @@ function twistedRope(pts, radius, twist = 95) {
 
 function epitaphCanvas(lines) {
   const W = 256, H = 320, cv = canvas(W, H), c = cv.getContext('2d');
-  c.fillStyle = '#6f6d66'; c.fillRect(0, 0, W, H);
-  const r = rng(lines.join('').length * 13);
-  for (let i = 0; i < 900; i++) { const g = 80 + r() * 50; c.fillStyle = `rgba(${g},${g},${g - 6},0.35)`; c.fillRect(r() * W, r() * H, 3, 3); }
-  for (let i = 0; i < 26; i++) { c.fillStyle = `rgba(52,70,34,${0.2 + r() * 0.3})`; c.beginPath(); c.ellipse(r() * W, H - r() * 90, 10 + r() * 30, 6 + r() * 14, 0, 0, Math.PI * 2); c.fill(); }
+  // Transparent lettering lets the stone texture show through instead of a pasted rectangle.
+  c.clearRect(0, 0, W, H);
   c.textAlign = 'center';
+  c.textBaseline = 'middle';
   lines.forEach((t, i) => {
-    const big = i === 0;
-    c.font = `${big ? 'bold 34' : '19'}px Georgia, serif`;
-    const y = (big ? 70 : 118) + (big ? 0 : (i - 1) * 27);
-    c.fillStyle = 'rgba(255,255,255,0.25)'; c.fillText(t, W / 2 + 1, y + 1);
-    c.fillStyle = 'rgba(20,18,16,0.85)'; c.fillText(t, W / 2, y);
+    c.font = `${i === 0 ? 'bold 34' : '22'}px Georgia, serif`;
+    const y = 54 + i * 48;
+    c.fillStyle = 'rgba(17,16,14,0.65)'; c.fillText(t, W / 2 + 1, y + 1, W - 32);
+    c.fillStyle = 'rgba(173,166,148,0.74)'; c.fillText(t, W / 2, y, W - 32);
   });
   return cv;
 }
@@ -413,6 +411,7 @@ export class Decor {
     for (let row = 0; row < 4; row++) for (let k = 0; k < 5; k++) {
       const x = 27.8 + k * 3.3 + (r() - 0.5) * 0.6, z = -109 - row * 5 + (r() - 0.5) * 0.8;
       if (Math.abs(x - 33.5) < 1.2 && Math.abs(z - -117) < 2.5) continue; // lugar de la estatua
+      if (mausoleumPlot(x, z)) continue;
       const kind = Math.floor(r() * 4), tilt = (r() - 0.5) * 0.18, yaw = (r() - 0.5) * 0.25;
       if (kind === 0 || kind === 1) {
         // lápida con remate redondo
@@ -424,7 +423,7 @@ export class Decor {
         g.scale(1, 1, 1);
         const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / 2, uv.getY(i) / 2);
         g.applyMatrix4(M.makeRotationFromEuler(new THREE.Euler(tilt, yaw, tilt * 0.5)).setPosition(x, -0.05, z));
-        b.geo(kind ? 'keepStone' : 'castleStone', g);
+        b.geo('concrete', g);
         stones.push({ x, z, w, h, yaw, tilt, epi: e < EPI.length && kind === 0 ? EPI[e++] : null });
         this.phys.box(x, h * 0.5, z, w, h * 0.5 + w * 0.3, 0.1, yaw, { paint: false });
       } else if (kind === 2) {
@@ -470,8 +469,8 @@ export class Decor {
       for (const s of stones) {
         if (!s.epi) continue;
         const t = tex(epitaphCanvas(s.epi));
-        const m = new THREE.Mesh(new THREE.PlaneGeometry(s.w * 1.8, s.w * 1.8 * 1.25), new THREE.MeshStandardMaterial({ map: t, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -2 }));
-        m.position.set(0, s.h * 0.55, 0.115);
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(s.w * 1.55, s.h * 0.68), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+        m.position.set(0, s.h * 0.58, 0.115);
         const grp = new THREE.Group();
         grp.position.set(s.x, -0.05, s.z);
         grp.rotation.set(s.tilt, s.yaw, s.tilt * 0.5, 'XYZ');
