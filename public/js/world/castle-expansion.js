@@ -98,7 +98,7 @@ export function buildUpperCastle(c) {
   c.cyl('hemp', -0.7, 13.2, -119.1, 0.02, 0.02, 4.6, 6, { mask: false });
   c.deco('woodDark', -0.7, y + 0.85, -119.1, 0.35, 0.07, 0.07, { mask: false });
   for (const [x, z, color] of [[-17, -121, 0xffb46d], [-17.2, -109.4, 0xffbf7d], [17.8, -122, 0x94cbb1], [16, -109.5, 0xffb975], [1.6, -122.2, 0xffc48a]]) {
-    c.light(x, y + 2.9, z, color, 8, 11, { flicker: true, priority: 2 });
+    c.light(x, y + 2.7, z, color, 18, 12, { flicker: true, priority: 2 });
   }
   // Cold upper-window spill complements small warm practical lamps.
   for (const x of [-17.3, 17.3]) c.light(x, 13.1, -105, 0x7e9bcf, 2.8, 7, { priority: 0.9 });

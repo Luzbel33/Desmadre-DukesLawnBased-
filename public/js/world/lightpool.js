@@ -106,7 +106,13 @@ export class LightPool {
     // luz de adentro de un cuarto con la cámara afuera (o al revés): apenas se ve por las ventanas.
     // Los cuartos van numerados por edificio (101, 102... el torreón; 201 la cripta): el de al lado, por la puerta, algo
     const room = v.room || 0;
-    if (room !== camRoom) s *= room && camRoom && Math.floor(room / 100) === Math.floor(camRoom / 100) ? 0.3 : room ? 0.04 : 0.3;
+    if (room !== camRoom) {
+      // A light on another floor cannot illuminate this castle room through its
+      // solid floor. Preserve some spill from adjacent rooms at the same level.
+      const castleRoom = camRoom >= 101 && camRoom <= 125;
+      if (castleRoom && (!room || Math.abs(v.position.y - cam.y) > 2.7)) s *= 0.04;
+      else s *= room && camRoom && Math.floor(room / 100) === Math.floor(camRoom / 100) ? 0.3 : room ? 0.04 : 0.3;
+    }
     return s;
   }
 

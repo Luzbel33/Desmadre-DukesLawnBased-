@@ -199,3 +199,16 @@ test('los presets sacan luces, sombras y pases de verdad', () => {
   assert.equal(sun.shadow.mapSize.x, 4096);
   assert.equal(farSun.shadow.mapSize.x, 4096);
 });
+
+
+test('castle room lights outrank equally strong lights from other floors', () => {
+  const pool = new LightPool(new THREE.Scene(), 4, { shadow: false });
+  const camera = new THREE.Vector3(-17, 12, -121);
+  const source = (room, y) => ({ position: new THREE.Vector3(-17, y, -121), room, intensity: 8, distance: 12 });
+  const same = pool._score(source(121, 12), camera, true, 121);
+  const downstairs = pool._score(source(104, 8), camera, true, 121);
+  const exterior = pool._score(source(0, 12), camera, true, 121);
+  assert.ok(downstairs < same * .08, `light from another floor stole the room budget: ${downstairs / same}`);
+  assert.ok(exterior < same * .08, `an outdoor light stole the room budget: ${exterior / same}`);
+  assert.ok(pool._score(source(122, 12), camera, true, 121) > downstairs, 'same-floor doorway light still contributes');
+});

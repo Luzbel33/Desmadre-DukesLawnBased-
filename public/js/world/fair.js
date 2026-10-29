@@ -80,10 +80,25 @@ export class Fair {
     aw.castShadow = true; aw.receiveShadow = true;
     this.scene.add(aw);
     // cartel colgado del frente del toldo
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.53), new THREE.MeshStandardMaterial({ map: signTex(title, sub), roughness: 0.8 }));
+    const signMap = signTex(title, sub);
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.53), new THREE.MeshStandardMaterial({ map: signMap, emissive: 0xffffff, emissiveMap: signMap, emissiveIntensity: 0.16, roughness: 0.8 }));
     const [gx, gz] = at(0, 0.62);
     sign.position.set(gx, 2.02, gz); sign.rotation.y = yaw;
     this.scene.add(sign);
+    // A small, distinct silhouette above each stall makes its trade readable
+    // from the plaza without adding another interaction or blocking the counter.
+    const [ex, ez] = at(0, -0.15);
+    if (id === 'potions') {
+      b.cylinder('iron', ex, 2.95, ez, 0.06, 0.08, 0.28, 8, { collide: false, noShadow: true });
+      b.cylinder('green', ex, 3.18, ez, 0.11, 0.18, 0.25, 10, { collide: false, noShadow: true });
+      b.cylinder('woodDark', ex, 3.36, ez, 0.045, 0.045, 0.12, 8, { collide: false, noShadow: true });
+    } else if (id === 'apples') {
+      const apple = new THREE.SphereGeometry(0.19, 12, 8); apple.scale(1, 0.9, 0.86); apple.translate(ex, 3.08, ez); b.geo('red', apple);
+      b.cylinder('woodDark', ex, 3.3, ez, 0.025, 0.025, 0.18, 6, { collide: false, noShadow: true });
+    } else if (id === 'tarot') {
+      const ring = new THREE.TorusGeometry(0.19, 0.026, 6, 24, Math.PI * 1.55);
+      ring.rotateZ(-0.75); ring.rotateY(yaw); ring.translate(ex, 3.08, ez); b.geo('bronze', ring);
+    }
     // farol colgado y su luz
     const [lx, lz] = at(W / 2 - 0.3, 0.45);
     this.c.flame(lx, 2.0, lz, 0.035, 0.08, {});

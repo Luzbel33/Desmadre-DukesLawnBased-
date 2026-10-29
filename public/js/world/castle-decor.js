@@ -390,8 +390,8 @@ export class Decor {
     this.candleCluster(-16.2, 0.95, -99.0, 3, 0.1, 0);
     // rebote de cada cuarto: una luz suave y alta (sin parpadeo) para que se lean las formas en la penumbra
     for (const [x, y, z, col, i, d] of [
-      [-16, 8.6, -120.5, 0xc89060, 7, 15], [14.5, 8.6, -120.5, 0xa04838, 6, 14], [0, 8.6, -121.5, 0x8090b0, 5, 14],
-      [16, 2.7, -115, 0xc07040, 5, 13], [-16, 8.8, -109.5, 0xc89060, 5, 15], [16, 8.8, -109.5, 0xc89060, 5, 15],
+      [-16, 8.6, -120.5, 0xc89060, 12, 15], [14.5, 8.6, -120.5, 0xa04838, 10, 14], [0, 8.6, -121.5, 0x8090b0, 8, 14],
+      [16, 2.7, -115, 0xc07040, 8, 13], [-16, 8.8, -109.5, 0xc89060, 9, 15], [16, 8.8, -109.5, 0xc89060, 9, 15],
     ]) this.c.light(x, y, z, col, i, d, { priority: 0.9, decay: 1.6 });
   }
   _flushCandles() {

@@ -149,7 +149,7 @@ export function shelfBooks(d, list, r, parent = null, roomId = null) {
 }
 
 // ---------------------------------------------------------------- alfombras (dibujadas por código, gastadas y manchadas)
-function rugCanvas(pal, seed) {
+function rugCanvas(pal, seed, motif = 'classic') {
   const W = 512, H = 768, cv = canvas(W, H), c = cv.getContext('2d');
   const r = rng(seed);
   c.fillStyle = pal.border; c.fillRect(0, 0, W, H);
@@ -160,16 +160,43 @@ function rugCanvas(pal, seed) {
   for (let i = 0; i < 46; i++) { c.fillRect(30, 30 + i * ((H - 60) / 46), 10, 6); c.fillRect(W - 40, 30 + i * ((H - 60) / 46), 10, 6); }
   c.fillStyle = pal.field; c.fillRect(58, 58, W - 116, H - 116);
   c.strokeStyle = pal.accent; c.lineWidth = 2; c.globalAlpha = 0.5;
-  for (let y = 60; y < H - 60; y += 64) for (let x = 60; x < W - 60; x += 64) {
-    c.beginPath(); c.moveTo(x + 32, y); c.lineTo(x + 64, y + 32); c.lineTo(x + 32, y + 64); c.lineTo(x, y + 32); c.closePath(); c.stroke();
+  if (motif === 'classic') {
+    for (let y = 60; y < H - 60; y += 64) for (let x = 60; x < W - 60; x += 64) {
+      c.beginPath(); c.moveTo(x + 32, y); c.lineTo(x + 64, y + 32); c.lineTo(x + 32, y + 64); c.lineTo(x, y + 32); c.closePath(); c.stroke();
+    }
+  } else if (motif === 'botanical') {
+    // Paired stems and leaves suggest the apothecary's herbarium.
+    for (const x of [122, 390]) {
+      c.beginPath(); c.moveTo(x, 88); c.bezierCurveTo(x - 25, 260, x + 25, 500, x, 680); c.stroke();
+      for (let y = 125; y < 650; y += 70) for (const side of [-1, 1]) {
+        c.beginPath(); c.moveTo(x, y + 28); c.quadraticCurveTo(x + side * 40, y, x + side * 35, y + 42); c.quadraticCurveTo(x + side * 20, y + 55, x, y + 28); c.stroke();
+      }
+    }
+  } else if (motif === 'workshop') {
+    // A plainer woven runner suits an armory more than a ceremonial carpet.
+    for (let x = 84; x < W - 80; x += 34) { c.beginPath(); c.moveTo(x, 76); c.lineTo(x, H - 76); c.stroke(); }
+    for (let y = 104; y < H - 80; y += 82) { c.beginPath(); c.moveTo(72, y); c.lineTo(W - 72, y); c.stroke(); }
+  } else if (motif === 'archive') {
+    for (let y = 110; y < H - 90; y += 100) { c.strokeRect(145, y, 222, 36); c.beginPath(); c.moveTo(180, y + 18); c.lineTo(332, y + 18); c.stroke(); }
   }
   c.globalAlpha = 1;
   c.save(); c.translate(W / 2, H / 2);
-  for (const [rx, ry, col] of [[150, 210, pal.border], [130, 188, pal.accent], [112, 170, pal.field]]) { c.fillStyle = col; c.beginPath(); c.ellipse(0, 0, rx, ry, 0, 0, PI * 2); c.fill(); }
-  c.strokeStyle = pal.accent; c.lineWidth = 3;
-  for (let i = 0; i < 8; i++) { c.rotate(PI / 4); c.beginPath(); c.moveTo(0, 0); c.lineTo(0, 165); c.stroke(); }
-  c.fillStyle = pal.border; c.beginPath(); c.arc(0, 0, 34, 0, PI * 2); c.fill();
-  c.fillStyle = pal.accent; c.beginPath(); c.arc(0, 0, 20, 0, PI * 2); c.fill();
+  if (motif === 'classic') {
+    for (const [rx, ry, col] of [[150, 210, pal.border], [130, 188, pal.accent], [112, 170, pal.field]]) { c.fillStyle = col; c.beginPath(); c.ellipse(0, 0, rx, ry, 0, 0, PI * 2); c.fill(); }
+    c.strokeStyle = pal.accent; c.lineWidth = 3;
+    for (let i = 0; i < 8; i++) { c.rotate(PI / 4); c.beginPath(); c.moveTo(0, 0); c.lineTo(0, 165); c.stroke(); }
+    c.fillStyle = pal.border; c.beginPath(); c.arc(0, 0, 34, 0, PI * 2); c.fill();
+    c.fillStyle = pal.accent; c.beginPath(); c.arc(0, 0, 20, 0, PI * 2); c.fill();
+  } else if (motif === 'crest') {
+    c.strokeStyle = pal.accent; c.lineWidth = 7;
+    c.beginPath(); c.moveTo(0, -175); c.lineTo(125, -105); c.lineTo(105, 100); c.lineTo(0, 170); c.lineTo(-105, 100); c.lineTo(-125, -105); c.closePath(); c.stroke();
+    c.lineWidth = 3; c.beginPath(); c.moveTo(0, -130); c.lineTo(0, 125); c.moveTo(-80, -20); c.lineTo(80, -20); c.stroke();
+  } else if (motif === 'survey') {
+    c.strokeStyle = pal.accent; c.lineWidth = 3;
+    for (const radius of [85, 145]) { c.beginPath(); c.arc(0, 0, radius, 0, TAU); c.stroke(); }
+    for (let i = 0; i < 8; i++) { const a = i * TAU / 8; c.beginPath(); c.moveTo(Math.cos(a) * 34, Math.sin(a) * 34); c.lineTo(Math.cos(a) * 164, Math.sin(a) * 164); c.stroke(); }
+    c.beginPath(); c.moveTo(0, -180); c.lineTo(-18, -125); c.lineTo(0, -136); c.lineTo(18, -125); c.closePath(); c.stroke();
+  }
   c.restore();
   // desgaste: el centro pisado, manchas oscuras y polvo
   const wear = c.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, H * 0.62);
@@ -187,7 +214,7 @@ const RUGS = {
 };
 function rug(d, x, z, w, l, kind = 'red', yaw = 0, seed = 1, floor = F0, roomId = null) {
   if (!HAS_DOM) return;
-  const mat = new THREE.MeshStandardMaterial({ map: ctex(rugCanvas(RUGS[kind], seed * 77 + 5)), roughness: 1 });
+  const mat = new THREE.MeshStandardMaterial({ map: ctex(rugCanvas(RUGS[kind], seed * 77 + 5, ({ 121: 'crest', 122: 'survey', 123: 'botanical', 124: 'workshop', 125: 'archive' })[roomId] || 'classic')), roughness: 1 });
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.018, l), mat);
   m.position.set(x, floor + 0.03, z);
   m.rotation.y = yaw;
@@ -388,10 +415,8 @@ function dressUpperCastle({ d, c, r, col }) {
   B.flush();
 }
 
-// ---------------------------------------------------------------- piso de arriba: que no sean salones vacíos
-// Telarañas en los rincones del techo, niebla rasante, apliques con vela en los muros, ramilletes de velas en el piso
-// y bultos contra las paredes (cajones, baúles, cuadros apoyados, cosas tapadas con sábanas). Cada bulto se pone solo
-// si su caja está libre (no se mete en un mueble, una puerta ni la escalera).
+// A light layer of age supports the room-specific furniture without adding
+// arbitrary obstacles to circulation or copying the same clutter into each room.
 const UPPER = [
   { id: 121, x0: -23.8, x1: -8.3, z0: -125.8, z1: -115.25 },
   { id: 122, x0: -23.8, x1: -8.3, z0: -114.75, z1: -104.2 },
@@ -399,39 +424,21 @@ const UPPER = [
   { id: 124, x0: 8.3, x1: 23.8, z0: -114.75, z1: -104.2 },
   { id: 125, x0: -7.7, x1: 7.7, z0: -125.8, z1: -117.1 },
 ];
-function upperAtmosphere({ d, c, r, col }) {
-  const y = UPPER_FLOOR, B = new Batch(d), webs = [];
-  const free = (x, z, hx, hz, h, yaw = 0) => !d.phys.overlapBox?.(x, y + 0.06 + h / 2, z, hx + 0.12, h / 2, hz + 0.12, yaw);
-  const sheets = [];
+function upperAtmosphere({ d, c, r }) {
+  const y = UPPER_FLOOR, webs = [];
   for (const R of UPPER) {
-    const cx = (R.x0 + R.x1) / 2, cz = (R.z0 + R.z1) / 2;
-    // telarañas en las cuatro esquinas de arriba y en el medio de los muros largos
+    const cz = (R.z0 + R.z1) / 2;
     for (const [x, z, yaw] of [[R.x0 + 0.05, R.z1 - 0.05, PI / 4], [R.x1 - 0.05, R.z1 - 0.05, -PI / 4], [R.x0 + 0.05, R.z0 + 0.05, PI * 0.75], [R.x1 - 0.05, R.z0 + 0.05, -PI * 0.75]]) webs.push([x, 15.85, z, yaw, 1.3 + r() * 0.9]);
-    d.fogLayer?.(cx, y + 0.35, cz, R.x1 - R.x0 - 0.4, R.z1 - R.z0 - 0.4);
-    // apliques de hierro con una vela en los dos muros cortos (a la altura de la mano levantada)
+    // Only the archive is dusty enough for low fog; workrooms remain legible.
+    if (R.id === 125) d.fogLayer?.((R.x0 + R.x1) / 2, y + 0.35, cz, R.x1 - R.x0 - 0.4, R.z1 - R.z0 - 0.4);
     for (const [x, nx] of [[R.x0 + 0.06, 1], [R.x1 - 0.06, -1]]) {
-      const z = cz + (r() - 0.5) * 2;
-      if (!free(x + nx * 0.2, z, 0.12, 0.12, 2.2)) continue;
-      c.deco('iron', x, y + 2.05, z, 0.06, 0.32, 0.12, { mask: false });
-      c.deco('iron', x + nx * 0.1, y + 2.02, z, 0.2, 0.03, 0.03, { mask: false });
-      d.candle(x + nx * 0.2, y + 2.04, z, 0.14, 0.025, 0);
-    }
-    // bultos contra los muros largos: probamos lugares y quedan los que entran
-    const kinds = ['crates', 'chest', 'sheet', 'frames', 'candles', 'sheet', 'chest', 'candles'];
-    let placed = 0;
-    for (let k = 0; k < 40 && placed < 5; k++) {
-      const north = r() < 0.5, x = R.x0 + 1 + r() * (R.x1 - R.x0 - 2), z = north ? R.z1 - 0.45 : R.z0 + 0.45, yaw = north ? PI : 0;
-      const kind = kinds[placed % kinds.length];
-      if (kind === 'crates' && free(x, z, 0.45, 0.25, 1.1, yaw)) { for (let i = 0; i < 2 + (r() < 0.5 ? 1 : 0); i++) B.add('c_crate', x + (r() - 0.5) * 0.05, y + i * 0.35, z, yaw + (r() - 0.5) * 0.2, 1, { shadow: true }); col(x, y, z, 0.82, 1.05, 0.4, yaw); placed++; }
-      else if (kind === 'chest' && free(x, z, 0.5, 0.28, 0.65, yaw)) { B.add('c_chest', x, y, z, yaw, 1, { shadow: true }); col(x, y, z, 0.96, 0.62, 0.52, yaw); B.add('c_candlestick', x + 0.3, y + 0.62, z, 0, 1); c.flame(x + 0.3, y + 0.62 + 0.25, z, 0.03, 0.08, {}); placed++; }
-      else if (kind === 'sheet' && free(x, z, 0.75, 0.45, 1.3, yaw)) { const g = sheetGeo(1.4, 1.1 + r() * 0.5, 0.8, r); g.rotateY(yaw); g.translate(x, y, z); sheets.push(g); col(x, y, z, 1.4, 1.2, 0.8, yaw); placed++; }
-      else if (kind === 'frames' && free(x, z, 0.55, 0.2, 0.9, yaw)) { B.add('c_frame', x, y + 0.02, z + (north ? 0.12 : -0.12), yaw, 1, { rx: north ? 0.18 : -0.18 }); B.add('c_frame2', x + 0.25, y + 0.02, z + (north ? 0.05 : -0.05), yaw, 1, { rx: north ? 0.14 : -0.14 }); placed++; }
-      else if (kind === 'candles' && free(x, z, 0.3, 0.3, 0.4)) { d.candleCluster(x, y, z, 5, 0.22, 0.9); placed++; }
+      if (d.phys.overlapBox?.(x + nx * 0.2, y + 1.16, cz, 0.24, 1.1, 0.24, 0)) continue;
+      c.deco('iron', x, y + 2.05, cz, 0.06, 0.32, 0.12, { mask: false });
+      c.deco('iron', x + nx * 0.1, y + 2.02, cz, 0.2, 0.03, 0.03, { mask: false });
+      d.candle(x + nx * 0.2, y + 2.04, cz, 0.14, 0.025, 0);
     }
   }
   d.cobwebs?.(webs);
-  if (sheets.length) for (const g of sheets) c.b.geo('dustSheet', g);
-  B.flush();
   d._flushCandles?.();
 }
 

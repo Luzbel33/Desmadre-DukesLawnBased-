@@ -86,6 +86,14 @@ export function buildCinema(b, scene, lights) {
     b.box('bulb', X0 - 1.72, 4.95, z, 0.06, 0.1, 0.1, { collide: false, noShadow: true });
     b.box('bulb', X0 - 1.72, 3.45, z, 0.06, 0.1, 0.1, { collide: false, noShadow: true });
   }
+  // Low aisle sconces reveal the seating and exits without washing out the screen.
+  for (const x of [106, 116]) for (const z of [Z0 + 0.25, Z1 - 0.25]) {
+    b.box('darkgray', x, 2.15, z, 0.34, 0.34, 0.08, { collide: false, noShadow: true });
+    b.box('bulb', x, 2.15, z + (z < 0 ? 0.06 : -0.06), 0.16, 0.2, 0.04, { collide: false, noShadow: true });
+    const l = new THREE.PointLight(0xffb87a, 6, 8, 1.7);
+    l.position.set(x, 2.2, z + (z < 0 ? 0.35 : -0.35));
+    scene.add(l); lights.push(l);
+  }
   for (const [x, z, c] of [[101, 2, 0xff9a60], [112, -8, 0x6070ff], [112, 12, 0x6070ff]]) {
     const l = new THREE.PointLight(c, 6, 14, 1.8);
     l.position.set(x, 6.5, z);

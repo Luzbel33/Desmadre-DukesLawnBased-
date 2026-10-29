@@ -125,7 +125,7 @@ export function dressTowerTop(d, t, kind) {
   for (let k = 0; k < 11; k++) b.box('iron', t.x, CEIL - 0.25 - k * 0.15, t.z, 0.035, 0.12, 0.012, { yaw: k % 2 ? PI / 2 : 0, collide: false, noShadow: true });
   I.add('c_lchand', t.x, chY - 0.4, t.z, 0.3, 1.25);
   for (let k = 0; k < 5; k++) { const a = k * TAU / 5 + 0.3; c.flame(t.x + Math.sin(a) * 0.3, chY + 0.32, t.z + Math.cos(a) * 0.3, 0.03, 0.08, {}); }
-  c.light(t.x, chY + 0.1, t.z, 0xffb76a, 6, 10, { flicker: true, priority: 1.5 });
+  c.light(t.x, chY + 0.1, t.z, 0xffb76a, kind === 'armeria' ? 10 : 6, 10, { flicker: true, priority: 1.5 });
   // telarañas en los huecos entre vigas, contra el muro
   const webs = [];
   for (let i = 0; i < 8; i++) if (r() < 0.75) { const a = i * TAU / 8 + 0.2 + TAU / 16, [wx, wz] = P(a, RW - 0.05); webs.push([wx, CEIL - 0.1, wz, a + PI * 0.75, 0.9 + r() * 0.7]); }
@@ -162,8 +162,8 @@ export function dressTowerTop(d, t, kind) {
   const stain = (x, z, size, rgb, seed) => { if (!HAS_DOM) return; const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ map: stainTex(rgb, seed), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 })); m.rotation.x = -PI / 2; m.rotation.z = r() * TAU; m.position.set(x, Y + 0.012, z); d.scene.add(m); };
   const scatter = (type, n, rMin, rMax, s = 1, y = 0, o = {}) => { for (let i = 0; i < n; i++) { for (let k = 0; k < 8; k++) { const a = r() * TAU; if (!floorFree(a, 0.05)) continue; const [x, z] = P(a, rnd(rMin, rMax)); I.add(type, x, Y + y, z, r() * TAU, s, o); break; } } };
 
-  // ---------------------------------------------------------------- el brasero (en todas) y lo especial de cada una
-  {
+  // The armory's limited wall space is reserved for its weapon racks.
+  if (kind !== 'armeria') {
     const a = slot(0.9);
     if (a != null) {
       const [x, z] = P(a, RW - 0.75);
@@ -174,7 +174,7 @@ export function dressTowerTop(d, t, kind) {
       const [fx, fz] = P(a + 0.2, RW - 0.4); I.add('c_firewood', fx, Y, fz, face(a), 1).add('c_firewood', fx, Y + 0.15, fz, face(a) + 0.3, 1);
     }
   }
-  if (kind === 'guardia' || kind === 'armeria') {
+  if (kind === 'guardia') {
     // un cañón asomado a la aspillera grande, apuntando afuera
     const a = slot(1.3);
     if (a != null) { const [x, z] = P(a, RW - 1.0); I.add('c_cannon', x, Y, z, a, 0.85, { shadow: true }); col(x, Y, z, 1.0, 0.75, 1.8, a); }

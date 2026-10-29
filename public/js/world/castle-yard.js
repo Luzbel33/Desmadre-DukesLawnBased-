@@ -730,8 +730,8 @@ function towerRoom(d, t, kind, rnd) {
     { const [bx, bz] = at(t, inward - 2.2, 3.4); ground(d, 'c_skel_sit', bx, 0.1, bz, inward - 2.2 + PI, 0.9, { solid: false }); }
     for (const a of [inward + 1.5, inward - 1.5]) torch(a);
   } else if (kind === 'guardia') {
-    // dormitorio de la guardia: dos literas, un baúl, mesa con ajedrez y velas, armadura en un rincón
-    for (const a of [inward + 1.6, inward - 1.6]) {
+    // The other side is the foot of the spiral staircase; leave its approach clear.
+    for (const a of [inward - 1.6]) {
       const [x, z] = at(t, a, R - 0.55);
       b.box('woodDark', x, 0.42, z, 0.9, 0.08, 1.9, { yaw: a, collide: true }); b.box('woodDark', x, 1.25, z, 0.9, 0.08, 1.9, { yaw: a, collide: true });
       for (const s of [-0.43, 0.43]) for (const e of [-0.92, 0.92]) b.box('woodDark', x + Math.cos(a) * s + Math.sin(a) * e, 0.7, z - Math.sin(a) * s + Math.cos(a) * e, 0.07, 1.4, 0.07, { collide: false });

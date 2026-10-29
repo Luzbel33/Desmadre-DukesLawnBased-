@@ -596,7 +596,9 @@ export class Storm {
     fog.density = lerp(B.fogD, Nn.fogD, s);
     if (w.hemi) {
       const inDark = this.indoor * 0.42; // rebote tenue: conserva la lectura de muebles y puertas
-      w.hemi.intensity = lerp(B.hemi, Nn.hemi, sI) * (1 - inDark * s) + fin * 1.4;
+      // Soft reflected moonlight keeps interior geometry and routes legible
+      // while the storm and the practical candles still set the mood.
+      w.hemi.intensity = lerp(B.hemi, Nn.hemi, sI) * (1 - inDark * s) + fin * 1.4 + this.indoor * s * 0.65;
       w.hemi.color.copy(B.hemiSky).lerp(Nn.hemiSky, s);
       w.hemi.groundColor.copy(B.hemiGround).lerp(Nn.hemiGround, s);
     }
