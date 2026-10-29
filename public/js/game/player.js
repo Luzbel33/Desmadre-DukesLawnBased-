@@ -750,7 +750,9 @@ export class LocalPlayer {
   _startGetup() {
     this.bal.reset();
     const pt = this.rag.pelvis().translation();
-    const p = new THREE.Vector3(pt.x, 0.02, pt.z);
+    // Recover on the surface under the ragdoll, including elevated floors.
+    const floor = G.phys.raycast(pt.x, pt.y + 0.1, pt.z, 0, -1, 0, 100);
+    const p = new THREE.Vector3(pt.x, (floor?.y ?? pt.y) + 0.02, pt.z);
     // mirar hacia donde quedó el torso
     const r = this.rag.bodies[1].rotation();
     const fwd = V1.set(0, 0, 1).applyQuaternion(Q1.set(r.x, r.y, r.z, r.w));
@@ -2430,7 +2432,7 @@ export class LocalPlayer {
     } else if (st === 'ko' || st === 'dead') {
       // el controlador sigue al cuerpo tirado (la cámara lo acompaña)
       const pt = this.rag.pelvis().translation();
-      this.body.setNextKinematicTranslation({ x: pt.x, y: this.bodyY + 0.02, z: pt.z });
+      this.body.setNextKinematicTranslation({ x: pt.x, y: pt.y + this.bodyY, z: pt.z });
       this.velocity.set(0, 0);
       this.speed = 0;
       this.vy = 0;

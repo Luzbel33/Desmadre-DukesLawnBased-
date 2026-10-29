@@ -329,7 +329,7 @@ function huerta(d) {
   }
   // un maizal muerto en la esquina: tallos quebrados y hojas secas
   for (let i = 0; i < 150; i++) {
-    const x = -42.4 + rnd() * 3.4, z = -128.6 + rnd() * 5.2, h = 1.2 + rnd() * 1.1, lean = (rnd() - 0.5) * 0.5, yaw = rnd() * TAU;
+    const x = -42.4 + rnd() * 3.4, z = -121.6 + rnd() * 5.2, h = 1.2 + rnd() * 1.1, lean = (rnd() - 0.5) * 0.5, yaw = rnd() * TAU;
     const stem = new THREE.CylinderGeometry(0.008, 0.02, h, 4);
     stem.translate(0, h / 2, 0); stem.rotateZ(lean); stem.rotateY(yaw); stem.translate(x, 0, z);
     b.geo('hay', stem);
@@ -340,7 +340,8 @@ function huerta(d) {
       b.geo('hay', leaf);
     }
   }
-  d.phys.box(-40.7, 0.9, -126, 1.8, 0.9, 2.6, 0, { paint: false }); // el maizal estorba (un cuadro de tallos)
+  // Keep the stalks and their collision together, away from the tower entrance.
+  d.phys.box(-40.7, 0.9, -119, 1.8, 0.9, 2.6, 0, { paint: false });
   for (const [x, z, nx, nz, w, h] of [[-34, -129.55, 0, 1, 9, 4.5], [-43.55, -118, 1, 0, 8, 4], [-43.55, -108, 1, 0, 4, 3], [-30, -103.35, 0, -1, 5, 3.4], [-39, -103.35, 0, -1, 4, 3.4]]) ivy(b, x, z, nx, nz, w, h, rnd, 6);
   // cercado de madera rota sobre la pared del este, con huecos
   for (let z = -128; z < -105; z += 0.9) {
@@ -508,7 +509,8 @@ function patio(d) {
     .map(([x, z, s]) => ({ x, y: 0.055, z, rx: s * 1.3, rz: s * 0.85, rot: rnd() * PI })));
   // el herrero (contra la muralla este): fragua con brasas, yunque, tina de agua, fuelle y mesa de armas
   {
-    const fx = 42.1, fz = -83.4;
+    // Keep the forge clear of the guard tower's inward-facing doorway.
+    const fx = 42.1, fz = -87.4;
     b.box('keepStone', fx, 0.6, fz, 1.5, 1.2, 2.2);
     b.box('keepStone', fx + 0.5, 1.9, fz, 0.6, 2.2, 1.6, { collide: false });
     b.box('ember', fx - 0.1, 1.23, fz, 1.1, 0.05, 1.5, { collide: false, noShadow: true });

@@ -408,7 +408,7 @@ export class Haunt {
       { id: 'h_chest', ev: 'chest', p: [17.8, F0 + 1, -124.1], r: 1.5, label: 'Abrir el cofre del Conde' },
       { id: 'h_tomb', ev: 'tomb', p: [14.2, 1.0, -112.9], r: 1.8, label: 'Correr la tapa del sarcófago' },
       { id: 'h_sheet', ev: 'sheet', p: [-16, F0 + 1, -120.1], r: 1.6, label: 'Levantar la sábana' },
-      { id: 'h_crypt', ev: 'cryptgate', p: [23.4, 1.0, -108.4], r: 1.8, label: 'Empujar la reja' },
+      { id: 'h_crypt', ev: 'cryptgate', p: [23.4, 1.0, -108.4], r: 2.4, label: 'Empujar la reja' },
       { id: 'h_log', ev: 'log', p: [CASTLE.fire[0], 1.0, CASTLE.fire[1]], r: 2.3, label: 'Tirar un leño al fuego' },
     ];
     for (const it of list) INTERACT.push({ ...it, k: 'haunt' });

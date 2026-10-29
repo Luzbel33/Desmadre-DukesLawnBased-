@@ -60,6 +60,16 @@ test('pasadizo: el cráneo interior usa la misma apertura y avisa a los demás',
   }
 });
 
+test('crypt gate can be activated from the cemetery side without pressing into the bars', () => {
+  const length = INTERACT.length;
+  try {
+    const haunt = Object.assign(Object.create(Haunt.prototype), { scene: new THREE.Scene(), castle: { anchors: {} } });
+    haunt._buildInteract();
+    const gate = INTERACT.find(it => it.id === 'h_crypt');
+    assert.ok(Math.hypot(25.5 - gate.p[0], 1 - gate.p[1], -108.4 - gate.p[2]) < gate.r);
+  } finally { INTERACT.length = length; }
+});
+
 test('pasadizo: reabrir durante el cierre cancela el bloqueo anterior, también por red', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const oldSfx = G.sfx;
@@ -262,6 +272,21 @@ async function fixture(keys = new Set()) {
   return { p, ph };
 }
 function frame(p, ph, dt = 1 / 60, yaw = 0) { ph.step(dt, (d) => p.physicsStep(d, yaw), () => p.afterPhysics()); G.time += dt; p.update(dt); }
+
+test('knockout and recovery stay on an elevated floor', async () => {
+  for (const height of [0, 3.5, 11]) {
+    const { p, ph } = await fixture();
+    if (height) ph.box(0, height - 0.15, 0, 8, 0.15, 8);
+    p.teleport(new THREE.Vector3(0, height + 0.02, 0), 0);
+    for (let i = 0; i < 20; i++) frame(p, ph);
+    p.knockout(0.8);
+    for (let i = 0; i < 20; i++) frame(p, ph);
+    assert.ok(p.pos.y > height - 0.5, `camera fell below floor ${height}: ${p.pos.y}`);
+    for (let i = 0; i < 300; i++) frame(p, ph);
+    assert.ok(Math.abs(p.pos.y - height) < 0.15, `recovered on the wrong floor ${height}: ${p.pos.y}`);
+    ph.world.free();
+  }
+});
 
 test('cabeza y piernas encuentran una pared durante el golpe sin penetrarla', async () => {
   for (const attack of ['headbutt', 'kick']) {
